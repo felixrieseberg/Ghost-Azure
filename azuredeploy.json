@@ -32,7 +32,7 @@
         },
         "Website URL": {
             "type": "string",
-            "defaultValue": "sitename.azurewebsites.net"
+            "defaultValue": "http://sitename.azurewebsites.net"
         },
         "Email Service": {
             "type": "string",
