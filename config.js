@@ -3,13 +3,22 @@
 // Documentation can be found at http://support.ghost.org/config/
 
 var path = require('path'),
+    websiteUrl = process.env.websiteUrl,
     config;
+
+// Azure Feature
+// ------------------------------------------------------------------------
+// If the App Setting 'websiteUrl' is set, Ghost will use that URL as base.
+// If it isn't set, we'll go with the default sitename.
+if (!websiteUrl || websiteUrl === '') {
+    websiteUrl = 'http://' + process.env.siteName + '.azurewebsites.net';
+}
 
 config = {
     // ### Development **(default)**
     development: {
         // The url to use when providing links to the site, E.g. in RSS and email.
-        url: process.env.websiteUrl,
+        url: websiteUrl,
 
         // Visit http://support.ghost.org/mail for instructions
          mail: {

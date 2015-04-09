@@ -30,10 +30,6 @@
             ],
             "defaultValue": "0"
         },
-        "Website URL": {
-            "type": "string",
-            "defaultValue": "http://sitename.azurewebsites.net"
-        },
         "Email Service": {
             "type": "string",
             "allowedValues": [
@@ -93,7 +89,7 @@
             "properties": {
                 "appSettings": [{
                     "name": "websiteUrl",
-                    "value": "[parameters('Website URL')]"
+                    "value": ""
                 }, {
                     "name": "emailService",
                     "value": "[parameters('Email Service')]"
@@ -103,6 +99,9 @@
                 }, {
                     "name": "emailPassword",
                     "value": "[parameters('Email Password')]"
+                }, {
+                    "name": "siteName",
+                    "value": "[parameters('siteName')]"
                 }]
             }
         }, {
