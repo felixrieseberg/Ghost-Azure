@@ -10,8 +10,9 @@ var path = require('path'),
 // ------------------------------------------------------------------------
 // If the App Setting 'websiteUrl' is set, Ghost will use that URL as base.
 // If it isn't set, we'll go with the default sitename.
-if (!websiteUrl || websiteUrl === '') {
+if (!websiteUrl || websiteUrl === '' ||  websiteUrl.length === 0) {
     websiteUrl = 'http://' + process.env.siteName + '.azurewebsites.net';
+    console.log(websiteUrl);
 }
 
 config = {
@@ -54,7 +55,7 @@ config = {
     // When running Ghost in the wild, use the production environment
     // Configure your URL and mail settings here
     production: {
-        url: process.env.websiteUrl,
+        url: websiteUrl,
 
         // Visit http://support.ghost.org/mail for instructions
         mail: {
