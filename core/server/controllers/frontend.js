@@ -41,14 +41,6 @@ function getPostPage(options) {
  * @return {Object} containing page variables
  */
 function formatPageResponse(posts, page, extraValues) {
-    // Delete email from author for frontend output
-    // TODO: do this on API level if no context is available
-    posts = _.each(posts, function (post) {
-        if (post.author) {
-            delete post.author.email;
-        }
-        return post;
-    });
     extraValues = extraValues || {};
 
     var resp = {
@@ -63,12 +55,6 @@ function formatPageResponse(posts, page, extraValues) {
  * @return {Object} containing page variables
  */
 function formatResponse(post) {
-    // Delete email from author for frontend output
-    // TODO: do this on API level if no context is available
-    if (post.author) {
-        delete post.author.email;
-    }
-
     return {
         post: post
     };
@@ -416,7 +402,7 @@ frontendControllers = {
             // If we've thrown an error message
             // of type: 'NotFound' then we found
             // no path match.
-            if (err.type === 'NotFoundError') {
+            if (err.errorType === 'NotFoundError') {
                 return next();
             }
 

@@ -4626,10 +4626,6 @@ define('ghost/mixins/current-user-settings', ['exports', 'ember'], function (exp
     'use strict';
 
     var CurrentUserSettings = Ember['default'].Mixin.create({
-        currentUser: function currentUser() {
-            return this.store.find("user", "me");
-        },
-
         transitionAuthor: function transitionAuthor() {
             var self = this;
 
@@ -6744,7 +6740,7 @@ define('ghost/routes/application', ['exports', 'ember', 'ghost/mixins/shortcuts-
                     return;
                 }
 
-                this.store.find("user", "me").then(function (user) {
+                this.get("session.user").then(function (user) {
                     self.send("signedIn", user);
                     var attemptedTransition = self.get("session").get("attemptedTransition");
                     if (attemptedTransition) {
@@ -6806,10 +6802,14 @@ define('ghost/routes/application', ['exports', 'ember', 'ghost/mixins/shortcuts-
                 var self = this;
 
                 if (this.session.isAuthenticated) {
-                    this.store.findAll("notification").then(function (serverNotifications) {
-                        serverNotifications.forEach(function (notification) {
-                            self.notifications.handleNotification(notification, isDelayed);
-                        });
+                    this.get("session.user").then(function (user) {
+                        if (!user.get("isAuthor") && !user.get("isEditor")) {
+                            self.store.findAll("notification").then(function (serverNotifications) {
+                                serverNotifications.forEach(function (notification) {
+                                    self.notifications.handleNotification(notification, isDelayed);
+                                });
+                            });
+                        }
                     });
                 }
             },
@@ -6914,7 +6914,7 @@ define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'gh
         afterModel: function afterModel(post) {
             var self = this;
 
-            return self.store.find("user", "me").then(function (user) {
+            return self.get("session.user").then(function (user) {
                 if (user.get("isAuthor") && !post.isAuthoredByUser(user)) {
                     return self.replaceWith("posts.index");
                 }
@@ -7060,7 +7060,7 @@ define('ghost/routes/posts', ['exports', 'ember', 'ghost/routes/authenticated', 
         model: function model() {
             var self = this;
 
-            return this.store.find("user", "me").then(function (user) {
+            return this.get("session.user").then(function (user) {
                 if (user.get("isAuthor")) {
                     paginationSettings.author = user.get("slug");
                 }
@@ -7175,7 +7175,7 @@ define('ghost/routes/posts/index', ['exports', 'ghost/routes/mobile-index-route'
             posts = this.store.all("post"),
                 post;
 
-            return this.store.find("user", "me").then(function (user) {
+            return this.get("session.user").then(function (user) {
                 post = posts.find(function (post) {
                     // Authors can only see posts they've written
                     if (user.get("isAuthor")) {
@@ -7244,7 +7244,7 @@ define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'gho
         afterModel: function afterModel(post) {
             var self = this;
 
-            return self.store.find("user", "me").then(function (user) {
+            return self.get("session.user").then(function (user) {
                 if (user.get("isAuthor") && !post.isAuthoredByUser(user)) {
                     return self.replaceWith("posts.index");
                 }
@@ -7363,7 +7363,7 @@ define('ghost/routes/settings/apps', ['exports', 'ghost/routes/authenticated', '
                 return this.transitionTo("settings.general");
             }
 
-            return this.currentUser().then(this.transitionAuthor()).then(this.transitionEditor());
+            return this.get("session.user").then(this.transitionAuthor()).then(this.transitionEditor());
         },
 
         model: function model() {
@@ -7382,7 +7382,7 @@ define('ghost/routes/settings/code-injection', ['exports', 'ghost/routes/authent
         classNames: ["settings-view-code"],
 
         beforeModel: function beforeModel() {
-            return this.currentUser().then(this.transitionAuthor()).then(this.transitionEditor());
+            return this.get("session.user").then(this.transitionAuthor()).then(this.transitionEditor());
         },
 
         model: function model() {
@@ -7411,7 +7411,7 @@ define('ghost/routes/settings/general', ['exports', 'ghost/routes/authenticated'
         classNames: ["settings-view-general"],
 
         beforeModel: function beforeModel() {
-            return this.currentUser().then(this.transitionAuthor()).then(this.transitionEditor());
+            return this.get("session.user").then(this.transitionAuthor()).then(this.transitionEditor());
         },
 
         model: function model() {
@@ -7442,7 +7442,7 @@ define('ghost/routes/settings/index', ['exports', 'ghost/routes/mobile-index-rou
         // is mobile
         beforeModel: function beforeModel() {
             var self = this;
-            return this.currentUser().then(this.transitionAuthor()).then(this.transitionEditor()).then(function () {
+            return this.get("session.user").then(this.transitionAuthor()).then(this.transitionEditor()).then(function () {
                 if (!mobileQuery['default'].matches) {
                     self.transitionTo("settings.general");
                 }
@@ -7466,7 +7466,7 @@ define('ghost/routes/settings/labs', ['exports', 'ghost/routes/authenticated', '
 
         classNames: ["settings"],
         beforeModel: function beforeModel() {
-            return this.currentUser().then(this.transitionAuthor()).then(this.transitionEditor());
+            return this.get("session.user").then(this.transitionAuthor()).then(this.transitionEditor());
         },
 
         model: function model() {
@@ -7490,7 +7490,7 @@ define('ghost/routes/settings/navigation', ['exports', 'ghost/routes/authenticat
         classNames: ["settings-view-navigation"],
 
         beforeModel: function beforeModel() {
-            return this.currentUser().then(this.transitionAuthor());
+            return this.get("session.user").then(this.transitionAuthor());
         },
 
         model: function model() {
@@ -7535,7 +7535,7 @@ define('ghost/routes/settings/tags', ['exports', 'ghost/routes/authenticated', '
         titleToken: "Tags",
 
         beforeModel: function beforeModel() {
-            return this.currentUser().then(this.transitionAuthor());
+            return this.get("session.user").then(this.transitionAuthor());
         },
 
         model: function model() {
@@ -7568,20 +7568,16 @@ define('ghost/routes/settings/tags', ['exports', 'ghost/routes/authenticated', '
     exports['default'] = TagsRoute;
 
 });
-define('ghost/routes/settings/users', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings'], function (exports, AuthenticatedRoute, CurrentUserSettings) {
+define('ghost/routes/settings/users', ['exports', 'ghost/routes/authenticated'], function (exports, AuthenticatedRoute) {
 
-    'use strict';
+	'use strict';
 
-    var UsersRoute = AuthenticatedRoute['default'].extend(CurrentUserSettings['default'], {
-        beforeModel: function beforeModel() {
-            return this.currentUser().then(this.transitionAuthor());
-        }
-    });
+	var UsersRoute = AuthenticatedRoute['default'].extend();
 
-    exports['default'] = UsersRoute;
+	exports['default'] = UsersRoute;
 
 });
-define('ghost/routes/settings/users/index', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/pagination-route', 'ghost/mixins/style-body'], function (exports, AuthenticatedRoute, PaginationRouteMixin, styleBody) {
+define('ghost/routes/settings/users/index', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/pagination-route', 'ghost/mixins/style-body'], function (exports, AuthenticatedRoute, CurrentUserSettings, PaginationRouteMixin, styleBody) {
 
     'use strict';
 
@@ -7593,7 +7589,7 @@ define('ghost/routes/settings/users/index', ['exports', 'ghost/routes/authentica
         status: "active"
     };
 
-    UsersIndexRoute = AuthenticatedRoute['default'].extend(styleBody['default'], PaginationRouteMixin['default'], {
+    UsersIndexRoute = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], PaginationRouteMixin['default'], {
         titleToken: "Users",
 
         classNames: ["settings-view-users"],
@@ -7603,11 +7599,15 @@ define('ghost/routes/settings/users/index', ['exports', 'ghost/routes/authentica
             this.setupPagination(paginationSettings);
         },
 
+        beforeModel: function beforeModel() {
+            return this.get("session.user").then(this.transitionAuthor());
+        },
+
         model: function model() {
             var self = this;
 
             return self.store.find("user", { limit: "all", status: "invited" }).then(function () {
-                return self.store.find("user", "me").then(function (currentUser) {
+                return self.get("session.user").then(function (currentUser) {
                     if (currentUser.get("isEditor")) {
                         // Editors only see authors in the list
                         paginationSettings.role = "Author";
@@ -7633,11 +7633,11 @@ define('ghost/routes/settings/users/index', ['exports', 'ghost/routes/authentica
     exports['default'] = UsersIndexRoute;
 
 });
-define('ghost/routes/settings/users/user', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/style-body'], function (exports, AuthenticatedRoute, styleBody) {
+define('ghost/routes/settings/users/user', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/style-body'], function (exports, AuthenticatedRoute, CurrentUserSettings, styleBody) {
 
     'use strict';
 
-    var SettingsUserRoute = AuthenticatedRoute['default'].extend(styleBody['default'], {
+    var SettingsUserRoute = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], {
         titleToken: "User",
 
         classNames: ["settings-view-user"],
@@ -7661,7 +7661,7 @@ define('ghost/routes/settings/users/user', ['exports', 'ghost/routes/authenticat
 
         afterModel: function afterModel(user) {
             var self = this;
-            this.store.find("user", "me").then(function (currentUser) {
+            return this.get("session.user").then(function (currentUser) {
                 var isOwnProfile = user.get("id") === currentUser.get("id"),
                     isAuthor = currentUser.get("isAuthor"),
                     isEditor = currentUser.get("isEditor");
@@ -8169,12 +8169,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/halfdan");
-        dom.setAttribute(el2,"title","halfdan");
+        dom.setAttribute(el2,"href","https://github.com/cobbspur");
+        dom.setAttribute(el2,"title","cobbspur");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","halfdan");
+        dom.setAttribute(el3,"alt","cobbspur");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -8188,12 +8188,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/cobbspur");
-        dom.setAttribute(el2,"title","cobbspur");
+        dom.setAttribute(el2,"href","https://github.com/halfdan");
+        dom.setAttribute(el2,"title","halfdan");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","cobbspur");
+        dom.setAttribute(el3,"alt","halfdan");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -8226,12 +8226,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/chilts");
-        dom.setAttribute(el2,"title","chilts");
+        dom.setAttribute(el2,"href","https://github.com/sebgie");
+        dom.setAttribute(el2,"title","sebgie");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","chilts");
+        dom.setAttribute(el3,"alt","sebgie");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -8329,10 +8329,10 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         attribute(env, attrMorph3, element3, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/novaugust"]));
         attribute(env, attrMorph4, element4, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/JohnONolan"]));
         attribute(env, attrMorph5, element5, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/felixrieseberg"]));
-        attribute(env, attrMorph6, element6, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/halfdan"]));
-        attribute(env, attrMorph7, element7, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/cobbspur"]));
+        attribute(env, attrMorph6, element6, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/cobbspur"]));
+        attribute(env, attrMorph7, element7, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/halfdan"]));
         attribute(env, attrMorph8, element8, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/dbalders"]));
-        attribute(env, attrMorph9, element9, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/chilts"]));
+        attribute(env, attrMorph9, element9, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/sebgie"]));
         attribute(env, attrMorph10, element10, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/nsfmc"]));
         attribute(env, attrMorph11, element11, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/pborreli"]));
         return fragment;
@@ -23259,7 +23259,7 @@ define('ghost/views/editor-save-button', ['exports', 'ember'], function (exports
             return this.get("controller.model.isPublished") !== this.get("controller.willPublish");
         }),
 
-        publishText: Ember['default'].computed("controller.model.isPublished", "controller.pageOrPost", function () {
+        publishText: Ember['default'].computed("controller.model.isPublished", "controller.postOrPage", function () {
             return this.get("controller.model.isPublished") ? "Update " + this.get("controller.postOrPage") : "Publish Now";
         }),
 
@@ -23271,7 +23271,7 @@ define('ghost/views/editor-save-button', ['exports', 'ember'], function (exports
             return "Delete " + this.get("controller.postOrPage");
         }),
 
-        saveText: Ember['default'].computed("controller.willPublish", function () {
+        saveText: Ember['default'].computed("controller.willPublish", "publishText", "draftText", function () {
             return this.get("controller.willPublish") ? this.get("publishText") : this.get("draftText");
         })
     });
@@ -23889,7 +23889,7 @@ catch(err) {
 if (runningTests) {
   require("ghost/tests/test-helper");
 } else {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.6.0"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.6.2"});
 }
 
 /* jshint ignore:end */
