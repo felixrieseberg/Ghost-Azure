@@ -2210,6 +2210,12 @@ table, .table {
 .update-available main {
   bottom: 56px; }
 
+.notification-upgrade {
+  color: #e25440; }
+  .notification-upgrade a {
+    color: #e25440;
+    text-decoration: underline; }
+
 .image-uploader {
   margin: 1.6em 0;
   position: relative;
@@ -3482,6 +3488,18 @@ body.settings-menu-expanded .content-cover {
     width: 100%;
     height: 37px; }
 
+.private-login h1 {
+  margin-bottom: 2rem;
+  text-indent: 0; }
+.private-login .form-group {
+  margin: 0; }
+.private-login input[type="password"] {
+  padding: 9px 7px;
+  border-radius: 3px 3px 0 0; }
+.private-login .private-login-button {
+  padding: 9px 1.8em;
+  border-radius: 0 0 3px 3px; }
+
 .content-view-container {
   position: relative;
   height: 100%;
@@ -4294,6 +4312,14 @@ body.zen {
   left: auto;
   right: 100%; }
 
+.post-view-link {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  font-size: 1.3rem; }
+  .post-view-link i {
+    font-size: 10px; }
+
 .seo-preview {
   font-family: Arial, sans-serif; }
 
@@ -4695,6 +4721,16 @@ body.zen {
   .settings-code-editor.focused {
     border-color: #aaa9a2;
     outline: 0; }
+  .settings-code-editor .CodeMirror {
+    border-radius: inherit; }
+  .settings-code-editor .cm-s-xq-light span.cm-meta {
+    color: #000; }
+
+#startupload {
+  line-height: inherit; }
+  @media (max-width: 400px) {
+    #startupload {
+      margin-top: 5px; } }
 
 .users-list-wrapper {
   overflow: auto;
