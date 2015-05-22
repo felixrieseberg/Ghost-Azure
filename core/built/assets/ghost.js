@@ -8204,6 +8204,25 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/cobbspur");
+        dom.setAttribute(el2,"title","cobbspur");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","cobbspur");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("li");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2,"href","https://github.com/acburdine");
         dom.setAttribute(el2,"title","acburdine");
         var el3 = dom.createTextNode("\n        ");
@@ -8229,25 +8248,6 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3,"alt","felixrieseberg");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("li");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/cobbspur");
-        dom.setAttribute(el2,"title","cobbspur");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","cobbspur");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -8299,25 +8299,6 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/dbalders");
-        dom.setAttribute(el2,"title","dbalders");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","dbalders");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("li");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2,"href","https://github.com/halfdan");
         dom.setAttribute(el2,"title","halfdan");
         var el3 = dom.createTextNode("\n        ");
@@ -8337,12 +8318,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/pborreli");
-        dom.setAttribute(el2,"title","pborreli");
+        dom.setAttribute(el2,"href","https://github.com/dbalders");
+        dom.setAttribute(el2,"title","dbalders");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","pborreli");
+        dom.setAttribute(el3,"alt","dbalders");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -8362,6 +8343,25 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3,"alt","harryhope");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("li");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/pborreli");
+        dom.setAttribute(el2,"title","pborreli");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","pborreli");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -8424,15 +8424,15 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         attribute(env, attrMorph2, element2, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/PaulAdamDavis"]));
         attribute(env, attrMorph3, element3, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/novaugust"]));
         attribute(env, attrMorph4, element4, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/JohnONolan"]));
-        attribute(env, attrMorph5, element5, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/acburdine"]));
-        attribute(env, attrMorph6, element6, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/felixrieseberg"]));
-        attribute(env, attrMorph7, element7, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/cobbspur"]));
+        attribute(env, attrMorph5, element5, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/cobbspur"]));
+        attribute(env, attrMorph6, element6, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/acburdine"]));
+        attribute(env, attrMorph7, element7, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/felixrieseberg"]));
         attribute(env, attrMorph8, element8, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/sebgie"]));
         attribute(env, attrMorph9, element9, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/rwjblue"]));
-        attribute(env, attrMorph10, element10, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/dbalders"]));
-        attribute(env, attrMorph11, element11, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/halfdan"]));
-        attribute(env, attrMorph12, element12, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/pborreli"]));
-        attribute(env, attrMorph13, element13, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/harryhope"]));
+        attribute(env, attrMorph10, element10, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/halfdan"]));
+        attribute(env, attrMorph11, element11, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/dbalders"]));
+        attribute(env, attrMorph12, element12, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/harryhope"]));
+        attribute(env, attrMorph13, element13, "src", concat(env, [subexpr(env, context, "gh-path", ["admin", "/img/contributors"], {}), "/pborreli"]));
         return fragment;
       }
     };
@@ -9272,7 +9272,7 @@ define('ghost/templates/-navbar', ['exports'], function (exports) {
       },
       render: function render(context, env, contextualElement) {
         var dom = env.dom;
-        var hooks = env.hooks, subexpr = hooks.subexpr, concat = hooks.concat, attribute = hooks.attribute, block = hooks.block, get = hooks.get;
+        var hooks = env.hooks, get = hooks.get, concat = hooks.concat, attribute = hooks.attribute, block = hooks.block;
         dom.detectNamespace(contextualElement);
         var fragment;
         if (env.useFragmentCache && dom.canClone) {
@@ -9302,7 +9302,7 @@ define('ghost/templates/-navbar', ['exports'], function (exports) {
         var morph4 = dom.createMorphAt(element6,2,2);
         var morph5 = dom.createMorphAt(element7,1,1);
         var morph6 = dom.createMorphAt(element7,2,2);
-        attribute(env, attrMorph0, element5, "href", concat(env, [subexpr(env, context, "gh-path", ["blog"], {})]));
+        attribute(env, attrMorph0, element5, "href", concat(env, [get(env, context, "config.blogUrl"), "/"]));
         block(env, morph0, context, "link-to", ["posts"], {"classNames": "nav-item nav-content js-nav-item"}, child0, null);
         block(env, morph1, context, "link-to", ["editor.new"], {"classNames": "nav-item nav-new js-nav-item"}, child1, null);
         block(env, morph2, context, "unless", [get(env, context, "session.user.isAuthor")], {}, child2, null);
@@ -16433,7 +16433,7 @@ define('ghost/templates/settings/about', ['exports'], function (exports) {
         var el5 = dom.createTextNode("\n                ");
         dom.appendChild(el4, el5);
         var el5 = dom.createElement("a");
-        dom.setAttribute(el5,"href","https://ghost.org/forum/");
+        dom.setAttribute(el5,"href","https://ghost.org/slack/");
         dom.setAttribute(el5,"class","btn");
         var el6 = dom.createTextNode("Get Help With Ghost");
         dom.appendChild(el5, el6);
@@ -22653,7 +22653,12 @@ define('ghost/utils/config-parser', ['exports'], function (exports) {
         } else if (isNumeric(val)) {
             return +val;
         } else if (val.indexOf("{") === 0) {
-            return JSON.parse(val);
+            try {
+                return JSON.parse(val);
+            } catch (e) {
+                /*jshint unused:false */
+                return val;
+            }
         } else {
             return val;
         }
@@ -24388,7 +24393,7 @@ catch(err) {
 if (runningTests) {
   require("ghost/tests/test-helper");
 } else {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.6.3"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.6.4"});
 }
 
 /* jshint ignore:end */
