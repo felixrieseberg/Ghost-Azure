@@ -34,7 +34,8 @@
             "type": "string",
             "allowedValues": [
                 "Mailgun",
-                "Gmail"
+                "Gmail",
+                "SendGrid"
             ],
             "defaultValue": "Mailgun"
         },
