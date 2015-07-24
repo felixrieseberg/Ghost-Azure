@@ -48,7 +48,8 @@ config = {
         },
         paths: {
             contentPath: path.join(__dirname, '/content/')
-        }
+        },
+        forceAdminSSL: false
     },
 
     // ### Production
@@ -80,7 +81,8 @@ config = {
             host: '127.0.0.1',
             // Port to be passed to node's `net.Server#listen()`, for iisnode set this to `process.env.PORT`
             port: process.env.PORT
-        }
+        },
+        forceAdminSSL: true
     },
 
     // **Developers only need to edit below here**
