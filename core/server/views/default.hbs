@@ -8,7 +8,7 @@
     <title>Ghost Admin</title>
 
     <base href="/" />
-<meta name="ghost/config/environment" content="%7B%22modulePrefix%22%3A%22ghost%22%2C%22environment%22%3A%22production%22%2C%22baseURL%22%3A%22/%22%2C%22locationType%22%3A%22auto%22%2C%22EmberENV%22%3A%7B%22FEATURES%22%3A%7B%7D%7D%2C%22APP%22%3A%7B%22name%22%3A%22ghost%22%2C%22version%22%3A%220.6.4%22%7D%2C%22sassOptions%22%3A%7B%22outputFile%22%3A%22ghost.min.css%22%7D%2C%22contentSecurityPolicyHeader%22%3A%22Content-Security-Policy-Report-Only%22%2C%22contentSecurityPolicy%22%3A%7B%22default-src%22%3A%22%27none%27%22%2C%22script-src%22%3A%22%27self%27%22%2C%22font-src%22%3A%22%27self%27%22%2C%22connect-src%22%3A%22%27self%27%22%2C%22img-src%22%3A%22%27self%27%22%2C%22style-src%22%3A%22%27self%27%22%2C%22media-src%22%3A%22%27self%27%22%7D%2C%22exportApplicationGlobal%22%3Afalse%7D" />
+<meta name="ghost/config/environment" content="%7B%22modulePrefix%22%3A%22ghost%22%2C%22environment%22%3A%22production%22%2C%22baseURL%22%3A%22/%22%2C%22locationType%22%3A%22auto%22%2C%22EmberENV%22%3A%7B%22FEATURES%22%3A%7B%7D%7D%2C%22APP%22%3A%7B%22name%22%3A%22ghost%22%2C%22version%22%3A%220.7.0%22%7D%2C%22simple-auth%22%3A%7B%22authenticationRoute%22%3A%22signin%22%2C%22routeAfterAuthentication%22%3A%22posts%22%2C%22authorizer%22%3A%22simple-auth-authorizer%3Aoauth2-bearer%22%2C%22localStorageKey%22%3A%22%3Coverriden%20by%20initializers/simple-auth-env%3E%22%7D%2C%22simple-auth-oauth2%22%3A%7B%22refreshAccessTokens%22%3Atrue%2C%22serverTokenEndpoint%22%3A%22%3Coverriden%20by%20initializers/simple-auth-env%3E%22%2C%22serverTokenRevocationEndpoint%22%3A%22%3Coverriden%20by%20initializers/simple-auth-env%3E%22%7D%2C%22resizeServiceDefaults%22%3A%7B%22debounceTimeout%22%3A100%2C%22heightSensitive%22%3Afalse%2C%22widthSensitive%22%3Atrue%2C%22injectionFactories%22%3A%5B%22view%22%2C%22component%22%5D%7D%2C%22contentSecurityPolicyHeader%22%3A%22Content-Security-Policy-Report-Only%22%2C%22contentSecurityPolicy%22%3A%7B%22default-src%22%3A%22%27none%27%22%2C%22script-src%22%3A%22%27self%27%22%2C%22font-src%22%3A%22%27self%27%22%2C%22connect-src%22%3A%22%27self%27%22%2C%22img-src%22%3A%22%27self%27%22%2C%22style-src%22%3A%22%27self%27%22%2C%22media-src%22%3A%22%27self%27%22%7D%2C%22exportApplicationGlobal%22%3Afalse%7D" />
 
     <meta name="HandheldFriendly" content="True" />
     <meta name="MobileOptimized" content="320" />
@@ -42,15 +42,16 @@
 
     <link rel="stylesheet" href="{{asset "vendor.css" ghost="true" minifyInProduction="true"}}" />
     <link rel="stylesheet" href="{{asset "ghost.css" ghost="true" minifyInProduction="true"}}" />
+
     
 </head>
 <body>
-    
 
-    <script src="{{asset "vendor.js" ghost="true" minifyInProduction="true"}}"></script>
-    <script src="{{asset "ghost.js" ghost="true" minifyInProduction="true"}}"></script>
 
-    
 
+
+{{! Dem scripts }}
+<script src="{{asset "vendor.js" ghost="true" minifyInProduction="true"}}"></script>
+<script src="{{asset "ghost.js" ghost="true" minifyInProduction="true"}}"></script>
 </body>
 </html>

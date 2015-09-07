@@ -61,7 +61,13 @@
   width: auto;
   border: 0;
   -webkit-animation: blink 1.06s steps(1) infinite;
+  -moz-animation: blink 1.06s steps(1) infinite;
   animation: blink 1.06s steps(1) infinite;
+}
+@-moz-keyframes blink {
+  0% { background: #7e7; }
+  50% { background: none; }
+  100% { background: #7e7; }
 }
 @-webkit-keyframes blink {
   0% { background: #7e7; }
@@ -206,8 +212,7 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
 .CodeMirror-gutter-wrapper {
   -webkit-user-select: none;
   -moz-user-select: none;
-  -ms-user-select: none;
-      user-select: none;
+  user-select: none;
 }
 
 .CodeMirror-lines {
@@ -215,7 +220,8 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
   min-height: 1px; /* prevents collapsing before first draw */
 }
 .CodeMirror pre {
-  /* Reset some styles that the rest of the page might have set */ border-radius: 0;
+  /* Reset some styles that the rest of the page might have set */
+  -moz-border-radius: 0; -webkit-border-radius: 0; border-radius: 0;
   border-width: 0;
   background: transparent;
   font-family: inherit;
@@ -260,6 +266,7 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
 .CodeMirror-gutter,
 .CodeMirror-gutters,
 .CodeMirror-linenumber {
+  -moz-box-sizing: content-box;
   box-sizing: content-box;
 }
 
@@ -290,7 +297,6 @@ div.CodeMirror-cursors {
 .CodeMirror-selected { background: #d9d9d9; }
 .CodeMirror-focused .CodeMirror-selected { background: #d7d4f0; }
 .CodeMirror-crosshair { cursor: crosshair; }
-.CodeMirror ::-moz-selection { background: #d7d4f0; }
 .CodeMirror ::selection { background: #d7d4f0; }
 .CodeMirror ::-moz-selection { background: #d7d4f0; }
 
