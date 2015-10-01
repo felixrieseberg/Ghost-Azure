@@ -1211,32 +1211,12 @@ define('ghost/components/gh-file-upload', ['exports', 'ember'], function (export
     });
 
 });
-define('ghost/components/gh-form-group', ['exports', 'ember'], function (exports, Ember) {
+define('ghost/components/gh-form-group', ['exports', 'ghost/components/gh-validation-status-container'], function (exports, ValidationStatusContainer) {
 
     'use strict';
 
-    exports['default'] = Ember['default'].Component.extend({
-        classNames: 'form-group',
-        classNameBindings: ['errorClass'],
-
-        errors: null,
-        property: '',
-        hasValidated: Ember['default'].A(),
-
-        errorClass: Ember['default'].computed('errors.[]', 'property', 'hasValidated.[]', function () {
-            var property = this.get('property'),
-                errors = this.get('errors'),
-                hasValidated = this.get('hasValidated');
-
-            // If we haven't yet validated this field, there is no validation class needed
-            if (!hasValidated || !hasValidated.contains(property)) {
-                return '';
-            }
-
-            if (errors) {
-                return errors.get(property) ? 'error' : 'success';
-            }
-        })
+    exports['default'] = ValidationStatusContainer['default'].extend({
+        classNames: 'form-group'
     });
 
 });
@@ -1464,6 +1444,8 @@ define('ghost/components/gh-navigation', ['exports', 'ember'], function (exports
                 navElements = '.gh-blognav-item:not(.gh-blognav-item:last-child)',
                 self = this;
 
+            this._super.apply(this, arguments);
+
             navContainer.sortable({
                 handle: '.gh-blognav-grab',
                 items: navElements,
@@ -1483,7 +1465,7 @@ define('ghost/components/gh-navigation', ['exports', 'ember'], function (exports
         },
 
         willDestroyElement: function willDestroyElement() {
-            this.$('.js-gh-blognav').sortable('destroy');
+            this.$('.ui-sortable').sortable('destroy');
         }
     });
 
@@ -1492,7 +1474,9 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
 
     'use strict';
 
-    function joinUrlParts(url, path) {
+    var joinUrlParts, isRelative;
+
+    joinUrlParts = function (url, path) {
         if (path[0] !== '/' && url.slice(-1) !== '/') {
             path = '/' + path;
         } else if (path[0] === '/' && url.slice(-1) === '/') {
@@ -1500,9 +1484,16 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
         }
 
         return url + path;
-    }
+    };
+
+    isRelative = function (url) {
+        // "protocol://", "//example.com", "scheme:", "#anchor", & invalid paths
+        // should all be treated as absolute
+        return !url.match(/\s/) && !validator.isURL(url) && !url.match(/^(\/\/|#|[a-zA-Z0-9\-]+:)/);
+    };
 
     exports['default'] = Ember['default'].TextField.extend({
+        classNames: 'gh-input',
         classNameBindings: ['fakePlaceholder'],
 
         didReceiveAttrs: function didReceiveAttrs() {
@@ -1510,8 +1501,7 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
                 baseUrl = this.get('baseUrl');
 
             // if we have a relative url, create the absolute url to be displayed in the input
-            // if (this.get('isRelative')) {
-            if (!validator.isURL(url) && url.indexOf('mailto:') !== 0) {
+            if (isRelative(url)) {
                 url = joinUrlParts(baseUrl, url);
             }
 
@@ -1524,10 +1514,6 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
 
         fakePlaceholder: Ember['default'].computed('isBaseUrl', 'hasFocus', function () {
             return this.get('isBaseUrl') && this.get('last') && !this.get('hasFocus');
-        }),
-
-        isRelative: Ember['default'].computed('value', function () {
-            return !validator.isURL(this.get('value')) && this.get('value').indexOf('mailto:') !== 0;
         }),
 
         focusIn: function focusIn(event) {
@@ -1549,6 +1535,11 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
                 this.set('value', '');
 
                 event.preventDefault();
+            }
+
+            // CMD-S
+            if (event.keyCode === 83 && event.metaKey) {
+                this.notifyUrlChanged();
             }
         },
 
@@ -1572,11 +1563,35 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
             this.set('value', this.get('value').trim());
 
             var url = this.get('value'),
-                baseUrl = this.get('baseUrl');
+                urlParts = document.createElement('a'),
+                baseUrl = this.get('baseUrl'),
+                baseUrlParts = document.createElement('a');
+
+            // leverage the browser's native URI parsing
+            urlParts.href = url;
+            baseUrlParts.href = baseUrl;
+
+            // if we have an email address, add the mailto:
+            if (validator.isEmail(url)) {
+                url = 'mailto:' + url;
+                this.set('value', url);
+            }
 
             // if we have a relative url, create the absolute url to be displayed in the input
-            if (this.get('isRelative')) {
-                this.set('value', joinUrlParts(baseUrl, url));
+            if (isRelative(url)) {
+                url = joinUrlParts(baseUrl, url);
+                this.set('value', url);
+            }
+
+            // remove the base url before sending to action
+            if (urlParts.host === baseUrlParts.host && !url.match(/^#/)) {
+                url = url.replace(/^[a-zA-Z0-9\-]+:/, '');
+                url = url.replace(/^\/\//, '');
+                url = url.replace(baseUrlParts.host, '');
+                url = url.replace(baseUrlParts.pathname, '');
+                if (!url.match(/^\//)) {
+                    url = '/' + url;
+                }
             }
 
             this.sendAction('change', url);
@@ -1584,15 +1599,23 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
     });
 
 });
-define('ghost/components/gh-navitem', ['exports', 'ember'], function (exports, Ember) {
+define('ghost/components/gh-navitem', ['exports', 'ember', 'ghost/mixins/validation-state'], function (exports, Ember, ValidationStateMixin) {
 
     'use strict';
 
-    exports['default'] = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend(ValidationStateMixin['default'], {
         classNames: 'gh-blognav-item',
+        classNameBindings: ['errorClass'],
 
         attributeBindings: ['order:data-order'],
         order: Ember['default'].computed.readOnly('navItem.order'),
+        errors: Ember['default'].computed.readOnly('navItem.errors'),
+
+        errorClass: Ember['default'].computed('hasError', function () {
+            if (this.get('hasError')) {
+                return 'gh-blognav-item--error';
+            }
+        }),
 
         keyPress: function keyPress(event) {
             // enter key
@@ -1600,6 +1623,8 @@ define('ghost/components/gh-navitem', ['exports', 'ember'], function (exports, E
                 event.preventDefault();
                 this.send('addItem');
             }
+
+            this.get('navItem.errors').clear();
         },
 
         actions: {
@@ -2684,6 +2709,19 @@ define('ghost/components/gh-user-invited', ['exports', 'ember'], function (expor
     });
 
 });
+define('ghost/components/gh-validation-status-container', ['exports', 'ember', 'ghost/mixins/validation-state'], function (exports, Ember, ValidationStateMixin) {
+
+    'use strict';
+
+    exports['default'] = Ember['default'].Component.extend(ValidationStateMixin['default'], {
+        classNameBindings: ['errorClass'],
+
+        errorClass: Ember['default'].computed('hasError', function () {
+            return this.get('hasError') ? 'error' : 'success';
+        })
+    });
+
+});
 define('ghost/components/gh-view-title', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
@@ -2766,6 +2804,13 @@ define('ghost/controllers/application', ['exports', 'ember'], function (exports,
             }
         }
     });
+
+});
+define('ghost/controllers/array', ['exports', 'ember'], function (exports, Ember) {
+
+	'use strict';
+
+	exports['default'] = Ember['default'].Controller;
 
 });
 define('ghost/controllers/editor/edit', ['exports', 'ember', 'ghost/mixins/editor-base-controller'], function (exports, Ember, EditorControllerMixin) {
@@ -3371,6 +3416,13 @@ define('ghost/controllers/modals/upload', ['exports', 'ember'], function (export
     });
 
 });
+define('ghost/controllers/object', ['exports', 'ember'], function (exports, Ember) {
+
+	'use strict';
+
+	exports['default'] = Ember['default'].Controller;
+
+});
 define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils/date-formatting', 'ghost/mixins/settings-menu-controller', 'ghost/models/slug-generator', 'ghost/utils/bound-one-way', 'ghost/utils/isNumber'], function (exports, Ember, date_formatting, SettingsMenuMixin, SlugGenerator, boundOneWay, isNumber) {
 
     'use strict';
@@ -3569,6 +3621,10 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
         },
 
         actions: {
+            discardEnter: function discardEnter() {
+                return false;
+            },
+
             togglePage: function togglePage() {
                 var self = this;
 
@@ -4270,18 +4326,26 @@ define('ghost/controllers/settings/labs', ['exports', 'ember', 'ic-ajax'], funct
     });
 
 });
-define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ghost/mixins/settings-save'], function (exports, Ember, SettingsSaveMixin) {
+define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data', 'ghost/mixins/settings-save', 'ghost/mixins/validation-engine'], function (exports, Ember, DS, SettingsSaveMixin, ValidationEngine) {
 
     'use strict';
 
-    var NavItem = Ember['default'].Object.extend({
+    var NavItem = Ember['default'].Object.extend(ValidationEngine['default'], {
         label: '',
         url: '',
         last: false,
 
+        validationType: 'navItem',
+
         isComplete: Ember['default'].computed('label', 'url', function () {
             return !(Ember['default'].isBlank(this.get('label').trim()) || Ember['default'].isBlank(this.get('url')));
-        })
+        }),
+
+        init: function init() {
+            this._super.apply(this, arguments);
+            this.set('errors', DS['default'].Errors.create());
+            this.set('hasValidated', Ember['default'].A());
+        }
     });
 
     exports['default'] = Ember['default'].Controller.extend(SettingsSaveMixin['default'], {
@@ -4329,58 +4393,38 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ghost/mixi
 
         save: function save() {
             var navSetting,
-                blogUrl = this.get('config').blogUrl,
-                blogUrlRegex = new RegExp('^' + blogUrl + '(.*)', 'i'),
                 navItems = this.get('navigationItems'),
-                message = 'One of your navigation items has an empty label. ' + '<br /> Please enter a new label or delete the item before saving.',
-                match,
-                notifications = this.get('notifications');
+                notifications = this.get('notifications'),
+                validationPromises,
+                self = this;
 
-            // Don't save if there's a blank label.
-            if (navItems.find(function (item) {
-                return !item.get('isComplete') && !item.get('last');
-            })) {
-                notifications.showAlert(message.htmlSafe(), { type: 'error' });
-                return;
-            }
+            validationPromises = navItems.map(function (item) {
+                return item.validate();
+            });
 
-            navSetting = navItems.map(function (item) {
-                var label, url;
+            return Ember['default'].RSVP.all(validationPromises).then(function () {
+                navSetting = navItems.map(function (item) {
+                    var label = item.get('label').trim(),
+                        url = item.get('url').trim();
 
-                if (!item || !item.get('isComplete')) {
-                    return;
-                }
-
-                label = item.get('label').trim();
-                url = item.get('url').trim();
-
-                // is this an internal URL?
-                match = url.match(blogUrlRegex);
-
-                if (match) {
-                    url = match[1];
-
-                    // if the last char is not a slash, then add one,
-                    // as long as there is no # or . in the URL (anchor or file extension)
-                    // this also handles the empty case for the homepage
-                    if (url[url.length - 1] !== '/' && url.indexOf('#') === -1 && url.indexOf('.') === -1) {
-                        url += '/';
+                    if (item.get('last') && !item.get('isComplete')) {
+                        return null;
                     }
-                } else if (!validator.isURL(url) && url !== '' && url[0] !== '/' && url.indexOf('mailto:') !== 0) {
-                    url = '/' + url;
-                }
 
-                return { label: label, url: url };
-            }).compact();
+                    return { label: label, url: url };
+                }).compact();
 
-            this.set('model.navigation', JSON.stringify(navSetting));
+                self.set('model.navigation', JSON.stringify(navSetting));
 
-            // trigger change event because even if the final JSON is unchanged
-            // we need to have navigationItems recomputed.
-            this.get('model').notifyPropertyChange('navigation');
+                // trigger change event because even if the final JSON is unchanged
+                // we need to have navigationItems recomputed.
+                self.get('model').notifyPropertyChange('navigation');
 
-            return this.get('model').save()['catch'](function (err) {
-                notifications.showErrors(err);
+                return self.get('model').save()['catch'](function (err) {
+                    notifications.showErrors(err);
+                });
+            })['catch'](function () {
+                // TODO: noop - needed to satisfy spinner button
             });
         },
 
@@ -4417,16 +4461,12 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ghost/mixi
                     return;
                 }
 
-                if (Ember['default'].isBlank(url)) {
-                    navItem.set('url', this.get('blogUrl'));
-
-                    return;
-                }
-
                 navItem.set('url', url);
             }
         }
     });
+
+    exports.NavItem = NavItem;
 
 });
 define('ghost/controllers/settings/tags', ['exports', 'ember', 'ghost/mixins/pagination-controller', 'ghost/mixins/settings-menu-controller', 'ghost/utils/bound-one-way'], function (exports, Ember, PaginationMixin, SettingsMenuMixin, boundOneWay) {
@@ -5693,25 +5733,6 @@ define('ghost/helpers/read-path', ['exports', 'ember'], function (exports, Ember
     exports['default'] = Ember['default'].HTMLBars.makeBoundHelper(readPath);
 
 });
-define('ghost/initializers/app-version', ['exports', 'ghost/config/environment', 'ember'], function (exports, config, Ember) {
-
-  'use strict';
-
-  var classify = Ember['default'].String.classify;
-  var registered = false;
-
-  exports['default'] = {
-    name: 'App Version',
-    initialize: function initialize(container, application) {
-      if (!registered) {
-        var appName = classify(application.toString());
-        Ember['default'].libraries.register(appName, config['default'].APP.version);
-        registered = true;
-      }
-    }
-  };
-
-});
 define('ghost/initializers/ember-cli-fastclick', ['exports', 'ember'], function (exports, Ember) {
 
   'use strict';
@@ -5879,6 +5900,25 @@ define('ghost/initializers/trailing-history', ['exports', 'ember'], function (ex
     };
 
     exports['default'] = registerTrailingLocationHistory;
+
+});
+define('ghost/instance-initializers/app-version', ['exports', 'ghost/config/environment', 'ember'], function (exports, config, Ember) {
+
+  'use strict';
+
+  var classify = Ember['default'].String.classify;
+  var registered = false;
+
+  exports['default'] = {
+    name: 'App Version',
+    initialize: function initialize(application) {
+      if (!registered) {
+        var appName = classify(application.toString());
+        Ember['default'].libraries.register(appName, config['default'].APP.version);
+        registered = true;
+      }
+    }
+  };
 
 });
 define('ghost/instance-initializers/authentication', ['exports', 'ember'], function (exports, Ember) {
@@ -7218,7 +7258,8 @@ define('ghost/mixins/shortcuts-route', ['exports', 'ember'], function (exports, 
             var shortcuts = this.get('shortcuts');
 
             Ember['default'].keys(shortcuts).forEach(function (shortcut) {
-                key.unbind(shortcut);
+                var scope = shortcuts[shortcut].scope || 'default';
+                key.unbind(shortcut, scope);
             });
         },
 
@@ -7300,7 +7341,7 @@ define('ghost/mixins/text-input', ['exports', 'ember'], function (exports, Ember
     exports['default'] = BlurField;
 
 });
-define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'ghost/utils/ajax', 'ghost/utils/validator-extensions', 'ghost/validators/post', 'ghost/validators/setup', 'ghost/validators/signup', 'ghost/validators/signin', 'ghost/validators/setting', 'ghost/validators/reset', 'ghost/validators/user', 'ghost/validators/tag-settings'], function (exports, Ember, DS, getRequestErrorMessage, ValidatorExtensions, PostValidator, SetupValidator, SignupValidator, SigninValidator, SettingValidator, ResetValidator, UserValidator, TagSettingsValidator) {
+define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'ghost/utils/ajax', 'ghost/utils/validator-extensions', 'ghost/validators/post', 'ghost/validators/setup', 'ghost/validators/signup', 'ghost/validators/signin', 'ghost/validators/setting', 'ghost/validators/reset', 'ghost/validators/user', 'ghost/validators/tag-settings', 'ghost/validators/nav-item'], function (exports, Ember, DS, getRequestErrorMessage, ValidatorExtensions, PostValidator, SetupValidator, SignupValidator, SigninValidator, SettingValidator, ResetValidator, UserValidator, TagSettingsValidator, NavItemValidator) {
 
     'use strict';
 
@@ -7326,7 +7367,8 @@ define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'gho
             setting: SettingValidator['default'],
             reset: ResetValidator['default'],
             user: UserValidator['default'],
-            tag: TagSettingsValidator['default']
+            tag: TagSettingsValidator['default'],
+            navItem: NavItemValidator['default']
         },
 
         // This adds the Errors object to the validation engine, and shouldn't affect
@@ -7434,6 +7476,41 @@ define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'gho
                 this.validate({ property: property });
             }
         }
+    });
+
+});
+define('ghost/mixins/validation-state', ['exports', 'ember'], function (exports, Ember) {
+
+    'use strict';
+
+    exports['default'] = Ember['default'].Mixin.create({
+
+        errors: null,
+        property: '',
+        hasValidated: Ember['default'].A(),
+
+        hasError: Ember['default'].computed('errors.[]', 'property', 'hasValidated.[]', function () {
+            var property = this.get('property'),
+                errors = this.get('errors'),
+                hasValidated = this.get('hasValidated');
+
+            // if we aren't looking at a specific property we always want an error class
+            if (!property && !Ember['default'].isEmpty(errors)) {
+                return true;
+            }
+
+            // If we haven't yet validated this field, there is no validation class needed
+            if (!hasValidated || !hasValidated.contains(property)) {
+                return false;
+            }
+
+            if (errors) {
+                return errors.get(property);
+            }
+
+            return false;
+        })
+
     });
 
 });
@@ -9158,7 +9235,7 @@ define('ghost/services/config', ['exports', 'ember'], function (exports, Ember) 
     'use strict';
 
     function isNumeric(num) {
-        return !isNaN(num);
+        return Ember['default'].$.isNumeric(num);
     }
 
     function _mapType(val) {
@@ -9412,25 +9489,6 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/JohnONolan");
-        dom.setAttribute(el2,"title","JohnONolan");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","JohnONolan");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2,"href","https://github.com/kevinansfield");
         dom.setAttribute(el2,"title","kevinansfield");
         var el3 = dom.createTextNode("\n        ");
@@ -9469,12 +9527,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/acburdine");
-        dom.setAttribute(el2,"title","acburdine");
+        dom.setAttribute(el2,"href","https://github.com/JohnONolan");
+        dom.setAttribute(el2,"title","JohnONolan");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","acburdine");
+        dom.setAttribute(el3,"alt","JohnONolan");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9488,12 +9546,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/jaswilli");
-        dom.setAttribute(el2,"title","jaswilli");
+        dom.setAttribute(el2,"href","https://github.com/acburdine");
+        dom.setAttribute(el2,"title","acburdine");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","jaswilli");
+        dom.setAttribute(el3,"alt","acburdine");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9545,50 +9603,31 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/jaswilli");
+        dom.setAttribute(el2,"title","jaswilli");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","jaswilli");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2,"href","https://github.com/jomahoney");
         dom.setAttribute(el2,"title","jomahoney");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3,"alt","jomahoney");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/novaugust");
-        dom.setAttribute(el2,"title","novaugust");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","novaugust");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/kowsheek");
-        dom.setAttribute(el2,"title","kowsheek");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","kowsheek");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9640,25 +9679,6 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/hex337");
-        dom.setAttribute(el2,"title","hex337");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","hex337");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2,"href","https://github.com/lukaszklis");
         dom.setAttribute(el2,"title","lukaszklis");
         var el3 = dom.createTextNode("\n        ");
@@ -9678,12 +9698,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/josephwegner");
-        dom.setAttribute(el2,"title","josephwegner");
+        dom.setAttribute(el2,"href","https://github.com/Gargol");
+        dom.setAttribute(el2,"title","Gargol");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","josephwegner");
+        dom.setAttribute(el3,"alt","Gargol");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9697,12 +9717,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/augbog");
-        dom.setAttribute(el2,"title","augbog");
+        dom.setAttribute(el2,"href","https://github.com/hoxoa");
+        dom.setAttribute(el2,"title","hoxoa");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","augbog");
+        dom.setAttribute(el3,"alt","hoxoa");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9716,12 +9736,69 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/Rovak");
-        dom.setAttribute(el2,"title","Rovak");
+        dom.setAttribute(el2,"href","https://github.com/kowsheek");
+        dom.setAttribute(el2,"title","kowsheek");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","Rovak");
+        dom.setAttribute(el3,"alt","kowsheek");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/auermi");
+        dom.setAttribute(el2,"title","auermi");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","auermi");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/BlueHatbRit");
+        dom.setAttribute(el2,"title","BlueHatbRit");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","BlueHatbRit");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/joecannatti");
+        dom.setAttribute(el2,"title","joecannatti");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","joecannatti");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9773,23 +9850,23 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
       },
       statements: [
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/ErisDS"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/JohnONolan"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/kevinansfield"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/cobbspur"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/JohnONolan"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/acburdine"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/jaswilli"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/halfdan"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/sebgie"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/jaswilli"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/jomahoney"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/novaugust"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/kowsheek"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/Remchi"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/rwjblue"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/hex337"]]],
         ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/lukaszklis"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/josephwegner"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/augbog"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/Rovak"]]]
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/Gargol"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/hoxoa"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/kowsheek"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/auermi"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/BlueHatbRit"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/joecannatti"]]]
       ],
       locals: [],
       templates: []
@@ -13207,11 +13284,107 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
           "loc": {
             "source": null,
             "start": {
-              "line": 16,
+              "line": 8,
+              "column": 4
+            },
+            "end": {
+              "line": 11,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-navitem.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment,1,1,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,3,3,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-trim-focus-input",[],["focus",["subexpr","@mut",[["get","navItem.last"]],[]],"placeholder","Label","value",["subexpr","@mut",[["get","navItem.label"]],[]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","label"]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child2 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.2",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 12,
+              "column": 4
+            },
+            "end": {
+              "line": 15,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-navitem.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment,1,1,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,3,3,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-navitem-url-input",[],["baseUrl",["subexpr","@mut",[["get","baseUrl"]],[]],"url",["subexpr","@mut",[["get","navItem.url"]],[]],"last",["subexpr","@mut",[["get","navItem.last"]],[]],"change","updateUrl"]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","url"]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child3 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.2",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 18,
               "column": 0
             },
             "end": {
-              "line": 20,
+              "line": 22,
               "column": 0
             }
           },
@@ -13257,18 +13430,18 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
         templates: []
       };
     }());
-    var child2 = (function() {
+    var child4 = (function() {
       return {
         meta: {
           "revision": "Ember@1.13.2",
           "loc": {
             "source": null,
             "start": {
-              "line": 20,
+              "line": 22,
               "column": 0
             },
             "end": {
-              "line": 24,
+              "line": 26,
               "column": 0
             }
           },
@@ -13324,7 +13497,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
             "column": 0
           },
           "end": {
-            "line": 25,
+            "line": 27,
             "column": 0
           }
         },
@@ -13341,29 +13514,11 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
         dom.appendChild(el0, el1);
         var el1 = dom.createElement("div");
         dom.setAttribute(el1,"class","gh-blognav-line");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("span");
-        dom.setAttribute(el2,"class","gh-blognav-label");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createComment("");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("span");
-        dom.setAttribute(el2,"class","gh-blognav-url");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createComment("");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
         var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
         dom.appendChild(el1, el2);
         dom.appendChild(el0, el1);
         var el1 = dom.createTextNode("\n\n");
@@ -13376,8 +13531,8 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
         var element2 = dom.childAt(fragment, [2]);
         var morphs = new Array(4);
         morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
-        morphs[1] = dom.createMorphAt(dom.childAt(element2, [1]),1,1);
-        morphs[2] = dom.createMorphAt(dom.childAt(element2, [3]),1,1);
+        morphs[1] = dom.createMorphAt(element2,1,1);
+        morphs[2] = dom.createMorphAt(element2,2,2);
         morphs[3] = dom.createMorphAt(fragment,4,4,contextualElement);
         dom.insertBoundary(fragment, 0);
         dom.insertBoundary(fragment, null);
@@ -13385,12 +13540,12 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
       },
       statements: [
         ["block","unless",[["get","navItem.last"]],[],0,null],
-        ["inline","gh-trim-focus-input",[],["class","gh-input","focus",["subexpr","@mut",[["get","navItem.last"]],[]],"placeholder","Label","value",["subexpr","@mut",[["get","navItem.label"]],[]]]],
-        ["inline","gh-navitem-url-input",[],["class","gh-input","baseUrl",["subexpr","@mut",[["get","baseUrl"]],[]],"url",["subexpr","@mut",[["get","navItem.url"]],[]],"last",["subexpr","@mut",[["get","navItem.last"]],[]],"change","updateUrl"]],
-        ["block","if",[["get","navItem.last"]],[],1,2]
+        ["block","gh-validation-status-container",[],["tagName","span","class","gh-blognav-label","errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","label","hasValidated",["subexpr","@mut",[["get","navItem.hasValidated"]],[]]],1,null],
+        ["block","gh-validation-status-container",[],["tagName","span","class","gh-blognav-url","errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","url","hasValidated",["subexpr","@mut",[["get","navItem.hasValidated"]],[]]],2,null],
+        ["block","if",[["get","navItem.last"]],[],3,4]
       ],
       locals: [],
-      templates: [child0, child1, child2]
+      templates: [child0, child1, child2, child3, child4]
     };
   }()));
 
@@ -17474,17 +17629,19 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
               var element0 = dom.childAt(fragment, [1, 1]);
               var element1 = dom.childAt(fragment, [3, 1]);
               var element2 = dom.childAt(element1, [5, 3]);
-              var morphs = new Array(6);
+              var morphs = new Array(7);
               morphs[0] = dom.createElementMorph(element0);
-              morphs[1] = dom.createMorphAt(element1,1,1);
-              morphs[2] = dom.createMorphAt(element1,3,3);
-              morphs[3] = dom.createMorphAt(dom.childAt(element2, [1]),0,0);
-              morphs[4] = dom.createMorphAt(dom.childAt(element2, [3]),0,0);
-              morphs[5] = dom.createMorphAt(dom.childAt(element2, [5]),0,0);
+              morphs[1] = dom.createElementMorph(element1);
+              morphs[2] = dom.createMorphAt(element1,1,1);
+              morphs[3] = dom.createMorphAt(element1,3,3);
+              morphs[4] = dom.createMorphAt(dom.childAt(element2, [1]),0,0);
+              morphs[5] = dom.createMorphAt(dom.childAt(element2, [3]),0,0);
+              morphs[6] = dom.createMorphAt(dom.childAt(element2, [5]),0,0);
               return morphs;
             },
             statements: [
               ["element","action",["closeSubview"],[]],
+              ["element","action",["discardEnter"],["on","submit"]],
               ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","meta_title"],0,null],
               ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","meta_description"],1,null],
               ["content","seoTitle"],
@@ -25498,10 +25655,13 @@ define('ghost/tests/helpers/resolver', ['exports', 'ember/resolver', 'ghost/conf
     exports['default'] = resolver;
 
 });
-define('ghost/tests/helpers/start-app', ['exports', 'ember', 'ghost/app', 'ghost/router', 'ghost/config/environment'], function (exports, Ember, Application, Router, config) {
+define('ghost/tests/helpers/start-app', ['exports', 'ember', 'ghost/app', 'ghost/config/environment'], function (exports, Ember, Application, config) {
 
     'use strict';
 
+
+
+    exports['default'] = startApp;
     function startApp(attrs) {
         var application,
             attributes = Ember['default'].merge({}, config['default'].APP);
@@ -25517,7 +25677,1607 @@ define('ghost/tests/helpers/start-app', ['exports', 'ember', 'ghost/app', 'ghost
         return application;
     }
 
-    exports['default'] = startApp;
+});
+define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (chai, ember_mocha, Ember, navigation) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    ember_mocha.describeComponent('gh-navigation', 'Integration : Component : gh-navigation', {
+        integration: true
+    }, function () {
+        ember_mocha.it('renders', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.2',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 86
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createElement('div');
+                            dom.setAttribute(el1, 'class', 'js-gh-blognav');
+                            var el2 = dom.createElement('div');
+                            dom.setAttribute(el2, 'class', 'gh-blognav-item');
+                            dom.appendChild(el1, el2);
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 104
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-navigation', [], [], 0, null]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            chai.expect(this.$('section.gh-view')).to.have.length(1);
+            chai.expect(this.$('.ui-sortable')).to.have.length(1);
+        });
+
+        ember_mocha.it('triggers reorder action', function () {
+            var _this = this;
+
+            var navItems = [],
+                expectedOldIndex = -1,
+                expectedNewIndex = -1;
+
+            navItems.pushObject(navigation.NavItem.create({ label: 'First', url: '/first' }));
+            navItems.pushObject(navigation.NavItem.create({ label: 'Second', url: '/second' }));
+            navItems.pushObject(navigation.NavItem.create({ label: 'Third', url: '/third' }));
+            navItems.pushObject(navigation.NavItem.create({ label: '', url: '', last: true }));
+            this.set('navigationItems', navItems);
+            this.set('blogUrl', 'http://localhost:2368');
+
+            this.on('moveItem', function (oldIndex, newIndex) {
+                chai.expect(oldIndex).to.equal(expectedOldIndex);
+                chai.expect(newIndex).to.equal(expectedNewIndex);
+            });
+
+            run(function () {
+                _this.render(Ember['default'].HTMLBars.template((function () {
+                    var child0 = (function () {
+                        var child0 = (function () {
+                            return {
+                                meta: {
+                                    'revision': 'Ember@1.13.2',
+                                    'loc': {
+                                        'source': null,
+                                        'start': {
+                                            'line': 4,
+                                            'column': 24
+                                        },
+                                        'end': {
+                                            'line': 6,
+                                            'column': 24
+                                        }
+                                    }
+                                },
+                                arity: 1,
+                                cachedFragment: null,
+                                hasRendered: false,
+                                buildFragment: function buildFragment(dom) {
+                                    var el0 = dom.createDocumentFragment();
+                                    var el1 = dom.createTextNode('                            ');
+                                    dom.appendChild(el0, el1);
+                                    var el1 = dom.createComment('');
+                                    dom.appendChild(el0, el1);
+                                    var el1 = dom.createTextNode('\n');
+                                    dom.appendChild(el0, el1);
+                                    return el0;
+                                },
+                                buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                                    var morphs = new Array(1);
+                                    morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                                    return morphs;
+                                },
+                                statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'blogUrl']], []], 'addItem', 'addItem', 'deleteItem', 'deleteItem', 'updateUrl', 'updateUrl']]],
+                                locals: ['navItem'],
+                                templates: []
+                            };
+                        })();
+
+                        return {
+                            meta: {
+                                'revision': 'Ember@1.13.2',
+                                'loc': {
+                                    'source': null,
+                                    'start': {
+                                        'line': 2,
+                                        'column': 16
+                                    },
+                                    'end': {
+                                        'line': 8,
+                                        'column': 16
+                                    }
+                                }
+                            },
+                            arity: 0,
+                            cachedFragment: null,
+                            hasRendered: false,
+                            buildFragment: function buildFragment(dom) {
+                                var el0 = dom.createDocumentFragment();
+                                var el1 = dom.createTextNode('                    ');
+                                dom.appendChild(el0, el1);
+                                var el1 = dom.createElement('form');
+                                dom.setAttribute(el1, 'id', 'settings-navigation');
+                                dom.setAttribute(el1, 'class', 'gh-blognav js-gh-blognav');
+                                dom.setAttribute(el1, 'novalidate', 'novalidate');
+                                var el2 = dom.createTextNode('\n');
+                                dom.appendChild(el1, el2);
+                                var el2 = dom.createComment('');
+                                dom.appendChild(el1, el2);
+                                var el2 = dom.createTextNode('                    ');
+                                dom.appendChild(el1, el2);
+                                dom.appendChild(el0, el1);
+                                var el1 = dom.createTextNode('\n');
+                                dom.appendChild(el0, el1);
+                                return el0;
+                            },
+                            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                                var morphs = new Array(1);
+                                morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
+                                return morphs;
+                            },
+                            statements: [['block', 'each', [['get', 'navigationItems']], [], 0, null]],
+                            locals: [],
+                            templates: [child0]
+                        };
+                    })();
+
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.2',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 8,
+                                    'column': 34
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createTextNode('\n');
+                            dom.appendChild(el0, el1);
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['block', 'gh-navigation', [], ['moveItem', 'moveItem'], 0, null]],
+                        locals: [],
+                        templates: [child0]
+                    };
+                })()));
+            });
+
+            // check it renders the nav item rows
+            chai.expect(this.$('.gh-blognav-item')).to.have.length(4);
+
+            // move second item up one
+            expectedOldIndex = 1;
+            expectedNewIndex = 0;
+            Ember['default'].$(this.$('.gh-blognav-item')[1]).simulateDragSortable({
+                move: -1,
+                handle: '.gh-blognav-grab'
+            });
+
+            // move second item down one
+            expectedOldIndex = 1;
+            expectedNewIndex = 2;
+            Ember['default'].$(this.$('.gh-blognav-item')[1]).simulateDragSortable({
+                move: 1,
+                handle: '.gh-blognav-grab'
+            });
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (chai, ember_mocha, Ember, navigation) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    ember_mocha.describeComponent('gh-navitem', 'Integration : Component : gh-navitem', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            this.set('baseUrl', 'http://localhost:2368');
+        });
+
+        ember_mocha.it('renders', function () {
+            this.set('navItem', navigation.NavItem.create({ label: 'Test', url: '/url' }));
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 46
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $item = this.$('.gh-blognav-item');
+
+            chai.expect($item.find('.gh-blognav-grab').length).to.equal(1);
+            chai.expect($item.find('.gh-blognav-label').length).to.equal(1);
+            chai.expect($item.find('.gh-blognav-url').length).to.equal(1);
+            chai.expect($item.find('.gh-blognav-delete').length).to.equal(1);
+
+            // doesn't show any errors
+            chai.expect($item.hasClass('gh-blognav-item--error')).to.be['false'];
+            chai.expect($item.find('.error').length).to.equal(0);
+            chai.expect($item.find('.response:visible').length).to.equal(0);
+        });
+
+        ember_mocha.it('doesn\'t show drag handle for last item', function () {
+            this.set('navItem', navigation.NavItem.create({ label: 'Test', url: '/url', last: true }));
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 46
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $item = this.$('.gh-blognav-item');
+
+            chai.expect($item.find('.gh-blognav-grab').length).to.equal(0);
+        });
+
+        ember_mocha.it('shows add button for last item', function () {
+            this.set('navItem', navigation.NavItem.create({ label: 'Test', url: '/url', last: true }));
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 46
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $item = this.$('.gh-blognav-item');
+
+            chai.expect($item.find('.gh-blognav-add').length).to.equal(1);
+            chai.expect($item.find('.gh-blognav-delete').length).to.equal(0);
+        });
+
+        ember_mocha.it('triggers delete action', function () {
+            var _this = this;
+
+            this.set('navItem', navigation.NavItem.create({ label: 'Test', url: '/url' }));
+
+            var deleteActionCallCount = 0;
+            this.on('deleteItem', function (navItem) {
+                chai.expect(navItem).to.equal(_this.get('navItem'));
+                deleteActionCallCount++;
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 70
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'deleteItem', 'deleteItem']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            this.$('.gh-blognav-delete').trigger('click');
+
+            chai.expect(deleteActionCallCount).to.equal(1);
+        });
+
+        ember_mocha.it('triggers add action', function () {
+            this.set('navItem', navigation.NavItem.create({ label: 'Test', url: '/url', last: true }));
+
+            var addActionCallCount = 0;
+            this.on('add', function () {
+                addActionCallCount++;
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 60
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'addItem', 'add']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            this.$('.gh-blognav-add').trigger('click');
+
+            chai.expect(addActionCallCount).to.equal(1);
+        });
+
+        ember_mocha.it('triggers update action', function () {
+            this.set('navItem', navigation.NavItem.create({ label: 'Test', url: '/url' }));
+
+            var updateActionCallCount = 0;
+            this.on('update', function () {
+                updateActionCallCount++;
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 65
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'updateUrl', 'update']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            this.$('.gh-blognav-url input').trigger('blur');
+
+            chai.expect(updateActionCallCount).to.equal(1);
+        });
+
+        ember_mocha.it('displays inline errors', function () {
+            this.set('navItem', navigation.NavItem.create({ label: '', url: '' }));
+            this.get('navItem').validate();
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 46
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $item = this.$('.gh-blognav-item');
+
+            chai.expect($item.hasClass('gh-blognav-item--error')).to.be['true'];
+            chai.expect($item.find('.gh-blognav-label').hasClass('error')).to.be['true'];
+            chai.expect($item.find('.gh-blognav-label .response').text().trim()).to.equal('You must specify a label');
+            chai.expect($item.find('.gh-blognav-url').hasClass('error')).to.be['true'];
+            chai.expect($item.find('.gh-blognav-url .response').text().trim()).to.equal('You must specify a URL or relative path');
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint scripturl:true */
+    var run = Ember['default'].run;
+    // we want baseUrl to match the running domain so relative URLs are
+    // handled as expected (browser auto-sets the domain when using a.href)
+    var currentUrl = window.location.protocol + '//' + window.location.host + '/';
+
+    ember_mocha.describeComponent('gh-navitem-url-input', 'Integration : Component : gh-navitem-url-input', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            // set defaults
+            this.set('baseUrl', currentUrl);
+            this.set('url', '');
+            this.set('isLast', false);
+        });
+
+        ember_mocha.it('renders correctly with blank url', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            chai.expect($input).to.have.length(1);
+            chai.expect($input.hasClass('gh-input')).to.be['true'];
+            chai.expect($input.val()).to.equal(currentUrl);
+        });
+
+        ember_mocha.it('renders correctly with relative urls', function () {
+            this.set('url', '/about');
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            chai.expect($input.val()).to.equal(currentUrl + 'about');
+
+            this.set('url', '/about#contact');
+            chai.expect($input.val()).to.equal(currentUrl + 'about#contact');
+        });
+
+        ember_mocha.it('renders correctly with absolute urls', function () {
+            this.set('url', 'https://example.com:2368/#test');
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            chai.expect($input.val()).to.equal('https://example.com:2368/#test');
+
+            this.set('url', 'mailto:test@example.com');
+            chai.expect($input.val()).to.equal('mailto:test@example.com');
+
+            this.set('url', 'tel:01234-5678-90');
+            chai.expect($input.val()).to.equal('tel:01234-5678-90');
+
+            this.set('url', '//protocol-less-url.com');
+            chai.expect($input.val()).to.equal('//protocol-less-url.com');
+
+            this.set('url', '#anchor');
+            chai.expect($input.val()).to.equal('#anchor');
+        });
+
+        ember_mocha.it('deletes base URL on backspace', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            chai.expect($input.val()).to.equal(currentUrl);
+            run(function () {
+                // TODO: why is ember's keyEvent helper not available here?
+                var e = Ember['default'].$.Event('keydown');
+                e.keyCode = 8;
+                $input.trigger(e);
+            });
+            chai.expect($input.val()).to.equal('');
+        });
+
+        ember_mocha.it('deletes base URL on delete', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            chai.expect($input.val()).to.equal(currentUrl);
+            run(function () {
+                // TODO: why is ember's keyEvent helper not available here?
+                var e = Ember['default'].$.Event('keydown');
+                e.keyCode = 46;
+                $input.trigger(e);
+            });
+            chai.expect($input.val()).to.equal('');
+        });
+
+        ember_mocha.it('adds base url to relative urls on blur', function () {
+            this.on('updateUrl', function () {
+                return null;
+            });
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            run(function () {
+                $input.val('/about').trigger('input');
+            });
+            run(function () {
+                $input.trigger('blur');
+            });
+
+            chai.expect($input.val()).to.equal(currentUrl + 'about');
+        });
+
+        ember_mocha.it('adds "mailto:" to e-mail addresses on blur', function () {
+            this.on('updateUrl', function () {
+                return null;
+            });
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            run(function () {
+                $input.val('test@example.com').trigger('input');
+            });
+            run(function () {
+                $input.trigger('blur');
+            });
+
+            chai.expect($input.val()).to.equal('mailto:test@example.com');
+
+            // ensure we don't double-up on the mailto:
+            run(function () {
+                $input.trigger('blur');
+            });
+            chai.expect($input.val()).to.equal('mailto:test@example.com');
+        });
+
+        ember_mocha.it('doesn\'t add base url to invalid urls on blur', function () {
+            this.on('updateUrl', function () {
+                return null;
+            });
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            var changeValue = function changeValue(value) {
+                run(function () {
+                    $input.val(value).trigger('input').trigger('blur');
+                });
+            };
+
+            changeValue('with spaces');
+            chai.expect($input.val()).to.equal('with spaces');
+
+            changeValue('/with spaces');
+            chai.expect($input.val()).to.equal('/with spaces');
+        });
+
+        ember_mocha.it('doesn\'t mangle invalid urls on blur', function () {
+            this.on('updateUrl', function () {
+                return null;
+            });
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            run(function () {
+                $input.val(currentUrl + ' /test').trigger('input').trigger('blur');
+            });
+
+            chai.expect($input.val()).to.equal(currentUrl + ' /test');
+        });
+
+        ember_mocha.it('toggles .fake-placeholder on focus', function () {
+            this.set('isLast', true);
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            chai.expect($input.hasClass('fake-placeholder')).to.be['true'];
+
+            run(function () {
+                $input.trigger('focus');
+            });
+            chai.expect($input.hasClass('fake-placeholder')).to.be['false'];
+        });
+
+        ember_mocha.it('triggers "change" action on blur', function () {
+            var changeActionCallCount = 0;
+            this.on('updateUrl', function () {
+                changeActionCallCount++;
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            $input.trigger('blur');
+
+            chai.expect(changeActionCallCount).to.equal(1);
+        });
+
+        ember_mocha.it('triggers "change" action on enter', function () {
+            var changeActionCallCount = 0;
+            this.on('updateUrl', function () {
+                changeActionCallCount++;
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            run(function () {
+                // TODO: why is ember's keyEvent helper not available here?
+                var e = Ember['default'].$.Event('keypress');
+                e.keyCode = 13;
+                $input.trigger(e);
+            });
+
+            chai.expect(changeActionCallCount).to.equal(1);
+        });
+
+        ember_mocha.it('triggers "change" action on CMD-S', function () {
+            var changeActionCallCount = 0;
+            this.on('updateUrl', function () {
+                changeActionCallCount++;
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            run(function () {
+                // TODO: why is ember's keyEvent helper not available here?
+                var e = Ember['default'].$.Event('keydown');
+                e.keyCode = 83;
+                e.metaKey = true;
+                $input.trigger(e);
+            });
+
+            chai.expect(changeActionCallCount).to.equal(1);
+        });
+
+        ember_mocha.it('sends absolute urls straight through to change action', function () {
+            var expectedUrl = '';
+
+            this.on('updateUrl', function (url) {
+                chai.expect(url).to.equal(expectedUrl);
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            var testUrl = function testUrl(url) {
+                expectedUrl = url;
+                run(function () {
+                    $input.val(url).trigger('input');
+                });
+                run(function () {
+                    $input.trigger('blur');
+                });
+            };
+
+            testUrl('http://example.com');
+            testUrl('http://example.com/');
+            testUrl('https://example.com');
+            testUrl('//example.com');
+            testUrl('//localhost:1234');
+            testUrl('#anchor');
+            testUrl('mailto:test@example.com');
+            testUrl('tel:12345-567890');
+            testUrl('javascript:alert("testing");');
+        });
+
+        ember_mocha.it('strips base url from relative urls before sending to change action', function () {
+            var expectedUrl = '';
+
+            this.on('updateUrl', function (url) {
+                chai.expect(url).to.equal(expectedUrl);
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            var testUrl = function testUrl(url) {
+                expectedUrl = '/' + url;
+                run(function () {
+                    $input.val('' + currentUrl + url).trigger('input');
+                });
+                run(function () {
+                    $input.trigger('blur');
+                });
+            };
+
+            testUrl('about');
+            testUrl('about#contact');
+            testUrl('test/nested');
+        });
+
+        ember_mocha.it('handles a baseUrl with a path component', function () {
+            var expectedUrl = '';
+
+            this.set('baseUrl', currentUrl + 'blog/');
+
+            this.on('updateUrl', function (url) {
+                chai.expect(url).to.equal(expectedUrl);
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            var testUrl = function testUrl(url) {
+                expectedUrl = url;
+                run(function () {
+                    $input.val(currentUrl + 'blog' + url).trigger('input');
+                });
+                run(function () {
+                    $input.trigger('blur');
+                });
+            };
+
+            testUrl('/about');
+            testUrl('/about#contact');
+            testUrl('/test/nested');
+        });
+
+        ember_mocha.it('handles links to subdomains of blog domain', function () {
+            var expectedUrl = '';
+
+            this.set('baseUrl', 'http://example.com/');
+
+            this.on('updateUrl', function (url) {
+                chai.expect(url).to.equal(expectedUrl);
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.2',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $input = this.$('input');
+
+            expectedUrl = 'http://test.example.com/';
+            run(function () {
+                $input.val(expectedUrl).trigger('input').trigger('blur');
+            });
+            chai.expect($input.val()).to.equal(expectedUrl);
+        });
+    });
 
 });
 define('ghost/tests/test-helper', ['ghost/tests/helpers/resolver', 'ember-mocha'], function (resolver, ember_mocha) {
@@ -25778,103 +27538,12 @@ define('ghost/tests/unit/components/gh-infinite-scroll-test', ['chai', 'ember-mo
     });
 
 });
-define('ghost/tests/unit/components/gh-navigation-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
-
-    'use strict';
-
-    /* jshint expr:true */
-    ember_mocha.describeComponent('gh-navigation', 'GhNavigationComponent', {
-        // specify the other units that are required for this test
-        // needs: ['component:foo', 'helper:bar']
-    }, function () {
-        ember_mocha.it('renders', function () {
-            // creates the component instance
-            var component = this.subject();
-
-            chai.expect(component._state).to.equal('preRender');
-
-            // renders the component on the page
-            this.render();
-            chai.expect(component._state).to.equal('inDOM');
-        });
-    });
-
-});
 define('ghost/tests/unit/components/gh-navitem-url-input-test', ['ember', 'chai', 'ember-mocha'], function (Ember, chai, ember_mocha) {
 
     'use strict';
 
     /* jshint expr:true */
     ember_mocha.describeComponent('gh-navitem-url-input', 'GhNavitemUrlInputComponent', {}, function () {
-        ember_mocha.it('renders', function () {
-            var component = this.subject();
-
-            chai.expect(component._state).to.equal('preRender');
-
-            this.render();
-
-            chai.expect(component._state).to.equal('inDOM');
-        });
-
-        ember_mocha.it('renders correctly with a URL that matches the base URL', function () {
-            var component = this.subject({
-                baseUrl: 'http://example.com/'
-            });
-
-            Ember['default'].run(function () {
-                component.set('value', 'http://example.com/');
-            });
-
-            this.render();
-
-            chai.expect(this.$().val()).to.equal('http://example.com/');
-        });
-
-        ember_mocha.it('renders correctly with a relative URL', function () {
-            var component = this.subject({
-                baseUrl: 'http://example.com/'
-            });
-
-            Ember['default'].run(function () {
-                component.set('value', '/go/docs');
-            });
-
-            this.render();
-
-            chai.expect(this.$().val()).to.equal('/go/docs');
-        });
-
-        ember_mocha.it('renders correctly with a mailto URL', function () {
-            var component = this.subject({
-                baseUrl: 'http://example.com/'
-            });
-
-            Ember['default'].run(function () {
-                component.set('value', 'mailto:someone@example.com');
-            });
-
-            this.render();
-
-            chai.expect(this.$().val()).to.equal('mailto:someone@example.com');
-        });
-
-        ember_mocha.it('identifies a URL as relative', function () {
-            var component = this.subject({
-                baseUrl: 'http://example.com/',
-                url: '/go/docs'
-            });
-
-            this.render();
-
-            chai.expect(component.get('isRelative')).to.be.ok;
-
-            Ember['default'].run(function () {
-                component.set('value', 'http://example.com/go/docs');
-            });
-
-            chai.expect(component.get('isRelative')).to.not.be.ok;
-        });
-
         ember_mocha.it('identifies a URL as the base URL', function () {
             var component = this.subject({
                 baseUrl: 'http://example.com/'
@@ -26268,7 +27937,7 @@ define('ghost/tests/unit/controllers/post-settings-menu_test', ['ember', 'ember-
     'use strict';
 
     ember_mocha.describeModule('controller:post-settings-menu', {
-        needs: ['controller:application']
+        needs: ['controller:application', 'service:notifications']
     }, function () {
         ember_mocha.it('slugValue is one-way bound to model.slug', function () {
             var controller = this.subject({
@@ -26977,7 +28646,9 @@ define('ghost/tests/unit/controllers/settings-general_test', ['ember', 'ember-mo
 
     'use strict';
 
-    ember_mocha.describeModule('controller:settings/general', function () {
+    ember_mocha.describeModule('controller:settings/general', {
+        needs: ['service:notifications']
+    }, function () {
         ember_mocha.it('isDatedPermalinks should be correct', function () {
             var controller = this.subject({
                 model: Ember['default'].Object.create({
@@ -27052,6 +28723,192 @@ define('ghost/tests/unit/controllers/settings-general_test', ['ember', 'ember-mo
             expect(themes.objectAt(1).name).to.equal('rasper');
             expect(themes.objectAt(1).active).to.not.be.ok;
             expect(themes.objectAt(1).label).to.equal('Rasper - 1.0.0');
+        });
+    });
+
+});
+define('ghost/tests/unit/controllers/settings/navigation-test', ['chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (chai, ember_mocha, Ember, navigation) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    var navSettingJSON = '[\n    {"label":"Home","url":"/"},\n    {"label":"JS Test","url":"javascript:alert(\'hello\');"},\n    {"label":"About","url":"/about"},\n    {"label":"Sub Folder","url":"/blah/blah"},\n    {"label":"Telephone","url":"tel:01234-567890"},\n    {"label":"Mailto","url":"mailto:test@example.com"},\n    {"label":"External","url":"https://example.com/testing?query=test#anchor"},\n    {"label":"No Protocol","url":"//example.com"}\n]';
+
+    ember_mocha.describeModule('controller:settings/navigation', 'Unit : Controller : settings/navigation', {
+        // Specify the other units that are required for this test.
+        needs: ['service:config', 'service:notifications']
+    }, function () {
+        ember_mocha.it('blogUrl: captures config and ensures trailing slash', function () {
+            var ctrl = this.subject();
+            ctrl.set('config.blogUrl', 'http://localhost:2368/blog');
+            chai.expect(ctrl.get('blogUrl')).to.equal('http://localhost:2368/blog/');
+        });
+
+        ember_mocha.it('navigationItems: generates list of NavItems', function () {
+            var ctrl = this.subject(),
+                lastItem;
+
+            run(function () {
+                ctrl.set('model', Ember['default'].Object.create({ navigation: navSettingJSON }));
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(9);
+                chai.expect(ctrl.get('navigationItems.firstObject.label')).to.equal('Home');
+                chai.expect(ctrl.get('navigationItems.firstObject.url')).to.equal('/');
+                chai.expect(ctrl.get('navigationItems.firstObject.last')).to.be['false'];
+
+                // adds a blank item as last one is complete
+                lastItem = ctrl.get('navigationItems.lastObject');
+                chai.expect(lastItem.get('label')).to.equal('');
+                chai.expect(lastItem.get('url')).to.equal('');
+                chai.expect(lastItem.get('last')).to.be['true'];
+            });
+        });
+
+        ember_mocha.it('navigationItems: adds blank item if navigation setting is empty', function () {
+            var ctrl = this.subject(),
+                lastItem;
+
+            run(function () {
+                ctrl.set('model', Ember['default'].Object.create({ navigation: null }));
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(1);
+
+                lastItem = ctrl.get('navigationItems.lastObject');
+                chai.expect(lastItem.get('label')).to.equal('');
+                chai.expect(lastItem.get('url')).to.equal('');
+            });
+        });
+
+        ember_mocha.it('updateLastNavItem: correctly sets "last" properties', function () {
+            var ctrl = this.subject(),
+                item1,
+                item2;
+
+            run(function () {
+                ctrl.set('model', Ember['default'].Object.create({ navigation: navSettingJSON }));
+
+                item1 = ctrl.get('navigationItems.lastObject');
+                chai.expect(item1.get('last')).to.be['true'];
+
+                ctrl.get('navigationItems').addObject(Ember['default'].Object.create({ label: 'Test', url: '/test' }));
+
+                item2 = ctrl.get('navigationItems.lastObject');
+                chai.expect(item2.get('last')).to.be['true'];
+                chai.expect(item1.get('last')).to.be['false'];
+            });
+        });
+
+        ember_mocha.it('save: validates nav items', function (done) {
+            var ctrl = this.subject();
+
+            run(function () {
+                ctrl.set('model', Ember['default'].Object.create({ navigation: '[\n                    {"label":"First",   "url":"/"},\n                    {"label":"",        "url":"/second"},\n                    {"label":"Third",   "url":""}\n                ]' }));
+                // blank item won't get added because the last item is incomplete
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(3);
+
+                ctrl.save().then(function passedValidation() {
+                    chai.assert(false, 'navigationItems weren\'t validated on save');
+                    done();
+                })['catch'](function failedValidation() {
+                    var navItems = ctrl.get('navigationItems');
+                    chai.expect(navItems[0].get('errors')).to.be.empty;
+                    chai.expect(navItems[1].get('errors.firstObject.attribute')).to.equal('label');
+                    chai.expect(navItems[2].get('errors.firstObject.attribute')).to.equal('url');
+                    done();
+                });
+            });
+        });
+
+        ember_mocha.it('save: generates new navigation JSON', function (done) {
+            var ctrl = this.subject(),
+                model = Ember['default'].Object.create({ navigation: {} }),
+                expectedJSON = '[{"label":"New","url":"/new"}]';
+
+            model.save = function () {
+                var self = this;
+                return new Ember['default'].RSVP.Promise(function (resolve, reject) {
+                    return resolve(self);
+                });
+            };
+
+            run(function () {
+                ctrl.set('model', model);
+
+                // remove inserted blank item so validation works
+                ctrl.get('navigationItems').removeObject(ctrl.get('navigationItems.firstObject'));
+                // add new object
+                ctrl.get('navigationItems').addObject(navigation.NavItem.create({ label: 'New', url: '/new' }));
+
+                ctrl.save().then(function success() {
+                    chai.expect(ctrl.get('model.navigation')).to.equal(expectedJSON);
+                    done();
+                }, function failure() {
+                    chai.assert(false, 'save failed with valid data');
+                    done();
+                });
+            });
+        });
+
+        ember_mocha.it('action - addItem: adds item to navigationItems', function () {
+            var ctrl = this.subject();
+
+            run(function () {
+                ctrl.set('navigationItems', [navigation.NavItem.create({ label: 'First', url: '/first', last: true })]);
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(1);
+                ctrl.send('addItem');
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(2);
+                chai.expect(ctrl.get('navigationItems.firstObject.last')).to.be['false'];
+                chai.expect(ctrl.get('navigationItems.lastObject.label')).to.equal('');
+                chai.expect(ctrl.get('navigationItems.lastObject.url')).to.equal('');
+                chai.expect(ctrl.get('navigationItems.lastObject.last')).to.be['true'];
+            });
+        });
+
+        ember_mocha.it('action - addItem: doesn\'t insert new item if last object is incomplete', function () {
+            var ctrl = this.subject();
+
+            run(function () {
+                ctrl.set('navigationItems', [navigation.NavItem.create({ label: '', url: '', last: true })]);
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(1);
+                ctrl.send('addItem');
+                chai.expect(ctrl.get('navigationItems.length')).to.equal(1);
+            });
+        });
+
+        ember_mocha.it('action - deleteItem: removes item from navigationItems', function () {
+            var ctrl = this.subject(),
+                navItems = [navigation.NavItem.create({ label: 'First', url: '/first' }), navigation.NavItem.create({ label: 'Second', url: '/second', last: true })];
+
+            run(function () {
+                ctrl.set('navigationItems', navItems);
+                chai.expect(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['First', 'Second']);
+                ctrl.send('deleteItem', ctrl.get('navigationItems.firstObject'));
+                chai.expect(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['Second']);
+            });
+        });
+
+        ember_mocha.it('action - moveItem: updates navigationItems list', function () {
+            var ctrl = this.subject(),
+                navItems = [navigation.NavItem.create({ label: 'First', url: '/first' }), navigation.NavItem.create({ label: 'Second', url: '/second', last: true })];
+
+            run(function () {
+                ctrl.set('navigationItems', navItems);
+                chai.expect(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['First', 'Second']);
+                ctrl.send('moveItem', 1, 0);
+                chai.expect(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['Second', 'First']);
+            });
+        });
+
+        ember_mocha.it('action - updateUrl: updates URL on navigationItem', function () {
+            var ctrl = this.subject(),
+                navItems = [navigation.NavItem.create({ label: 'First', url: '/first' }), navigation.NavItem.create({ label: 'Second', url: '/second', last: true })];
+
+            run(function () {
+                ctrl.set('navigationItems', navItems);
+                chai.expect(ctrl.get('navigationItems').mapBy('url')).to.deep.equal(['/first', '/second']);
+                ctrl.send('updateUrl', '/new', ctrl.get('navigationItems.firstObject'));
+                chai.expect(ctrl.get('navigationItems').mapBy('url')).to.deep.equal(['/new', '/second']);
+            });
         });
     });
 
@@ -27468,6 +29325,31 @@ define('ghost/tests/unit/models/user_test', ['ember', 'ember-mocha'], function (
     });
 
 });
+define('ghost/tests/unit/services/config-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    ember_mocha.describeModule('service:config', 'ConfigService', {
+        // Specify the other units that are required for this test.
+        // needs: ['service:foo']
+    }, function () {
+        // Replace this with your real tests.
+        ember_mocha.it('exists', function () {
+            var service = this.subject();
+            chai.expect(service).to.be.ok;
+        });
+
+        ember_mocha.it('correctly parses a client secret', function () {
+            Ember['default'].$('<meta>').attr('name', 'env-clientSecret').attr('content', '23e435234423').appendTo('head');
+
+            var service = this.subject();
+
+            chai.expect(service.get('clientSecret')).to.equal('23e435234423');
+        });
+    });
+
+});
 define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai', 'ember-mocha'], function (Ember, sinon, chai, ember_mocha) {
 
     'use strict';
@@ -27775,6 +29657,106 @@ define('ghost/tests/unit/utils/ghost-paths_test', ['ghost/utils/ghost-paths'], f
                 path = join('one', 'two/');
                 expect(path).to.equal('one/two/');
             });
+        });
+    });
+
+});
+define('ghost/tests/unit/validators/nav-item-test', ['chai', 'mocha', 'ghost/validators/nav-item', 'ghost/controllers/settings/navigation'], function (chai, mocha, validator, navigation) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var testInvalidUrl, testValidUrl;
+
+    testInvalidUrl = function (url) {
+        var navItem = navigation.NavItem.create({ url: url });
+
+        validator['default'].check(navItem, 'url');
+
+        chai.expect(validator['default'].get('passed'), '"' + url + '" passed').to.be['false'];
+        chai.expect(navItem.get('errors').errorsFor('url')).to.deep.equal([{
+            attribute: 'url',
+            message: 'You must specify a valid URL or relative path'
+        }]);
+        chai.expect(navItem.get('hasValidated')).to.include('url');
+    };
+
+    testValidUrl = function (url) {
+        var navItem = navigation.NavItem.create({ url: url });
+
+        validator['default'].check(navItem, 'url');
+
+        chai.expect(validator['default'].get('passed'), '"' + url + '" failed').to.be['true'];
+        chai.expect(navItem.get('hasValidated')).to.include('url');
+    };
+
+    mocha.describe('Unit : Validator : nav-item', function () {
+        mocha.it('requires label presence', function () {
+            var navItem = navigation.NavItem.create();
+
+            validator['default'].check(navItem, 'label');
+
+            chai.expect(validator['default'].get('passed')).to.be['false'];
+            chai.expect(navItem.get('errors').errorsFor('label')).to.deep.equal([{
+                attribute: 'label',
+                message: 'You must specify a label'
+            }]);
+            chai.expect(navItem.get('hasValidated')).to.include('label');
+        });
+
+        mocha.it('doesn\'t validate label if empty and last', function () {
+            var navItem = navigation.NavItem.create({ last: true });
+
+            validator['default'].check(navItem, 'label');
+
+            chai.expect(validator['default'].get('passed')).to.be['true'];
+        });
+
+        mocha.it('requires url presence', function () {
+            var navItem = navigation.NavItem.create();
+
+            validator['default'].check(navItem, 'url');
+
+            chai.expect(validator['default'].get('passed')).to.be['false'];
+            chai.expect(navItem.get('errors').errorsFor('url')).to.deep.equal([{
+                attribute: 'url',
+                message: 'You must specify a URL or relative path'
+            }]);
+            chai.expect(navItem.get('hasValidated')).to.include('url');
+        });
+
+        mocha.it('fails on invalid url values', function () {
+            var invalidUrls = ['test@example.com', '/has spaces', 'no-leading-slash', 'http://example.com/with spaces'];
+
+            invalidUrls.forEach(function (url) {
+                testInvalidUrl(url);
+            });
+        });
+
+        mocha.it('passes on valid url values', function () {
+            var validUrls = ['http://localhost:2368', 'http://localhost:2368/some-path', 'https://localhost:2368/some-path', '//localhost:2368/some-path', 'http://localhost:2368/#test', 'http://localhost:2368/?query=test&another=example', 'http://localhost:2368/?query=test&another=example#test', 'tel:01234-567890', 'mailto:test@example.com', 'http://some:user@example.com:1234', '/relative/path'];
+
+            validUrls.forEach(function (url) {
+                testValidUrl(url);
+            });
+        });
+
+        mocha.it('doesn\'t validate url if empty and last', function () {
+            var navItem = navigation.NavItem.create({ last: true });
+
+            validator['default'].check(navItem, 'url');
+
+            chai.expect(validator['default'].get('passed')).to.be['true'];
+        });
+
+        mocha.it('validates url and label by default', function () {
+            var navItem = navigation.NavItem.create();
+
+            validator['default'].check(navItem);
+
+            chai.expect(navItem.get('errors').errorsFor('label')).to.not.be.empty;
+            chai.expect(navItem.get('errors').errorsFor('url')).to.not.be.empty;
+            chai.expect(validator['default'].get('passed')).to.be['false'];
         });
     });
 
@@ -28416,6 +30398,66 @@ define('ghost/validators/base', ['exports', 'ember'], function (exports, Ember) 
     exports['default'] = BaseValidator;
 
 });
+define('ghost/validators/nav-item', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
+
+    'use strict';
+
+    exports['default'] = BaseValidator['default'].create({
+        properties: ['label', 'url'],
+
+        label: function label(model) {
+            var label = model.get('label'),
+                hasValidated = model.get('hasValidated');
+
+            if (this.canBeIgnored(model)) {
+                return;
+            }
+
+            if (validator.empty(label)) {
+                model.get('errors').add('label', 'You must specify a label');
+                this.invalidate();
+            }
+
+            hasValidated.addObject('label');
+        },
+
+        url: function url(model) {
+            var url = model.get('url'),
+                hasValidated = model.get('hasValidated'),
+                validatorOptions = { require_protocol: true },
+                urlRegex = new RegExp(/^(\/|#|[a-zA-Z0-9\-]+:)/);
+
+            if (this.canBeIgnored(model)) {
+                return;
+            }
+
+            if (validator.empty(url)) {
+                model.get('errors').add('url', 'You must specify a URL or relative path');
+                this.invalidate();
+            } else if (url.match(/\s/) || !validator.isURL(url, validatorOptions) && !url.match(urlRegex)) {
+                model.get('errors').add('url', 'You must specify a valid URL or relative path');
+                this.invalidate();
+            }
+
+            hasValidated.addObject('url');
+        },
+
+        canBeIgnored: function canBeIgnored(model) {
+            var label = model.get('label'),
+                url = model.get('url'),
+                isLast = model.get('last');
+
+            // if nav item is last and completely blank, mark it valid and skip
+            if (isLast && (validator.empty(url) || url === '/') && validator.empty(label)) {
+                model.get('errors').clear();
+                return true;
+            }
+
+            return false;
+        }
+    });
+
+});
 define('ghost/validators/new-user', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
 
     'use strict';
@@ -28799,7 +30841,7 @@ catch(err) {
 if (runningTests) {
   require("ghost/tests/test-helper");
 } else {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.0"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.1"});
 }
 
 /* jshint ignore:end */

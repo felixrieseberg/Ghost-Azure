@@ -1344,7 +1344,7 @@ input {
   user-select: text;
 }
 
-.form-group.error .response {
+.error .response {
   color: #e25440;
 }
 
@@ -1430,7 +1430,7 @@ select {
 }
 
 .gh-input.error,
-.form-group.error .gh-input,
+.error .gh-input,
 .gh-select.error,
 select.error {
   border-color: #e25440;
@@ -3940,6 +3940,12 @@ a.badge:focus {
   background: #fff;
 }
 
+/*  Flexbox fix. https://github.com/TryGhost/Ghost/issues/5804#issuecomment-141416812 */
+
+.gh-main > section {
+  width: 1px;
+}
+
 /* Global Nav
 /* ---------------------------------------------------------- */
 
@@ -5911,6 +5917,15 @@ a.badge:focus {
   align-items: center;
   margin-bottom: 10px;
   padding: 0 20px;
+}
+
+.gh-blognav-item--error {
+  margin-bottom: calc(1em + 10px);
+}
+
+.gh-blognav-item .response {
+  position: absolute;
+  margin-bottom: 0;
 }
 
 .gh-blognav-grab {
