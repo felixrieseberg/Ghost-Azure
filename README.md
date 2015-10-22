@@ -14,6 +14,11 @@ Ghost is a free, open, simple blogging platform that's available to anyone who w
 
 Visit the project's website at <http://ghost.org> &bull; docs on <http://support.ghost.org>.
 
+## Running Locally
+
+To run ghost locally run npm install then simply add websiteUrl, PORT, and NODE_ENV to your environment variables and run npm start. By default NODE_ENV will default to development, but the process that runs in azure runs with the value of production. If you decide to run NODE_ENV as production, you will probably want to turn off forceAdminSSL in config.js otherwise trying to access admin will default to redirecting you to https, and you won't have a valid SSL cert locally. The websiteUrl can be something as simple as `http://localhost` and the PORT variable should be the port you wish the instance to listen on.
+
+
 ## Copyright & License
 
 Ghost is Copyright (c) 2013-2015 Ghost Foundation - Released under the [MIT license](LICENSE).
