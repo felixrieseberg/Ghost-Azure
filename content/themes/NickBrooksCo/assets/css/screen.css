@@ -2014,6 +2014,21 @@ body:not(.post-template) .post-title {
        padding-bottom: 4rem;
    }
    
+   section.post-content, section.post-excerpt {
+        color: #1976D2;
+        font-weight: bold;
+        text-decoration: none;
+   }
+   
+   .post-meta a {
+        color: #607D8B;
+        font-weight: bold;
+    }
+   
+   code {
+       color: #E91E63;
+   }
+   
    .front-social ul {
         margin: 0;
         padding: 0;
@@ -2028,6 +2043,7 @@ body:not(.post-template) .post-title {
     .front-social a {
         color: #9E9E9E;
         transition: color .3s ease;
+        font-size: 3rem;
     }
     
     a.twitter:hover {
