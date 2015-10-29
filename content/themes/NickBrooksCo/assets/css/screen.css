@@ -2005,6 +2005,14 @@ body:not(.post-template) .post-title {
 
 }
 
+/* ==========================================================================
+   12.2. Custom shit!
+   ========================================================================== */
+   
+   .object-spacing {
+       margin: 4rem auto;
+       padding-bottom: 4rem;
+   }
 
 /* ==========================================================================
    13. Animations
@@ -2065,7 +2073,6 @@ body:not(.post-template) .post-title {
                 transform: translateY(-5px) rotate(-90deg);
     }
 }
-
 
 /* ==========================================================================
    End of file. Animations should be the last thing here. Do not add stuff
