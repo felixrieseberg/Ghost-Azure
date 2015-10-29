@@ -2022,9 +2022,7 @@ body:not(.post-template) .post-title {
     
     .front-social li {
         display: inline-block;
-        font-size: 2em;
         margin: 20px 12px;
-        color: #9E9E9E;
     }
     
     .front-social a {
