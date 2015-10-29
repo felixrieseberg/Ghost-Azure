@@ -18,10 +18,19 @@
     <a class="scroll-down icon-arrow-left" href="#content" data-offset="-45"><span class="hidden">Scroll Down</span></a>
 </header>
 
-{{! The main content area on the homepage }}
-<main id="content" class="content" role="main">
-
-    {{! The tag below includes the post loop - partials/loop.hbs }}
-    {{> "loop"}}
-
-</main>
+<div class="container">
+    <div class="row">
+        <div class="col-md-10">{{! The main content area on the homepage }}
+            <main id="content" class="content" role="main">
+            
+                {{! The tag below includes the post loop - partials/loop.hbs }}
+                {{> "loop"}}
+            
+            </main>
+        </div>
+        <div class="col-md-2">
+            <a class="twitter-timeline" data-dnt="true" href="https://twitter.com/NickBrooks37" data-widget-id="659621575423979520">Tweets by @NickBrooks37</a>
+            <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+"://platform.twitter.com/widgets.js";fjs.parentNode.insertBefore(js,fjs);}}(document,"script","twitter-wjs");</script>
+        </div>
+    </div>
+</div>
