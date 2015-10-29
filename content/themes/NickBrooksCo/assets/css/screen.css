@@ -2020,7 +2020,7 @@ body:not(.post-template) .post-title {
         text-decoration: none;
    }
    
-   .post-meta a {
+   .post-meta a, a.read-more {
         color: #607D8B;
         font-weight: bold;
     }
