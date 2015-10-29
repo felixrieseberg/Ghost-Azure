@@ -2014,7 +2014,7 @@ body:not(.post-template) .post-title {
        padding-bottom: 4rem;
    }
    
-   section.post-content, section.post-excerpt {
+   section.post-content a, section.post-excerpt a {
         color: #1976D2;
         font-weight: bold;
         text-decoration: none;
