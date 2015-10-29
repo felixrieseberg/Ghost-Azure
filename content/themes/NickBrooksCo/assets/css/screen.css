@@ -2013,6 +2013,39 @@ body:not(.post-template) .post-title {
        margin: 4rem auto;
        padding-bottom: 4rem;
    }
+   
+   .front-social ul {
+        margin: 0;
+        padding: 0;
+        list-style-type: none;
+    }
+    
+    .front-social li {
+        display: inline-block;
+        font-size: 2em;
+        margin: 20px 12px;
+        color: #9E9E9E;
+    }
+    
+    .front-social a {
+        color: #9E9E9E;
+        transition: color .3s ease;
+    }
+    
+    a.twitter:hover {
+        color: #00aced;
+        transition: color .3s ease;
+    }
+    
+    a.instagram:hover {
+        color: #9b6954;
+        transition: color .3s ease;
+    }
+    
+    a.youtube:hover {
+        color: #E53935;
+        transition: color .3s ease;
+    }
 
 /* ==========================================================================
    13. Animations
