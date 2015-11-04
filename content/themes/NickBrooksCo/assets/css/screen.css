@@ -2041,7 +2041,7 @@ body:not(.post-template) .post-title {
     }
     
     .front-social a {
-        color: #9E9E9E;
+        color: #ccc;
         transition: color .3s ease;
         font-size: 3rem;
     }
@@ -2053,6 +2053,11 @@ body:not(.post-template) .post-title {
     
     a.instagram:hover {
         color: #9b6954;
+        transition: color .3s ease;
+    }
+    
+    a.github:hover {
+        color: #9CDBF3;
         transition: color .3s ease;
     }
     
