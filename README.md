@@ -4,6 +4,8 @@ Want to install Ghost on Azure? Just click the 'Deploy to Azure' button and you'
 
 **Note: After deployment, Ghost will continue setup - resulting in your brand new website staying blank on the very first load. Just refresh, you'll see that everything worked well!**
 
+If you're interested in hosting your blog's images on Azure Blob Storage, check out Tommy Parnell's [ghost-azure-storage module](https://github.com/tparnell8/ghost-azurestorage) that plugs directly into Ghost.
+
 #### Custom Domain
 Directly after installation, Ghost will assume that your blog runs at `http://sitename.azurewebsites.net`. Should you switch to a custom domain, please inform Ghost about that change - you can do by setting the App Setting `websiteUrl` and restarting your website.
 
