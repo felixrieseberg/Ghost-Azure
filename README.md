@@ -24,6 +24,9 @@ Ghost Azure is a project that maintains the minimum configuration required to ru
 
 To run ghost locally run npm install then simply add websiteUrl, PORT, and NODE_ENV to your environment variables and run npm start. By default NODE_ENV will default to development, but the process that runs in azure runs with the value of production. If you decide to run NODE_ENV as production, you will probably want to turn off forceAdminSSL in config.js otherwise trying to access admin will default to redirecting you to https, and you won't have a valid SSL cert locally. The websiteUrl can be something as simple as `http://localhost` and the PORT variable should be the port you wish the instance to listen on.
 
+## Upgrading the Ghost version
+
+See the [Ghost-Updater-Azure](https://github.com/felixrieseberg/Ghost-Updater-Azure) project.
 
 ## Copyright & License
 
