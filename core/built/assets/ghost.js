@@ -1,3 +1,4 @@
+"use strict";
 /* jshint ignore:start */
 
 /* jshint ignore:end */
@@ -8,35 +9,47 @@ define('ghost/acceptance-tests/sinon', ['exports', 'ember-sinon/acceptance-tests
 
 
 
-	exports.default = sinon.default;
+	exports['default'] = sinon['default'];
 
 });
 define('ghost/adapters/application', ['exports', 'ghost/adapters/embedded-relation-adapter'], function (exports, EmbeddedRelationAdapter) {
 
-	'use strict';
+    'use strict';
 
-	var ApplicationAdapter = EmbeddedRelationAdapter['default'].extend();
+    exports['default'] = EmbeddedRelationAdapter['default'].extend({
 
-	exports['default'] = ApplicationAdapter;
+        shouldBackgroundReloadRecord: function shouldBackgroundReloadRecord() {
+            return false;
+        }
+
+    });
 
 });
-define('ghost/adapters/base', ['exports', 'ember-data', 'ghost/utils/ghost-paths'], function (exports, DS, ghostPaths) {
+define('ghost/adapters/base', ['exports', 'ember-data', 'ghost/utils/ghost-paths', 'ember'], function (exports, DS, ghostPaths, Ember) {
 
     'use strict';
 
-    var BaseAdapter = DS['default'].RESTAdapter.extend({
+    var inject = Ember['default'].inject;
+
+    exports['default'] = DS['default'].RESTAdapter.extend({
         host: window.location.origin,
         namespace: ghostPaths['default']().apiRoot.slice(1),
 
-        findQuery: function findQuery(store, type, query) {
+        session: inject.service('session'),
+
+        shouldBackgroundReloadRecord: function shouldBackgroundReloadRecord() {
+            return false;
+        },
+
+        query: function query(store, type, _query) {
             var id;
 
-            if (query.id) {
-                id = query.id;
-                delete query.id;
+            if (_query.id) {
+                id = _query.id;
+                delete _query.id;
             }
 
-            return this.ajax(this.buildURL(type.modelName, id), 'GET', { data: query });
+            return this.ajax(this.buildURL(type.modelName, id), 'GET', { data: _query });
         },
 
         buildURL: function buildURL(type, id) {
@@ -62,69 +75,87 @@ define('ghost/adapters/base', ['exports', 'ember-data', 'ghost/utils/ghost-paths
             return response.then(function () {
                 return null;
             });
+        },
+
+        handleResponse: function handleResponse(status) {
+            if (status === 401) {
+                if (this.get('session.isAuthenticated')) {
+                    this.get('session').invalidate();
+                }
+            }
+
+            return this._super.apply(this, arguments);
         }
     });
-
-    exports['default'] = BaseAdapter;
 
 });
 define('ghost/adapters/embedded-relation-adapter', ['exports', 'ember', 'ghost/adapters/base'], function (exports, Ember, BaseAdapter) {
 
     'use strict';
 
-    var EmbeddedRelationAdapter = BaseAdapter['default'].extend({
-        find: function find(store, type, id) {
-            return this.ajax(this.buildIncludeURL(store, type, id), 'GET');
+    exports['default'] = BaseAdapter['default'].extend({
+        find: function find(store, type, id, snapshot) {
+            return this.ajax(this.buildIncludeURL(store, type.modelName, id, snapshot, 'find'), 'GET');
         },
 
-        findQuery: function findQuery(store, type, query) {
-            return this._super(store, type, this.buildQuery(store, type, query));
+        findRecord: function findRecord(store, type, id, snapshot) {
+            return this.ajax(this.buildIncludeURL(store, type.modelName, id, snapshot, 'findRecord'), 'GET');
         },
 
         findAll: function findAll(store, type, sinceToken) {
-            var query = {};
+            var query, url;
 
             if (sinceToken) {
-                query.since = sinceToken;
+                query = { since: sinceToken };
             }
 
-            return this.findQuery(store, type, query);
+            url = this.buildIncludeURL(store, type.modelName, null, null, 'findAll');
+
+            return this.ajax(url, 'GET', { data: query });
         },
 
-        createRecord: function createRecord(store, type, record) {
-            return this.saveRecord(store, type, record, { method: 'POST' });
+        query: function query(store, type, _query) {
+            return this._super(store, type, this.buildQuery(store, type.modelName, _query));
         },
 
-        updateRecord: function updateRecord(store, type, record) {
+        queryRecord: function queryRecord(store, type, query) {
+            return this._super(store, type, this.buildQuery(store, type.modelName, query));
+        },
+
+        createRecord: function createRecord(store, type, snapshot) {
+            return this.saveRecord(store, type, snapshot, { method: 'POST' });
+        },
+
+        updateRecord: function updateRecord(store, type, snapshot) {
             var options = {
                 method: 'PUT',
-                id: Ember['default'].get(record, 'id')
+                id: Ember['default'].get(snapshot, 'id')
             };
 
-            return this.saveRecord(store, type, record, options);
+            return this.saveRecord(store, type, snapshot, options);
         },
 
-        saveRecord: function saveRecord(store, type, record, options) {
+        saveRecord: function saveRecord(store, type, snapshot, options) {
             options = options || {};
 
-            var url = this.buildIncludeURL(store, type, options.id),
-                payload = this.preparePayload(store, type, record);
+            var url = this.buildIncludeURL(store, type.modelName, options.id, snapshot, 'createRecord'),
+                payload = this.preparePayload(store, type, snapshot);
 
             return this.ajax(url, options.method, payload);
         },
 
-        preparePayload: function preparePayload(store, type, record) {
+        preparePayload: function preparePayload(store, type, snapshot) {
             var serializer = store.serializerFor(type.modelName),
                 payload = {};
 
-            serializer.serializeIntoHash(payload, type, record);
+            serializer.serializeIntoHash(payload, type, snapshot);
 
             return { data: payload };
         },
 
-        buildIncludeURL: function buildIncludeURL(store, type, id) {
-            var url = this.buildURL(type.modelName, id),
-                includes = this.getEmbeddedRelations(store, type);
+        buildIncludeURL: function buildIncludeURL(store, modelName, id, snapshot, requestType, query) {
+            var url = this.buildURL(modelName, id, snapshot, requestType, query),
+                includes = this.getEmbeddedRelations(store, modelName);
 
             if (includes.length) {
                 url += '?include=' + includes.join(',');
@@ -133,8 +164,8 @@ define('ghost/adapters/embedded-relation-adapter', ['exports', 'ember', 'ghost/a
             return url;
         },
 
-        buildQuery: function buildQuery(store, type, options) {
-            var toInclude = this.getEmbeddedRelations(store, type),
+        buildQuery: function buildQuery(store, modelName, options) {
+            var toInclude = this.getEmbeddedRelations(store, modelName),
                 query = options || {},
                 deDupe = {};
 
@@ -163,8 +194,8 @@ define('ghost/adapters/embedded-relation-adapter', ['exports', 'ember', 'ghost/a
             return query;
         },
 
-        getEmbeddedRelations: function getEmbeddedRelations(store, type) {
-            var model = store.modelFor(type),
+        getEmbeddedRelations: function getEmbeddedRelations(store, modelName) {
+            var model = store.modelFor(modelName),
                 ret = [];
 
             // Iterate through the model's relationships and build a list
@@ -179,14 +210,12 @@ define('ghost/adapters/embedded-relation-adapter', ['exports', 'ember', 'ghost/a
         }
     });
 
-    exports['default'] = EmbeddedRelationAdapter;
-
 });
 define('ghost/adapters/setting', ['exports', 'ghost/adapters/application'], function (exports, ApplicationAdapter) {
 
     'use strict';
 
-    var SettingAdapter = ApplicationAdapter['default'].extend({
+    exports['default'] = ApplicationAdapter['default'].extend({
         updateRecord: function updateRecord(store, type, record) {
             var data = {},
                 serializer = store.serializerFor(type.modelName);
@@ -204,20 +233,38 @@ define('ghost/adapters/setting', ['exports', 'ghost/adapters/application'], func
         }
     });
 
-    exports['default'] = SettingAdapter;
+});
+define('ghost/adapters/tag', ['exports', 'ghost/adapters/application', 'ghost/mixins/slug-url'], function (exports, ApplicationAdapter, SlugUrl) {
+
+	'use strict';
+
+	exports['default'] = ApplicationAdapter['default'].extend(SlugUrl['default']);
 
 });
-define('ghost/adapters/user', ['exports', 'ghost/adapters/application'], function (exports, ApplicationAdapter) {
+define('ghost/adapters/user', ['exports', 'ghost/adapters/application', 'ghost/mixins/slug-url'], function (exports, ApplicationAdapter, SlugUrl) {
 
     'use strict';
 
-    var UserAdapter = ApplicationAdapter['default'].extend({
+    exports['default'] = ApplicationAdapter['default'].extend(SlugUrl['default'], {
         find: function find(store, type, id) {
             return this.findQuery(store, type, { id: id, status: 'all' });
+        },
+
+        // TODO: This is needed because the API currently expects you to know the
+        // status of the record before retrieving by ID. Quick fix is to always
+        // include status=all in the query
+        findRecord: function findRecord(store, type, id, snapshot) {
+            var url = this.buildIncludeURL(store, type.modelName, id, snapshot, 'findRecord');
+
+            url += '&status=all';
+
+            return this.ajax(url, 'GET');
+        },
+
+        findAll: function findAll(store, type, id) {
+            return this.query(store, type, { id: id, status: 'all' });
         }
     });
-
-    exports['default'] = UserAdapter;
 
 });
 define('ghost/app', ['exports', 'ember', 'ember/resolver', 'ember/load-initializers', 'ghost/utils/link-component', 'ghost/utils/text-field', 'ghost/config/environment'], function (exports, Ember, Resolver, loadInitializers, __dep3__, __dep4__, config) {
@@ -242,7 +289,6 @@ define('ghost/assets/lib/uploader', ['exports', 'ghost/utils/ghost-paths'], func
     'use strict';
 
     var UploadUi,
-        upload,
         Ghost = ghostPaths['default']();
 
     UploadUi = function ($dropzone, settings) {
@@ -447,6 +493,7 @@ define('ghost/assets/lib/uploader', ['exports', 'ghost/utils/ghost-paths'], func
                 var self = this;
 
                 // This is the start point if an image already exists
+                this.removeExtras();
                 $dropzone.removeClass('image-uploader image-uploader-url').addClass('pre-image-uploader');
                 $dropzone.find('div.description').hide();
                 $dropzone.find('img.js-upload-target').show();
@@ -488,7 +535,7 @@ define('ghost/assets/lib/uploader', ['exports', 'ghost/utils/ghost-paths'], func
         });
     };
 
-    upload = function (options) {
+    exports['default'] = function (options) {
         var settings = $.extend({
             progressbar: true,
             editor: false,
@@ -500,26 +547,56 @@ define('ghost/assets/lib/uploader', ['exports', 'ghost/utils/ghost-paths'], func
                 ui;
 
             ui = new UploadUi($dropzone, settings);
+            $(this).attr('data-uploaderui', true);
             this.uploaderUi = ui;
             ui.init();
         });
-    };
-
-    exports['default'] = upload;
+    }
 
 });
-define('ghost/authenticators/oauth2', ['exports', 'ember', 'simple-auth-oauth2/authenticators/oauth2'], function (exports, Ember, Authenticator) {
+define('ghost/authenticators/oauth2', ['exports', 'ember', 'ember-simple-auth/authenticators/oauth2-password-grant'], function (exports, Ember, Authenticator) {
 
     'use strict';
 
     exports['default'] = Authenticator['default'].extend({
         config: Ember['default'].inject.service(),
+        ghostPaths: Ember['default'].inject.service('ghost-paths'),
+
+        serverTokenEndpoint: Ember['default'].computed('ghostPaths.apiRoot', function () {
+            return this.get('ghostPaths.apiRoot') + '/authentication/token';
+        }),
+
+        serverTokenRevocationEndpoint: Ember['default'].computed('ghostPaths.apiRoot', function () {
+            return this.get('ghostPaths.apiRoot') + '/authentication/revoke';
+        }),
+
         makeRequest: function makeRequest(url, data) {
             data.client_id = this.get('config.clientId');
             data.client_secret = this.get('config.clientSecret');
             return this._super(url, data);
         }
     });
+
+});
+define('ghost/authorizers/oauth2', ['exports', 'ember-simple-auth/authorizers/oauth2-bearer'], function (exports, Oauth2Bearer) {
+
+	'use strict';
+
+	exports['default'] = Oauth2Bearer['default'];
+
+});
+define('ghost/components/app-version', ['exports', 'ember-cli-app-version/components/app-version', 'ghost/config/environment'], function (exports, AppVersionComponent, config) {
+
+  'use strict';
+
+  var _config$APP = config['default'].APP;
+  var name = _config$APP.name;
+  var version = _config$APP.version;
+
+  exports['default'] = AppVersionComponent['default'].extend({
+    version: version,
+    name: name
+  });
 
 });
 define('ghost/components/ember-selectize', ['exports', 'ember-cli-selectize/components/ember-selectize'], function (exports, EmberSelectizeComponent) {
@@ -539,9 +616,9 @@ define('ghost/components/gh-activating-list-item', ['exports', 'ember'], functio
         active: false,
         linkClasses: null,
 
-        unfocusLink: (function () {
+        unfocusLink: Ember['default'].on('click', function () {
             this.$('a').blur();
-        }).on('click'),
+        }),
 
         actions: {
             setActive: function setActive(value) {
@@ -564,10 +641,9 @@ define('ghost/components/gh-alert', ['exports', 'ember'], function (exports, Emb
 
         notifications: Ember['default'].inject.service(),
 
-        typeClass: Ember['default'].computed(function () {
+        typeClass: Ember['default'].computed('message.type', function () {
             var classes = '',
-                message = this.get('message'),
-                type = Ember['default'].get(message, 'type'),
+                type = this.get('message.type'),
                 typeMapping;
 
             typeMapping = {
@@ -631,12 +707,10 @@ define('ghost/components/gh-blog-url', ['exports', 'ember'], function (exports, 
 
     'use strict';
 
-    var blogUrl = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
         tagName: '',
         config: Ember['default'].inject.service()
     });
-
-    exports['default'] = blogUrl;
 
 });
 define('ghost/components/gh-cm-editor', ['exports', 'ember'], function (exports, Ember) {
@@ -644,14 +718,14 @@ define('ghost/components/gh-cm-editor', ['exports', 'ember'], function (exports,
     'use strict';
 
     /* global CodeMirror */
-    var CodeMirrorEditor = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
 
         // DOM stuff
         classNameBindings: ['isFocused:focused'],
         isFocused: false,
 
         value: '', // make sure a value exists
-        editor: null, // reference to CodeMirror editor
+        _editor: null, // reference to CodeMirror editor
 
         // options for the editor
         lineNumbers: true,
@@ -660,35 +734,32 @@ define('ghost/components/gh-cm-editor', ['exports', 'ember'], function (exports,
         theme: 'xq-light',
 
         didInsertElement: function didInsertElement() {
+            var _this = this;
+
             var options = this.getProperties('lineNumbers', 'indentUnit', 'mode', 'theme'),
-                self = this,
-                editor;
-            editor = new CodeMirror(this.get('element'), options);
+                editor = new CodeMirror(this.get('element'), options);
+
             editor.getDoc().setValue(this.get('value'));
 
             // events
-            editor.on('focus', function () {
-                self.set('isFocused', true);
-            });
-            editor.on('blur', function () {
-                self.set('isFocused', false);
-            });
+            editor.on('focus', Ember['default'].run.bind(this, 'set', 'isFocused', true));
+            editor.on('blur', Ember['default'].run.bind(this, 'set', 'isFocused', false));
             editor.on('change', function () {
-                self.set('value', editor.getDoc().getValue());
+                Ember['default'].run(_this, function () {
+                    this.set('value', editor.getDoc().getValue());
+                });
             });
 
-            this.set('editor', editor);
+            this._editor = editor;
         },
 
         willDestroyElement: function willDestroyElement() {
-            var editor = this.get('editor').getWrapperElement();
+            var editor = this._editor.getWrapperElement();
             editor.parentNode.removeChild(editor);
-            this.set('editor', null);
+            this._editor = null;
         }
 
     });
-
-    exports['default'] = CodeMirrorEditor;
 
 });
 define('ghost/components/gh-content-cover', ['exports', 'ember'], function (exports, Ember) {
@@ -732,7 +803,7 @@ define('ghost/components/gh-content-preview-content', ['exports', 'ember', 'ghos
 
         content: null,
 
-        didRender: function didRender() {
+        didInsertElement: function didInsertElement() {
             var el = this.$();
 
             el.on('scroll', Ember['default'].run.bind(el, setScrollClassName['default'], {
@@ -855,10 +926,12 @@ define('ghost/components/gh-dropdown', ['exports', 'ember', 'ghost/mixins/dropdo
             }
             this.$().on('animationend webkitAnimationEnd oanimationend MSAnimationEnd', function (event) {
                 if (event.originalEvent.animationName === 'fade-out') {
-                    if (self.get('closing')) {
-                        self.set('isOpen', false);
-                        self.set('closing', false);
-                    }
+                    Ember['default'].run(self, function () {
+                        if (this.get('closing')) {
+                            this.set('isOpen', false);
+                            this.set('closing', false);
+                        }
+                    });
                 }
             });
         },
@@ -974,48 +1047,58 @@ define('ghost/components/gh-ed-preview', ['exports', 'ember', 'ghost/assets/lib/
 
     'use strict';
 
-    var Preview = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
         config: Ember['default'].inject.service(),
 
+        _scrollWrapper: null,
+
         didInsertElement: function didInsertElement() {
-            this.set('scrollWrapper', this.$().closest('.entry-preview-content'));
+            this._scrollWrapper = this.$().closest('.entry-preview-content');
+            this.adjustScrollPosition(this.get('scrollPosition'));
             Ember['default'].run.scheduleOnce('afterRender', this, this.dropzoneHandler);
         },
 
-        adjustScrollPosition: Ember['default'].observer('scrollPosition', function () {
-            var scrollWrapper = this.get('scrollWrapper'),
-                scrollPosition = this.get('scrollPosition');
+        didReceiveAttrs: function didReceiveAttrs(attrs) {
+            if (!attrs.oldAttrs) {
+                return;
+            }
+
+            if (attrs.newAttrs.scrollPosition && attrs.newAttrs.scrollPosition.value !== attrs.oldAttrs.scrollPosition.value) {
+                this.adjustScrollPosition(attrs.newAttrs.scrollPosition.value);
+            }
+
+            if (attrs.newAttrs.markdown.value !== attrs.oldAttrs.markdown.value) {
+                Ember['default'].run.scheduleOnce('afterRender', this, this.dropzoneHandler);
+            }
+        },
+
+        adjustScrollPosition: function adjustScrollPosition(scrollPosition) {
+            var scrollWrapper = this._scrollWrapper;
 
             if (scrollWrapper) {
                 scrollWrapper.scrollTop(scrollPosition);
             }
-        }),
-
-        dropzoneHandler: function dropzoneHandler() {
-            var dropzones = $('.js-drop-zone');
-
-            uploader['default'].call(dropzones, {
-                editor: true,
-                fileStorage: this.get('config.fileStorage')
-            });
-
-            dropzones.on('uploadstart', Ember['default'].run.bind(this, 'sendAction', 'uploadStarted'));
-            dropzones.on('uploadfailure', Ember['default'].run.bind(this, 'sendAction', 'uploadFinished'));
-            dropzones.on('uploadsuccess', Ember['default'].run.bind(this, 'sendAction', 'uploadFinished'));
-            dropzones.on('uploadsuccess', Ember['default'].run.bind(this, 'sendAction', 'uploadSuccess'));
-
-            // Set the current height so we can listen
-            this.sendAction('updateHeight', this.$().height());
         },
 
-        // fire off 'enable' API function from uploadManager
-        // might need to make sure markdown has been processed first
-        reInitDropzones: Ember['default'].observer('markdown', function () {
-            Ember['default'].run.scheduleOnce('afterRender', this, this.dropzoneHandler);
-        })
-    });
+        dropzoneHandler: function dropzoneHandler() {
+            var dropzones = $('.js-drop-zone[data-uploaderui!="true"]');
 
-    exports['default'] = Preview;
+            if (dropzones.length) {
+                uploader['default'].call(dropzones, {
+                    editor: true,
+                    fileStorage: this.get('config.fileStorage')
+                });
+
+                dropzones.on('uploadstart', Ember['default'].run.bind(this, 'sendAction', 'uploadStarted'));
+                dropzones.on('uploadfailure', Ember['default'].run.bind(this, 'sendAction', 'uploadFinished'));
+                dropzones.on('uploadsuccess', Ember['default'].run.bind(this, 'sendAction', 'uploadFinished'));
+                dropzones.on('uploadsuccess', Ember['default'].run.bind(this, 'sendAction', 'uploadSuccess'));
+
+                // Set the current height so we can listen
+                this.sendAction('updateHeight', this.$().height());
+            }
+        }
+    });
 
 });
 define('ghost/components/gh-editor-save-button', ['exports', 'ember'], function (exports, Ember) {
@@ -1255,11 +1338,9 @@ define('ghost/components/gh-input', ['exports', 'ember', 'ghost/mixins/text-inpu
 
     'use strict';
 
-    var Input = Ember['default'].TextField.extend(TextInputMixin['default'], {
+    exports['default'] = Ember['default'].TextField.extend(TextInputMixin['default'], {
         classNames: 'gh-input'
     });
-
-    exports['default'] = Input;
 
 });
 define('ghost/components/gh-main', ['exports', 'ember'], function (exports, Ember) {
@@ -1333,7 +1414,7 @@ define('ghost/components/gh-modal-dialog', ['exports', 'ember'], function (expor
 
     'use strict';
 
-    var ModalDialog = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
         didInsertElement: function didInsertElement() {
             this.$('.js-modal-container, .js-modal-background').addClass('fade-in open');
             this.$('.js-modal').addClass('open');
@@ -1391,8 +1472,6 @@ define('ghost/components/gh-modal-dialog', ['exports', 'ember'], function (expor
         })
     });
 
-    exports['default'] = ModalDialog;
-
 });
 define('ghost/components/gh-nav-menu', ['exports', 'ember'], function (exports, Ember) {
 
@@ -1404,6 +1483,7 @@ define('ghost/components/gh-nav-menu', ['exports', 'ember'], function (exports, 
         classNameBindings: ['open'],
 
         config: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         open: false,
 
@@ -1656,10 +1736,9 @@ define('ghost/components/gh-notification', ['exports', 'ember'], function (expor
 
         notifications: Ember['default'].inject.service(),
 
-        typeClass: Ember['default'].computed(function () {
+        typeClass: Ember['default'].computed('message.type', function () {
             var classes = '',
-                message = this.get('message'),
-                type = Ember['default'].get(message, 'type'),
+                type = this.get('message.type'),
                 typeMapping;
 
             typeMapping = {
@@ -1771,7 +1850,7 @@ define('ghost/components/gh-posts-list-item', ['exports', 'ember'], function (ex
         }),
 
         authorAvatarBackground: Ember['default'].computed('authorAvatar', function () {
-            return ('background-image: url(' + this.get('authorAvatar') + ')').htmlSafe();
+            return Ember['default'].String.htmlSafe('background-image: url(' + this.get('authorAvatar') + ')');
         }),
 
         viewOrEdit: Ember['default'].computed('previewIsHidden', function () {
@@ -1829,29 +1908,51 @@ define('ghost/components/gh-profile-image', ['exports', 'ember'], function (expo
 
     'use strict';
 
-    /* global md5 */
     exports['default'] = Ember['default'].Component.extend({
         email: '',
         size: 90,
+        debounce: 300,
+
+        validEmail: '',
         hasUploadedImage: false,
         fileStorage: true,
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
-        hasEmail: Ember['default'].computed.notEmpty('email'),
+        displayGravatar: Ember['default'].computed.notEmpty('validEmail'),
+
+        init: function init() {
+            this._super.apply(this, arguments);
+            // Fire this immediately in case we're initialized with a valid email
+            this.trySetValidEmail();
+        },
 
         defaultImage: Ember['default'].computed('ghostPaths', function () {
             var url = this.get('ghostPaths.url').asset('/shared/img/user-image.png');
-            return ('background-image: url(' + url + ')').htmlSafe();
+            return Ember['default'].String.htmlSafe('background-image: url(' + url + ')');
         }),
 
-        imageBackground: Ember['default'].computed('email', 'size', function () {
-            var email = this.get('email'),
-                size = this.get('size'),
-                url;
-            if (email) {
-                url = 'http://www.gravatar.com/avatar/' + md5(email) + '?s=' + size + '&d=blank';
-                return ('background-image: url(' + url + ')').htmlSafe();
+        trySetValidEmail: function trySetValidEmail() {
+            if (!this.get('isDestroyed')) {
+                var email = this.get('email');
+                this.set('validEmail', validator.isEmail(email) ? email : '');
             }
+        },
+
+        didReceiveAttrs: function didReceiveAttrs(attrs) {
+            var timeout = parseInt(attrs.newAttrs.throttle || this.get('debounce'));
+            Ember['default'].run.debounce(this, 'trySetValidEmail', timeout);
+        },
+
+        imageBackground: Ember['default'].computed('validEmail', 'size', function () {
+            var email = this.get('validEmail'),
+                size = this.get('size');
+
+            var style = '';
+            if (email) {
+                var url = 'http://www.gravatar.com/avatar/' + window.md5(email) + '?s=' + size + '&d=blank';
+                style = 'background-image: url(' + url + ')';
+            }
+            return Ember['default'].String.htmlSafe(style);
         }),
 
         didInsertElement: function didInsertElement() {
@@ -1873,7 +1974,9 @@ define('ghost/components/gh-profile-image', ['exports', 'ember'], function (expo
         },
 
         willDestroyElement: function willDestroyElement() {
-            this.$('.js-file-input').fileupload('destroy');
+            if (this.$('.js-file-input').data()['blueimp-fileupload']) {
+                this.$('.js-file-input').fileupload('destroy');
+            }
         },
 
         queueFile: function queueFile(e, data) {
@@ -1912,6 +2015,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
         posts: Ember['default'].computed.filterBy('content', 'category', 'Posts'),
         pages: Ember['default'].computed.filterBy('content', 'category', 'Pages'),
         users: Ember['default'].computed.filterBy('content', 'category', 'Users'),
+        tags: Ember['default'].computed.filterBy('content', 'category', 'Tags'),
 
         _store: Ember['default'].inject.service('store'),
         _routing: Ember['default'].inject.service('-routing'),
@@ -1933,6 +2037,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
             self.set('isLoading', true);
             promises.pushObject(this._loadPosts());
             promises.pushObject(this._loadUsers());
+            promises.pushObject(this._loadTags());
 
             Ember['default'].RSVP.all(promises).then(function () {})['finally'](function () {
                 self.set('isLoading', false);
@@ -1942,7 +2047,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
 
         _loadPosts: function _loadPosts() {
             var store = this.get('_store'),
-                postsUrl = store.adapterFor('post').urlForFindQuery({}, 'post') + '/',
+                postsUrl = store.adapterFor('post').urlForQuery({}, 'post') + '/',
                 postsQuery = { fields: 'id,title,page', limit: 'all', status: 'all', staticPages: 'all' },
                 content = this.get('content'),
                 self = this;
@@ -1952,7 +2057,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
                 content.removeObjects(self.get('pages'));
                 content.pushObjects(posts.posts.map(function (post) {
                     return {
-                        id: post.id,
+                        id: 'post.' + post.id,
                         title: post.title,
                         category: post.page ? 'Pages' : 'Posts'
                     };
@@ -1962,7 +2067,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
 
         _loadUsers: function _loadUsers() {
             var store = this.get('_store'),
-                usersUrl = store.adapterFor('user').urlForFindQuery({}, 'user') + '/',
+                usersUrl = store.adapterFor('user').urlForQuery({}, 'user') + '/',
                 usersQuery = { fields: 'name,slug', limit: 'all' },
                 content = this.get('content'),
                 self = this;
@@ -1971,9 +2076,28 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
                 content.removeObjects(self.get('users'));
                 content.pushObjects(users.users.map(function (user) {
                     return {
-                        id: user.slug,
+                        id: 'user.' + user.slug,
                         title: user.name,
                         category: 'Users'
+                    };
+                }));
+            });
+        },
+
+        _loadTags: function _loadTags() {
+            var store = this.get('_store'),
+                tagsUrl = store.adapterFor('tag').urlForQuery({}, 'tag') + '/',
+                tagsQuery = { fields: 'name,slug', limit: 'all' },
+                content = this.get('content'),
+                self = this;
+
+            return ic_ajax.request(tagsUrl, { data: tagsQuery }).then(function (tags) {
+                content.removeObjects(self.get('tags'));
+                content.pushObjects(tags.tags.map(function (tag) {
+                    return {
+                        id: 'tag.' + tag.slug,
+                        title: tag.name,
+                        category: 'Tags'
                     };
                 }));
             });
@@ -2007,11 +2131,18 @@ define('ghost/components/gh-search-input', ['exports', 'ember', 'ic-ajax'], func
                 }
 
                 if (selected.category === 'Posts' || selected.category === 'Pages') {
-                    transition = self.get('_routing.router').transitionTo('editor.edit', selected.id);
+                    var id = selected.id.replace('post.', '');
+                    transition = self.get('_routing.router').transitionTo('editor.edit', id);
                 }
 
                 if (selected.category === 'Users') {
-                    transition = self.get('_routing.router').transitionTo('team.user', selected.id);
+                    var id = selected.id.replace('user.', '');
+                    transition = self.get('_routing.router').transitionTo('team.user', id);
+                }
+
+                if (selected.category === 'Tags') {
+                    var id = selected.id.replace('tag.', '');
+                    transition = self.get('_routing.router').transitionTo('settings.tags.tag', id);
                 }
 
                 transition.then(function () {
@@ -2104,22 +2235,32 @@ define('ghost/components/gh-selectize', ['exports', 'ember', 'ember-cli-selectiz
 
     exports['default'] = EmberSelectizeComponent['default'].extend({
 
+        selectizeOptions: Ember['default'].computed(function () {
+            var options = this._super.apply(this, arguments);
+
+            options.onChange = Ember['default'].run.bind(this, '_onChange');
+
+            return options;
+        }),
+
         _dontOpenWhenBlank: Ember['default'].on('didInsertElement', function () {
             var openOnFocus = this.get('openOnFocus');
 
             if (!openOnFocus) {
-                Ember['default'].run.next(this, function () {
+                Ember['default'].run.schedule('afterRender', this, function () {
                     var selectize = this._selectize;
-                    selectize.on('dropdown_open', function () {
-                        if (Ember['default'].isBlank(selectize.$control_input.val())) {
-                            selectize.close();
-                        }
-                    });
-                    selectize.on('type', function (filter) {
-                        if (Ember['default'].isBlank(filter)) {
-                            selectize.close();
-                        }
-                    });
+                    if (selectize) {
+                        selectize.on('dropdown_open', function () {
+                            if (Ember['default'].isBlank(selectize.$control_input.val())) {
+                                selectize.close();
+                            }
+                        });
+                        selectize.on('type', function (filter) {
+                            if (Ember['default'].isBlank(filter)) {
+                                selectize.close();
+                            }
+                        });
+                    }
                 });
             }
         }),
@@ -2160,6 +2301,37 @@ define('ghost/components/gh-selectize', ['exports', 'ember', 'ember-cli-selectiz
                 this.sendAction('add-item', obj);
                 this.sendAction('add-value', val);
             });
+        },
+
+        _onChange: function _onChange(args) {
+            var selection = Ember['default'].get(this, 'selection'),
+                valuePath = Ember['default'].get(this, '_valuePath');
+
+            if (!args || !selection || !Ember['default'].isArray(selection) || args.length !== selection.length) {
+                return;
+            }
+
+            var hasNoChanges = selection.every(function (obj, idx) {
+                return Ember['default'].get(obj, valuePath) === args[idx];
+            });
+
+            if (hasNoChanges) {
+                return;
+            }
+
+            var reorderedSelection = Ember['default'].A([]);
+
+            args.forEach(function (value) {
+                var obj = selection.find(function (item) {
+                    return Ember['default'].get(item, valuePath) + '' === value;
+                });
+
+                if (obj) {
+                    reorderedSelection.addObject(obj);
+                }
+            });
+
+            this.set('selection', reorderedSelection);
         }
 
     });
@@ -2182,7 +2354,7 @@ define('ghost/components/gh-skip-link', ['exports', 'ember'], function (exports,
         // anchor behaviors or ignored
         href: Ember['default'].String.htmlSafe('javascript:;'),
 
-        scrollTo: (function () {
+        scrollTo: Ember['default'].on('click', function () {
             var anchor = this.get('anchor'),
                 $el = Ember['default'].$(anchor);
 
@@ -2199,7 +2371,7 @@ define('ghost/components/gh-skip-link', ['exports', 'ember'], function (exports,
                     $(this).removeAttr('tabindex');
                 }).focus();
             }
-        }).on('click')
+        })
     });
 
 });
@@ -2266,7 +2438,7 @@ define('ghost/components/gh-tab-pane', ['exports', 'ember'], function (exports, 
 
     'use strict';
 
-    var TabPane = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
         classNameBindings: ['active'],
 
         tabsManager: Ember['default'].computed(function () {
@@ -2293,14 +2465,12 @@ define('ghost/components/gh-tab-pane', ['exports', 'ember'], function (exports, 
         }
     });
 
-    exports['default'] = TabPane;
-
 });
 define('ghost/components/gh-tab', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var Tab = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
         tabsManager: Ember['default'].computed(function () {
             return this.nearestWithProperty('isTabsManager');
         }),
@@ -2309,7 +2479,7 @@ define('ghost/components/gh-tab', ['exports', 'ember'], function (exports, Ember
             return this.get('tabsManager.activeTab') === this;
         }),
 
-        index: Ember['default'].computed('tabsManager.tabs.@each', function () {
+        index: Ember['default'].computed('tabsManager.tabs.[]', function () {
             return this.get('tabsManager.tabs').indexOf(this);
         }),
 
@@ -2329,14 +2499,12 @@ define('ghost/components/gh-tab', ['exports', 'ember'], function (exports, Ember
         }
     });
 
-    exports['default'] = Tab;
-
 });
 define('ghost/components/gh-tabs-manager', ['exports', 'ember'], function (exports, Ember) {
 
   'use strict';
 
-  var TabsManager = Ember['default'].Component.extend({
+  exports['default'] = Ember['default'].Component.extend({
       activeTab: null,
       tabs: [],
       tabPanes: [],
@@ -2369,25 +2537,215 @@ define('ghost/components/gh-tabs-manager', ['exports', 'ember'], function (expor
       }
   });
 
-  exports['default'] = TabsManager;
+});
+define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/utils/bound-one-way'], function (exports, Ember, boundOneWay) {
+
+    'use strict';
+
+    /* global key */
+    var get = Ember['default'].get;
+
+    exports['default'] = Ember['default'].Component.extend({
+
+        tag: null,
+
+        scratchName: boundOneWay['default']('tag.name'),
+        scratchSlug: boundOneWay['default']('tag.slug'),
+        scratchDescription: boundOneWay['default']('tag.description'),
+        scratchMetaTitle: boundOneWay['default']('tag.meta_title'),
+        scratchMetaDescription: boundOneWay['default']('tag.meta_description'),
+
+        isViewingSubview: false,
+
+        config: Ember['default'].inject.service(),
+
+        title: Ember['default'].computed('tag.isNew', function () {
+            if (this.get('tag.isNew')) {
+                return 'New Tag';
+            } else {
+                return 'Tag Settings';
+            }
+        }),
+
+        seoTitle: Ember['default'].computed('scratchName', 'scratchMetaTitle', function () {
+            var metaTitle = this.get('scratchMetaTitle') || '';
+
+            metaTitle = metaTitle.length > 0 ? metaTitle : this.get('scratchName');
+
+            if (metaTitle && metaTitle.length > 70) {
+                metaTitle = metaTitle.substring(0, 70).trim();
+                metaTitle = Ember['default'].Handlebars.Utils.escapeExpression(metaTitle);
+                metaTitle = Ember['default'].String.htmlSafe(metaTitle + '&hellip;');
+            }
+
+            return metaTitle;
+        }),
+
+        seoURL: Ember['default'].computed('scratchSlug', function () {
+            var blogUrl = this.get('config.blogUrl'),
+                seoSlug = this.get('scratchSlug') || '';
+
+            var seoURL = blogUrl + '/tag/' + seoSlug;
+
+            // only append a slash to the URL if the slug exists
+            if (seoSlug) {
+                seoURL += '/';
+            }
+
+            if (seoURL.length > 70) {
+                seoURL = seoURL.substring(0, 70).trim();
+                seoURL = Ember['default'].String.htmlSafe(seoURL + '&hellip;');
+            }
+
+            return seoURL;
+        }),
+
+        seoDescription: Ember['default'].computed('scratchDescription', 'scratchMetaDescription', function () {
+            var metaDescription = this.get('scratchMetaDescription') || '';
+
+            metaDescription = metaDescription.length > 0 ? metaDescription : this.get('scratchDescription');
+
+            if (metaDescription && metaDescription.length > 156) {
+                metaDescription = metaDescription.substring(0, 156).trim();
+                metaDescription = Ember['default'].Handlebars.Utils.escapeExpression(metaDescription);
+                metaDescription = Ember['default'].String.htmlSafe(metaDescription + '&hellip;');
+            }
+
+            return metaDescription;
+        }),
+
+        didReceiveAttrs: function didReceiveAttrs(attrs) {
+            if (get(attrs, 'newAttrs.tag.value.id') !== get(attrs, 'oldAttrs.tag.value.id')) {
+                this.reset();
+            }
+        },
+
+        reset: function reset() {
+            this.set('isViewingSubview', false);
+            if (this.$()) {
+                this.$('.settings-menu-pane').scrollTop(0);
+            }
+        },
+
+        focusIn: function focusIn() {
+            key.setScope('tag-settings-form');
+        },
+
+        focusOut: function focusOut() {
+            key.setScope('default');
+        },
+
+        actions: {
+            setProperty: function setProperty(property, value) {
+                this.attrs.setProperty(property, value);
+            },
+
+            setCoverImage: function setCoverImage(image) {
+                this.attrs.setProperty('image', image);
+            },
+
+            clearCoverImage: function clearCoverImage() {
+                this.attrs.setProperty('image', '');
+            },
+
+            setUploaderReference: function setUploaderReference() {
+                // noop
+            },
+
+            openMeta: function openMeta() {
+                this.set('isViewingSubview', true);
+            },
+
+            closeMeta: function closeMeta() {
+                this.set('isViewingSubview', false);
+            },
+
+            deleteTag: function deleteTag() {
+                this.sendAction('openModal', 'delete-tag', this.get('tag'));
+            }
+        }
+
+    });
+
+});
+define('ghost/components/gh-tags-management-container', ['exports', 'ember'], function (exports, Ember) {
+
+    'use strict';
+
+    var isBlank = Ember['default'].isBlank;
+
+    exports['default'] = Ember['default'].Component.extend({
+        classNames: ['view-container'],
+        classNameBindings: ['isMobile'],
+
+        mobileWidth: 600,
+        tags: null,
+        selectedTag: null,
+
+        isMobile: false,
+        isEmpty: Ember['default'].computed.equal('tags.length', 0),
+
+        resizeService: Ember['default'].inject.service('resize-service'),
+
+        _resizeListener: null,
+
+        displaySettingsPane: Ember['default'].computed('isEmpty', 'selectedTag', 'isMobile', function () {
+            var isEmpty = this.get('isEmpty'),
+                selectedTag = this.get('selectedTag'),
+                isMobile = this.get('isMobile');
+
+            // always display settings pane for blank-slate on mobile
+            if (isMobile && isEmpty) {
+                return true;
+            }
+
+            // display list if no tag is selected on mobile
+            if (isMobile && isBlank(selectedTag)) {
+                return false;
+            }
+
+            // default to displaying settings pane
+            return true;
+        }),
+
+        toggleMobile: function toggleMobile() {
+            var width = Ember['default'].$(window).width();
+
+            if (width < this.get('mobileWidth')) {
+                this.set('isMobile', true);
+                this.sendAction('enteredMobile');
+            } else {
+                this.set('isMobile', false);
+                this.sendAction('leftMobile');
+            }
+        },
+
+        didInitAttrs: function didInitAttrs() {
+            this._resizeListener = Ember['default'].run.bind(this, this.toggleMobile);
+            this.get('resizeService').on('debouncedDidResize', this._resizeListener);
+            this.toggleMobile();
+        },
+
+        willDestroyElement: function willDestroyElement() {
+            this.get('resizeService').off('debouncedDidResize', this._resizeListener);
+        }
+    });
 
 });
 define('ghost/components/gh-textarea', ['exports', 'ember', 'ghost/mixins/text-input'], function (exports, Ember, TextInputMixin) {
 
     'use strict';
 
-    var TextArea = Ember['default'].TextArea.extend(TextInputMixin['default'], {
+    exports['default'] = Ember['default'].TextArea.extend(TextInputMixin['default'], {
         classNames: 'gh-input'
     });
-
-    exports['default'] = TextArea;
 
 });
 define('ghost/components/gh-trim-focus-input', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var TrimFocusInput = Ember['default'].TextField.extend({
+    exports['default'] = Ember['default'].TextField.extend({
         focus: true,
         classNames: 'gh-input',
         attributeBindings: ['autofocus'],
@@ -2414,14 +2772,12 @@ define('ghost/components/gh-trim-focus-input', ['exports', 'ember'], function (e
         })
     });
 
-    exports['default'] = TrimFocusInput;
-
 });
 define('ghost/components/gh-upload-modal', ['exports', 'ember', 'ghost/components/gh-modal-dialog', 'ghost/assets/lib/uploader', 'ghost/utils/caja-sanitizers'], function (exports, Ember, ModalDialog, upload, cajaSanitizers) {
 
     'use strict';
 
-    var UploadModal = ModalDialog['default'].extend({
+    exports['default'] = ModalDialog['default'].extend({
         layoutName: 'components/gh-modal-dialog',
 
         config: Ember['default'].inject.service(),
@@ -2493,8 +2849,6 @@ define('ghost/components/gh-upload-modal', ['exports', 'ember', 'ghost/component
         }
     });
 
-    exports['default'] = UploadModal;
-
 });
 define('ghost/components/gh-uploader', ['exports', 'ember', 'ghost/assets/lib/uploader'], function (exports, Ember, uploader) {
 
@@ -2509,29 +2863,6 @@ define('ghost/components/gh-uploader', ['exports', 'ember', 'ghost/assets/lib/up
             return this.get('image') || '';
         }),
 
-        /**
-         * Sets up the uploader on render
-         */
-        setup: function setup() {
-            var $this = this.$(),
-                self = this;
-
-            // this.set('uploaderReference', uploader.call($this, {
-            //     editor: true,
-            //     fileStorage: this.get('config.fileStorage')
-            // }));
-
-            $this.on('uploadsuccess', function (event, result) {
-                if (result && result !== '' && result !== 'http://') {
-                    self.sendAction('uploaded', result);
-                }
-            });
-
-            $this.on('imagecleared', function () {
-                self.sendAction('canceled');
-            });
-        },
-
         // removes event listeners from the uploader
         removeListeners: function removeListeners() {
             var $this = this.$();
@@ -2540,9 +2871,31 @@ define('ghost/components/gh-uploader', ['exports', 'ember', 'ghost/assets/lib/up
             $this.find('.js-cancel').off();
         },
 
-        // didInsertElement: function () {
-        //     Ember.run.scheduleOnce('afterRender', this, this.setup());
-        // },
+        // NOTE: because the uploader is sometimes in the same place in the DOM
+        // between transitions Glimmer will re-use the existing elements including
+        // those that arealready decorated by jQuery. The following works around
+        // situations where the image is changed without a full teardown/rebuild
+        didReceiveAttrs: function didReceiveAttrs(attrs) {
+            var oldValue = attrs.oldAttrs && Ember['default'].get(attrs.oldAttrs, 'image.value'),
+                newValue = attrs.newAttrs && Ember['default'].get(attrs.newAttrs, 'image.value'),
+                self = this;
+
+            // always reset when we receive a blank image
+            // - handles navigating to populated image from blank image
+            if (Ember['default'].isEmpty(newValue) && !Ember['default'].isEmpty(oldValue)) {
+                self.$()[0].uploaderUi.reset();
+            }
+
+            // re-init if we receive a new image but the uploader is blank
+            // - handles back button navigating from blank image to populated image
+            if (!Ember['default'].isEmpty(newValue) && this.$()) {
+                if (this.$('.js-upload-target').attr('src') === '') {
+                    this.$()[0].uploaderUi.reset();
+                    this.$()[0].uploaderUi.initWithImage();
+                }
+            }
+        },
+
         didInsertElement: function didInsertElement() {
             this.send('initUploader');
         },
@@ -2554,10 +2907,9 @@ define('ghost/components/gh-uploader', ['exports', 'ember', 'ghost/assets/lib/up
         actions: {
             initUploader: function initUploader() {
                 var ref,
-                    el,
+                    el = this.$(),
                     self = this;
 
-                el = this.$();
                 ref = uploader['default'].call(el, {
                     editor: true,
                     fileStorage: this.get('config.fileStorage')
@@ -2565,15 +2917,15 @@ define('ghost/components/gh-uploader', ['exports', 'ember', 'ghost/assets/lib/up
 
                 el.on('uploadsuccess', function (event, result) {
                     if (result && result !== '' && result !== 'http://') {
-                        self.sendAction('uploaded', result);
+                        Ember['default'].run(self, function () {
+                            this.sendAction('uploaded', result);
+                        });
                     }
                 });
 
-                el.on('imagecleared', function () {
-                    self.sendAction('canceled');
-                });
+                el.on('imagecleared', Ember['default'].run.bind(self, 'sendAction', 'canceled'));
 
-                this.sendAction('initUploader', this.get('uploaderReference'));
+                this.sendAction('initUploader', ref);
             }
         }
     });
@@ -2583,7 +2935,7 @@ define('ghost/components/gh-url-preview', ['exports', 'ember'], function (export
 
     'use strict';
 
-    var urlPreview = Ember['default'].Component.extend({
+    exports['default'] = Ember['default'].Component.extend({
         classNames: 'ghost-url-preview',
         prefix: null,
         slug: null,
@@ -2607,8 +2959,6 @@ define('ghost/components/gh-url-preview', ['exports', 'ember'], function (export
         })
     });
 
-    exports['default'] = urlPreview;
-
 });
 define('ghost/components/gh-user-active', ['exports', 'ember'], function (exports, Ember) {
 
@@ -2628,7 +2978,7 @@ define('ghost/components/gh-user-active', ['exports', 'ember'], function (export
         userImageBackground: Ember['default'].computed('user.image', 'userDefault', function () {
             var url = this.get('user.image') || this.get('userDefault');
 
-            return ('background-image: url(' + url + ')').htmlSafe();
+            return Ember['default'].String.htmlSafe('background-image: url(' + url + ')');
         }),
 
         lastLogin: Ember['default'].computed('user.last_login', function () {
@@ -2670,13 +3020,14 @@ define('ghost/components/gh-user-invited', ['exports', 'ember'], function (expor
                     // If sending the invitation email fails, the API will still return a status of 201
                     // but the user's status in the response object will be 'invited-pending'.
                     if (result.users[0].status === 'invited-pending') {
-                        notifications.showAlert('Invitation email was not sent.  Please try resending.', { type: 'error' });
+                        notifications.showAlert('Invitation email was not sent.  Please try resending.', { type: 'error', key: 'invite.resend.not-sent' });
                     } else {
                         user.set('status', result.users[0].status);
                         notifications.showNotification(notificationText);
+                        notifications.closeAlerts('invite.resend');
                     }
                 })['catch'](function (error) {
-                    notifications.showAPIError(error);
+                    notifications.showAPIError(error, { key: 'invite.resend' });
                 })['finally'](function () {
                     self.set('isSending', false);
                 });
@@ -2693,15 +3044,15 @@ define('ghost/components/gh-user-invited', ['exports', 'ember'], function (expor
                     if (user.get('invited')) {
                         user.destroyRecord().then(function () {
                             var notificationText = 'Invitation revoked. (' + email + ')';
-
                             notifications.showNotification(notificationText);
+                            notifications.closeAlerts('invite.revoke');
                         })['catch'](function (error) {
-                            notifications.showAPIError(error);
+                            notifications.showAPIError(error, { key: 'invite.revoke' });
                         });
                     } else {
                         // if the user is no longer marked as "invited", then show a warning and reload the route
                         self.sendAction('reload');
-                        notifications.showAlert('This user has already accepted the invitation.', { type: 'error', delayed: true });
+                        notifications.showAlert('This user has already accepted the invitation.', { type: 'error', delayed: true, key: 'invite.revoke.already-accepted' });
                     }
                 });
             }
@@ -2716,8 +3067,15 @@ define('ghost/components/gh-validation-status-container', ['exports', 'ember', '
     exports['default'] = Ember['default'].Component.extend(ValidationStateMixin['default'], {
         classNameBindings: ['errorClass'],
 
-        errorClass: Ember['default'].computed('hasError', function () {
-            return this.get('hasError') ? 'error' : 'success';
+        errorClass: Ember['default'].computed('property', 'hasError', 'hasValidated.[]', function () {
+            var hasValidated = this.get('hasValidated'),
+                property = this.get('property');
+
+            if (hasValidated && hasValidated.contains(property)) {
+                return this.get('hasError') ? 'error' : 'success';
+            } else {
+                return '';
+            }
         })
     });
 
@@ -2741,7 +3099,7 @@ define('ghost/controllers/about', ['exports', 'ember'], function (exports, Ember
 
     'use strict';
 
-    var AboutController = Ember['default'].Controller.extend({
+    exports['default'] = Ember['default'].Controller.extend({
         updateNotificationCount: 0,
 
         actions: {
@@ -2750,8 +3108,6 @@ define('ghost/controllers/about', ['exports', 'ember'], function (exports, Ember
             }
         }
     });
-
-    exports['default'] = AboutController;
 
 });
 define('ghost/controllers/application', ['exports', 'ember'], function (exports, Ember) {
@@ -2830,7 +3186,7 @@ define('ghost/controllers/editor/new', ['exports', 'ember', 'ghost/mixins/editor
 
     'use strict';
 
-    var EditorNewController = Ember['default'].Controller.extend(EditorControllerMixin['default'], {
+    exports['default'] = Ember['default'].Controller.extend(EditorControllerMixin['default'], {
         // Overriding autoSave on the base controller, as the new controller shouldn't be autosaving
         autoSave: Ember['default'].K,
         actions: {
@@ -2848,14 +3204,12 @@ define('ghost/controllers/editor/new', ['exports', 'ember', 'ghost/mixins/editor
         }
     });
 
-    exports['default'] = EditorNewController;
-
 });
 define('ghost/controllers/error', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var ErrorController = Ember['default'].Controller.extend({
+    exports['default'] = Ember['default'].Controller.extend({
         code: Ember['default'].computed('content.status', function () {
             return this.get('content.status') > 200 ? this.get('content.status') : 500;
         }),
@@ -2869,18 +3223,16 @@ define('ghost/controllers/error', ['exports', 'ember'], function (exports, Ember
         stack: false
     });
 
-    exports['default'] = ErrorController;
-
 });
 define('ghost/controllers/feature', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var FeatureController = Ember['default'].Controller.extend(Ember['default'].PromiseProxyMixin, {
+    exports['default'] = Ember['default'].Controller.extend(Ember['default'].PromiseProxyMixin, {
         init: function init() {
             var promise;
 
-            promise = this.store.find('setting', { type: 'blog,theme' }).then(function (settings) {
+            promise = this.store.query('setting', { type: 'blog,theme' }).then(function (settings) {
                 return settings.get('firstObject');
             });
 
@@ -2901,10 +3253,12 @@ define('ghost/controllers/feature', ['exports', 'ember'], function (exports, Emb
             }
 
             return value;
+        }),
+
+        publicAPI: Ember['default'].computed('config.publicAPI', 'labs.publicAPI', function () {
+            return this.get('config.publicAPI') || this.get('labs.publicAPI');
         })
     });
-
-    exports['default'] = FeatureController;
 
 });
 define('ghost/controllers/modals/copy-html', ['exports', 'ember'], function (exports, Ember) {
@@ -2931,11 +3285,11 @@ define('ghost/controllers/modals/delete-all', ['exports', 'ember', 'ic-ajax'], f
                 ic_ajax.request(this.get('ghostPaths.url').api('db'), {
                     type: 'DELETE'
                 }).then(function () {
-                    self.get('notifications').showAlert('All content deleted from database.', { type: 'success' });
+                    self.get('notifications').showAlert('All content deleted from database.', { type: 'success', key: 'all-content.delete.success' });
                     self.store.unloadAll('post');
                     self.store.unloadAll('tag');
                 })['catch'](function (response) {
-                    self.get('notifications').showAPIError(response);
+                    self.get('notifications').showAPIError(response, { key: 'all-content.delete' });
                 });
             },
 
@@ -2975,9 +3329,10 @@ define('ghost/controllers/modals/delete-post', ['exports', 'ember'], function (e
 
                 model.destroyRecord().then(function () {
                     self.get('dropdown').closeDropdowns();
+                    self.get('notifications').closeAlerts('post.delete');
                     self.transitionToRoute('posts.index');
                 }, function () {
-                    self.get('notifications').showAlert('Your post could not be deleted. Please try again.', { type: 'error' });
+                    self.get('notifications').showAlert('Your post could not be deleted. Please try again.', { type: 'error', key: 'post.delete.failed' });
                 });
             },
 
@@ -3003,22 +3358,34 @@ define('ghost/controllers/modals/delete-tag', ['exports', 'ember'], function (ex
 
     'use strict';
 
-    exports['default'] = Ember['default'].Controller.extend({
-        notifications: Ember['default'].inject.service(),
+    var Controller = Ember['default'].Controller;
+    var computed = Ember['default'].computed;
+    var inject = Ember['default'].inject;
 
-        postInflection: Ember['default'].computed('model.post_count', function () {
-            return this.get('model.post_count') > 1 ? 'posts' : 'post';
+    exports['default'] = Controller.extend({
+        application: inject.controller(),
+        notifications: inject.service(),
+
+        postInflection: computed('model.count.posts', function () {
+            return this.get('model.count.posts') > 1 ? 'posts' : 'post';
         }),
 
         actions: {
             confirmAccept: function confirmAccept() {
-                var tag = this.get('model'),
-                    self = this;
+                var _this = this;
+
+                var tag = this.get('model');
 
                 this.send('closeMenus');
 
-                tag.destroyRecord()['catch'](function (error) {
-                    self.get('notifications').showAPIError(error);
+                tag.destroyRecord().then(function () {
+                    var currentRoute = _this.get('application.currentRouteName') || '';
+
+                    if (currentRoute.match(/^settings\.tags/)) {
+                        _this.transitionToRoute('settings.tags.index');
+                    }
+                })['catch'](function (error) {
+                    _this.get('notifications').showAPIError(error, { key: 'tag.delete' });
                 });
             },
 
@@ -3050,11 +3417,11 @@ define('ghost/controllers/modals/delete-user', ['exports', 'ember'], function (e
         userPostCount: Ember['default'].computed('model.id', function () {
             var promise,
                 query = {
-                author: this.get('model.slug'),
+                filter: 'author:' + this.get('model.slug'),
                 status: 'all'
             };
 
-            promise = this.store.find('post', query).then(function (results) {
+            promise = this.store.query('post', query).then(function (results) {
                 return results.meta.pagination.total;
             });
 
@@ -3073,10 +3440,11 @@ define('ghost/controllers/modals/delete-user', ['exports', 'ember'], function (e
                     user = this.get('model');
 
                 user.destroyRecord().then(function () {
+                    self.get('notifications').closeAlerts('user.delete');
                     self.store.unloadAll('post');
                     self.transitionToRoute('team');
                 }, function () {
-                    self.get('notifications').showAlert('The user could not be deleted. Please try again.', { type: 'error' });
+                    self.get('notifications').showAlert('The user could not be deleted. Please try again.', { type: 'error', key: 'user.delete.failed' });
                 });
             },
 
@@ -3111,7 +3479,7 @@ define('ghost/controllers/modals/invite-new-user', ['exports', 'ember', 'ghost/m
         authorRole: null,
 
         roles: Ember['default'].computed(function () {
-            return this.store.find('role', { permissions: 'assign' });
+            return this.store.query('role', { permissions: 'assign' });
         }),
 
         // Used to set the initial value for the dropdown
@@ -3154,14 +3522,14 @@ define('ghost/controllers/modals/invite-new-user', ['exports', 'ember', 'ghost/m
                 this.set('email', '');
                 this.set('role', self.get('authorRole'));
 
-                this.store.find('user').then(function (result) {
+                this.store.findAll('user', { reload: true }).then(function (result) {
                     var invitedUser = result.findBy('email', email);
 
                     if (invitedUser) {
                         if (invitedUser.get('status') === 'invited' || invitedUser.get('status') === 'invited-pending') {
-                            self.get('notifications').showAlert('A user with that email address was already invited.', { type: 'warn' });
+                            self.get('notifications').showAlert('A user with that email address was already invited.', { type: 'warn', key: 'invite.send.already-invited' });
                         } else {
-                            self.get('notifications').showAlert('A user with that email address already exists.', { type: 'warn' });
+                            self.get('notifications').showAlert('A user with that email address already exists.', { type: 'warn', key: 'invite.send.user-exists' });
                         }
                     } else {
                         newUser = self.store.createRecord('user', {
@@ -3176,8 +3544,9 @@ define('ghost/controllers/modals/invite-new-user', ['exports', 'ember', 'ghost/m
                             // If sending the invitation email fails, the API will still return a status of 201
                             // but the user's status in the response object will be 'invited-pending'.
                             if (newUser.get('status') === 'invited-pending') {
-                                self.get('notifications').showAlert('Invitation email was not sent.  Please try resending.', { type: 'error' });
+                                self.get('notifications').showAlert('Invitation email was not sent.  Please try resending.', { type: 'error', key: 'invite.send.failed' });
                             } else {
+                                self.get('notifications').closeAlerts('invite.send');
                                 self.get('notifications').showNotification(notificationText);
                             }
                         })['catch'](function (errors) {
@@ -3187,9 +3556,9 @@ define('ghost/controllers/modals/invite-new-user', ['exports', 'ember', 'ghost/m
                             // want to use inline-validations here and only show an
                             // alert if we have an actual error
                             if (errors) {
-                                self.get('notifications').showErrors(errors);
+                                self.get('notifications').showErrors(errors, { key: 'invite.send' });
                             } else if (validationErrors) {
-                                self.get('notifications').showAlert(validationErrors.toString(), { type: 'error' });
+                                self.get('notifications').showAlert(validationErrors.toString(), { type: 'error', key: 'invite.send.validation-error' });
                             }
                         })['finally'](function () {
                             self.get('errors').clear();
@@ -3241,11 +3610,11 @@ define('ghost/controllers/modals/leave-editor', ['exports', 'ember'], function (
                     model.deleteRecord();
                 } else {
                     // roll back changes on model props
-                    model.rollback();
+                    model.rollbackAttributes();
                 }
 
-                // setting isDirty to false here allows willTransition on the editor route to succeed
-                editorController.set('isDirty', false);
+                // setting hasDirtyAttributes to false here allows willTransition on the editor route to succeed
+                editorController.set('hasDirtyAttributes', false);
 
                 // since the transition is now certain to complete, we can unset window.onbeforeunload here
                 window.onbeforeunload = null;
@@ -3279,6 +3648,7 @@ define('ghost/controllers/modals/signin', ['exports', 'ember', 'ghost/mixins/val
 
         application: Ember['default'].inject.controller(),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         identification: Ember['default'].computed('session.user.email', function () {
             return this.get('session.user.email');
@@ -3287,15 +3657,15 @@ define('ghost/controllers/modals/signin', ['exports', 'ember', 'ghost/mixins/val
         actions: {
             authenticate: function authenticate() {
                 var appController = this.get('application'),
-                    authStrategy = 'ghost-authenticator:oauth2-password-grant',
-                    data = this.getProperties('identification', 'password'),
+                    authStrategy = 'authenticator:oauth2',
                     self = this;
 
                 appController.set('skipAuthSuccessHandler', true);
 
-                this.get('session').authenticate(authStrategy, data).then(function () {
+                this.get('session').authenticate(authStrategy, this.get('identification'), this.get('password')).then(function () {
                     self.send('closeModal');
                     self.set('password', '');
+                    self.get('notifications').closeAlerts('post.save');
                 })['catch'](function () {
                     // if authentication fails a rejected promise will be returned.
                     // it needs to be caught so it doesn't generate an exception in the console,
@@ -3358,16 +3728,16 @@ define('ghost/controllers/modals/transfer-owner', ['exports', 'ember', 'ic-ajax'
                     // because store.pushPayload is not working with embedded relations
                     if (response && Ember['default'].isArray(response.users)) {
                         response.users.forEach(function (userJSON) {
-                            var user = self.store.getById('user', userJSON.id),
-                                role = self.store.getById('role', userJSON.roles[0].id);
+                            var user = self.store.peekRecord('user', userJSON.id),
+                                role = self.store.peekRecord('role', userJSON.roles[0].id);
 
                             user.set('role', role);
                         });
                     }
 
-                    self.get('notifications').showAlert('Ownership successfully transferred to ' + user.get('name'), { type: 'success' });
+                    self.get('notifications').showAlert('Ownership successfully transferred to ' + user.get('name'), { type: 'success', key: 'owner.transfer.success' });
                 })['catch'](function (error) {
-                    self.get('notifications').showAPIError(error);
+                    self.get('notifications').showAPIError(error, { key: 'owner.transfer' });
                 });
             },
 
@@ -3405,7 +3775,7 @@ define('ghost/controllers/modals/upload', ['exports', 'ember'], function (export
                 this.get('model').save().then(function (model) {
                     return model;
                 })['catch'](function (err) {
-                    notifications.showAPIError(err);
+                    notifications.showAPIError(err, { key: 'image.upload' });
                 });
             },
 
@@ -3437,6 +3807,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
         config: Ember['default'].inject.service(),
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         initializeSelectedAuthor: Ember['default'].observer('model', function () {
             var self = this;
@@ -3451,7 +3822,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
             // Loaded asynchronously, so must use promise proxies.
             var deferred = {};
 
-            deferred.promise = this.store.find('user', { limit: 'all' }).then(function (users) {
+            deferred.promise = this.store.query('user', { limit: 'all' }).then(function (users) {
                 return users.rejectBy('id', 'me').sortBy('name');
             }).then(function (users) {
                 return users.filter(function (user) {
@@ -3637,7 +4008,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
 
                 this.get('model').save()['catch'](function (errors) {
                     self.showErrors(errors);
-                    self.get('model').rollback();
+                    self.get('model').rollbackAttributes();
                 });
             },
 
@@ -3654,7 +4025,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
 
                 this.get('model').save(this.get('saveOptions'))['catch'](function (errors) {
                     self.showErrors(errors);
-                    self.get('model').rollback();
+                    self.get('model').rollbackAttributes();
                 });
             },
 
@@ -3719,7 +4090,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
                     return self.get('model').save();
                 })['catch'](function (errors) {
                     self.showErrors(errors);
-                    self.get('model').rollback();
+                    self.get('model').rollbackAttributes();
                 });
             },
 
@@ -3774,7 +4145,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
 
                 this.get('model').save()['catch'](function (errors) {
                     self.showErrors(errors);
-                    self.get('model').rollback();
+                    self.get('model').rollbackAttributes();
                 });
             },
 
@@ -3831,7 +4202,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
 
                 this.get('model').save()['catch'](function (errors) {
                     self.showErrors(errors);
-                    self.get('model').rollback();
+                    self.get('model').rollbackAttributes();
                 });
             },
 
@@ -3846,7 +4217,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
 
                 this.get('model').save()['catch'](function (errors) {
                     self.showErrors(errors);
-                    self.get('model').rollback();
+                    self.get('model').rollbackAttributes();
                 });
             },
 
@@ -3886,7 +4257,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
                 model.save()['catch'](function (errors) {
                     self.showErrors(errors);
                     self.set('selectedAuthor', author);
-                    model.rollback();
+                    model.rollbackAttributes();
                 });
             },
 
@@ -3944,7 +4315,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
     });
 
 });
-define('ghost/controllers/posts', ['exports', 'ember', 'ghost/mixins/pagination-controller'], function (exports, Ember, PaginationControllerMixin) {
+define('ghost/controllers/posts', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
@@ -4006,7 +4377,8 @@ define('ghost/controllers/posts', ['exports', 'ember', 'ghost/mixins/pagination-
         return Ember['default'].compare(published1.valueOf(), published2.valueOf());
     }
 
-    exports['default'] = Ember['default'].Controller.extend(PaginationControllerMixin['default'], {
+    exports['default'] = Ember['default'].Controller.extend({
+
         // See PostsRoute's shortcuts
         postListFocused: Ember['default'].computed.equal('keyboardFocus', 'postList'),
         postContentFocused: Ember['default'].computed.equal('keyboardFocus', 'postContent'),
@@ -4016,12 +4388,6 @@ define('ghost/controllers/posts', ['exports', 'ember', 'ghost/mixins/pagination-
 
             return postsArray.sort(comparator);
         }),
-
-        init: function init() {
-            // let the PaginationControllerMixin know what type of model we will be paginating
-            // this is necessary because we do not have access to the model inside the Controller::init method
-            this._super({ modelType: 'post' });
-        },
 
         actions: {
             showPostContent: function showPostContent(post) {
@@ -4050,6 +4416,7 @@ define('ghost/controllers/reset', ['exports', 'ember', 'ic-ajax', 'ghost/mixins/
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         email: Ember['default'].computed('token', function () {
             // The token base64 encodes the email (and some other stuff),
@@ -4082,13 +4449,10 @@ define('ghost/controllers/reset', ['exports', 'ember', 'ic-ajax', 'ghost/mixins/
                         }
                     }).then(function (resp) {
                         self.toggleProperty('submitting');
-                        self.get('notifications').showAlert(resp.passwordreset[0].message, { type: 'warn', delayed: true });
-                        self.get('session').authenticate('ghost-authenticator:oauth2-password-grant', {
-                            identification: self.get('email'),
-                            password: credentials.newPassword
-                        });
+                        self.get('notifications').showAlert(resp.passwordreset[0].message, { type: 'warn', delayed: true, key: 'password.reset' });
+                        self.get('session').authenticate('authenticator:oauth2', self.get('email'), credentials.newPassword);
                     })['catch'](function (response) {
-                        self.get('notifications').showAPIError(response);
+                        self.get('notifications').showAPIError(response, { key: 'password.reset' });
                         self.toggleProperty('submitting');
                     });
                 })['catch'](function () {
@@ -4116,7 +4480,7 @@ define('ghost/controllers/settings/code-injection', ['exports', 'ember', 'ghost/
             var notifications = this.get('notifications');
 
             return this.get('model').save()['catch'](function (error) {
-                notifications.showAPIError(error);
+                notifications.showAPIError(error, { key: 'code-injection.save' });
             });
         }
     });
@@ -4183,7 +4547,7 @@ define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/
 
         generatePassword: Ember['default'].observer('model.isPrivate', function () {
             this.get('model.errors').remove('password');
-            if (this.get('model.isPrivate') && this.get('model.isDirty')) {
+            if (this.get('model.isPrivate') && this.get('model.hasDirtyAttributes')) {
                 this.get('model').set('password', randomPassword['default']());
             }
         }),
@@ -4198,7 +4562,7 @@ define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/
                 return model;
             })['catch'](function (error) {
                 if (error) {
-                    notifications.showAPIError(error);
+                    notifications.showAPIError(error, { key: 'settings.save' });
                 }
             });
         },
@@ -4234,6 +4598,8 @@ define('ghost/controllers/settings/labs', ['exports', 'ember', 'ic-ajax'], funct
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
+        feature: Ember['default'].inject.controller(),
 
         labsJSON: Ember['default'].computed('model.labs', function () {
             return JSON.parse(this.get('model.labs') || {});
@@ -4250,9 +4616,19 @@ define('ghost/controllers/settings/labs', ['exports', 'ember', 'ic-ajax'], funct
 
             this.get('model').save()['catch'](function (errors) {
                 self.showErrors(errors);
-                self.get('model').rollback();
+                self.get('model').rollbackAttributes();
             });
         },
+
+        usePublicAPI: Ember['default'].computed('feature.publicAPI', {
+            get: function get() {
+                return this.get('feature.publicAPI');
+            },
+            set: function set(key, value) {
+                this.saveLabs('publicAPI', value);
+                return value;
+            }
+        }),
 
         actions: {
             onUpload: function onUpload(file) {
@@ -4277,15 +4653,16 @@ define('ghost/controllers/settings/labs', ['exports', 'ember', 'ic-ajax'], funct
                     // Clear the store, so that all the new data gets fetched correctly.
                     self.store.unloadAll();
                     // Reload currentUser and set session
-                    self.set('session.user', self.store.find('user', currentUserId));
+                    self.set('session.user', self.store.findRecord('user', currentUserId));
                     // TODO: keep as notification, add link to view content
                     notifications.showNotification('Import successful.');
+                    notifications.closeAlerts('import.upload');
                 })['catch'](function (response) {
                     if (response && response.jqXHR && response.jqXHR.responseJSON && response.jqXHR.responseJSON.errors) {
                         self.set('importErrors', response.jqXHR.responseJSON.errors);
                     }
 
-                    notifications.showAlert('Import Failed', { type: 'error' });
+                    notifications.showAlert('Import Failed', { type: 'error', key: 'import.upload.failed' });
                 })['finally'](function () {
                     self.set('uploadButtonText', 'Import');
                 });
@@ -4293,7 +4670,7 @@ define('ghost/controllers/settings/labs', ['exports', 'ember', 'ic-ajax'], funct
 
             exportData: function exportData() {
                 var iframe = $('#iframeDownload'),
-                    downloadURL = this.get('ghostPaths.url').api('db') + '?access_token=' + this.get('session.secure.access_token');
+                    downloadURL = this.get('ghostPaths.url').api('db') + '?access_token=' + this.get('session.data.authenticated.access_token');
 
                 if (iframe.length === 0) {
                     iframe = $('<iframe>', { id: 'iframeDownload' }).hide().appendTo('body');
@@ -4311,13 +4688,13 @@ define('ghost/controllers/settings/labs', ['exports', 'ember', 'ic-ajax'], funct
                 ic_ajax.request(this.get('ghostPaths.url').api('mail', 'test'), {
                     type: 'POST'
                 }).then(function () {
-                    notifications.showAlert('Check your email for the test message.', { type: 'info' });
+                    notifications.showAlert('Check your email for the test message.', { type: 'info', key: 'test-email.send.success' });
                     self.toggleProperty('submitting');
                 })['catch'](function (error) {
                     if (typeof error.jqXHR !== 'undefined') {
-                        notifications.showAPIError(error);
+                        notifications.showAPIError(error, { key: 'test-email.send' });
                     } else {
-                        notifications.showErrors(error);
+                        notifications.showErrors(error, { key: 'test-email.send' });
                     }
                     self.toggleProperty('submitting');
                 });
@@ -4469,51 +4846,27 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
     exports.NavItem = NavItem;
 
 });
-define('ghost/controllers/settings/tags', ['exports', 'ember', 'ghost/mixins/pagination-controller', 'ghost/mixins/settings-menu-controller', 'ghost/utils/bound-one-way'], function (exports, Ember, PaginationMixin, SettingsMenuMixin, boundOneWay) {
+define('ghost/controllers/settings/tags/tag', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    exports['default'] = Ember['default'].Controller.extend(PaginationMixin['default'], SettingsMenuMixin['default'], {
-        tags: Ember['default'].computed.alias('model'),
+    var computed = Ember['default'].computed;
+    var inject = Ember['default'].inject;
+    var alias = computed.alias;
 
-        activeTag: null,
-        activeTagNameScratch: boundOneWay['default']('activeTag.name'),
-        activeTagSlugScratch: boundOneWay['default']('activeTag.slug'),
-        activeTagDescriptionScratch: boundOneWay['default']('activeTag.description'),
-        activeTagMetaTitleScratch: boundOneWay['default']('activeTag.meta_title'),
-        activeTagMetaDescriptionScratch: boundOneWay['default']('activeTag.meta_description'),
+    exports['default'] = Ember['default'].Controller.extend({
 
-        init: function init(options) {
-            options = options || {};
-            options.modelType = 'tag';
-            this._super(options);
-        },
+        tag: alias('model'),
+        isMobile: alias('tagsController.isMobile'),
 
-        application: Ember['default'].inject.controller(),
-        config: Ember['default'].inject.service(),
-        notifications: Ember['default'].inject.service(),
+        tagsController: inject.controller('settings.tags'),
+        notifications: inject.service(),
 
-        uploaderReference: null,
+        saveTagProperty: function saveTagProperty(propKey, newValue) {
+            var _this = this;
 
-        // This observer loads and resets the uploader whenever the active tag changes,
-        // ensuring that we can reuse the whole settings menu.
-        updateUploader: Ember['default'].observer('activeTag.image', 'uploaderReference', function () {
-            var uploader = this.get('uploaderReference'),
-                image = this.get('activeTag.image');
-
-            if (uploader && uploader[0]) {
-                if (image) {
-                    uploader[0].uploaderUi.initWithImage();
-                } else {
-                    uploader[0].uploaderUi.reset();
-                }
-            }
-        }),
-
-        saveActiveTagProperty: function saveActiveTagProperty(propKey, newValue) {
-            var activeTag = this.get('activeTag'),
-                currentValue = activeTag.get(propKey),
-                self = this;
+            var tag = this.get('tag'),
+                currentValue = tag.get(propKey);
 
             newValue = newValue.trim();
 
@@ -4522,130 +4875,81 @@ define('ghost/controllers/settings/tags', ['exports', 'ember', 'ghost/mixins/pag
                 return;
             }
 
-            activeTag.set(propKey, newValue);
-            activeTag.get('hasValidated').addObject(propKey);
+            tag.set(propKey, newValue);
+            // TODO: This is required until .validate/.save mark fields as validated
+            tag.get('hasValidated').addObject(propKey);
 
-            activeTag.save()['catch'](function (error) {
+            tag.save().then(function (savedTag) {
+                // replace 'new' route with 'tag' route
+                _this.replaceRoute('settings.tags.tag', savedTag);
+            })['catch'](function (error) {
                 if (error) {
-                    self.notifications.showAPIError(error);
+                    _this.get('notifications').showAPIError(error, { key: 'tag.save' });
                 }
             });
         },
 
-        seoTitle: Ember['default'].computed('scratch', 'activeTagNameScratch', 'activeTagMetaTitleScratch', function () {
-            var metaTitle = this.get('activeTagMetaTitleScratch') || '';
-
-            metaTitle = metaTitle.length > 0 ? metaTitle : this.get('activeTagNameScratch');
-
-            if (metaTitle && metaTitle.length > 70) {
-                metaTitle = metaTitle.substring(0, 70).trim();
-                metaTitle = Ember['default'].Handlebars.Utils.escapeExpression(metaTitle);
-                metaTitle = Ember['default'].String.htmlSafe(metaTitle + '&hellip;');
-            }
-
-            return metaTitle;
-        }),
-
-        seoURL: Ember['default'].computed('activeTagSlugScratch', function () {
-            var blogUrl = this.get('config.blogUrl'),
-                seoSlug = this.get('activeTagSlugScratch') ? this.get('activeTagSlugScratch') : '',
-                seoURL = blogUrl + '/tag/' + seoSlug;
-
-            // only append a slash to the URL if the slug exists
-            if (seoSlug) {
-                seoURL += '/';
-            }
-
-            if (seoURL.length > 70) {
-                seoURL = seoURL.substring(0, 70).trim();
-                seoURL = Ember['default'].String.htmlSafe(seoURL + '&hellip;');
-            }
-
-            return seoURL;
-        }),
-
-        seoDescription: Ember['default'].computed('scratch', 'activeTagDescriptionScratch', 'activeTagMetaDescriptionScratch', function () {
-            var metaDescription = this.get('activeTagMetaDescriptionScratch') || '';
-
-            metaDescription = metaDescription.length > 0 ? metaDescription : this.get('activeTagDescriptionScratch');
-
-            if (metaDescription && metaDescription.length > 156) {
-                metaDescription = metaDescription.substring(0, 156).trim();
-                metaDescription = Ember['default'].Handlebars.Utils.escapeExpression(metaDescription);
-                metaDescription = Ember['default'].String.htmlSafe(metaDescription + '&hellip;');
-            }
-
-            return metaDescription;
-        }),
-
         actions: {
-            newTag: function newTag() {
-                this.set('activeTag', this.store.createRecord('tag', { post_count: 0 }));
-                this.get('activeTag.errors').clear();
-                this.send('openSettingsMenu');
-            },
-
-            editTag: function editTag(tag) {
-                tag.validate();
-                this.set('activeTag', tag);
-                this.send('openSettingsMenu');
-            },
-
-            saveActiveTagName: function saveActiveTagName(name) {
-                this.saveActiveTagProperty('name', name);
-            },
-
-            saveActiveTagSlug: function saveActiveTagSlug(slug) {
-                this.saveActiveTagProperty('slug', slug);
-            },
-
-            saveActiveTagDescription: function saveActiveTagDescription(description) {
-                this.saveActiveTagProperty('description', description);
-            },
-
-            saveActiveTagMetaTitle: function saveActiveTagMetaTitle(metaTitle) {
-                this.saveActiveTagProperty('meta_title', metaTitle);
-            },
-
-            saveActiveTagMetaDescription: function saveActiveTagMetaDescription(metaDescription) {
-                this.saveActiveTagProperty('meta_description', metaDescription);
-            },
-
-            setCoverImage: function setCoverImage(image) {
-                this.saveActiveTagProperty('image', image);
-            },
-
-            clearCoverImage: function clearCoverImage() {
-                this.saveActiveTagProperty('image', '');
-            },
-
-            closeNavMenu: function closeNavMenu() {
-                this.get('application').send('closeNavMenu');
-            },
-
-            setUploaderReference: function setUploaderReference(ref) {
-                this.set('uploaderReference', ref);
+            setProperty: function setProperty(propKey, value) {
+                this.saveTagProperty(propKey, value);
             }
         }
     });
 
 });
-define('ghost/controllers/setup', ['exports', 'ember'], function (exports, Ember) {
+define('ghost/controllers/settings/tags', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
+    var computed = Ember['default'].computed;
+    var inject = Ember['default'].inject;
+    var alias = computed.alias;
+    var equal = computed.equal;
+    var sort = computed.sort;
+
     exports['default'] = Ember['default'].Controller.extend({
-        appController: Ember['default'].inject.controller('application'),
-        ghostPaths: Ember['default'].inject.service('ghost-paths'),
 
-        showBackLink: Ember['default'].computed.match('appController.currentRouteName', /^setup\.(two|three)$/),
+        tagController: inject.controller('settings.tags.tag'),
 
-        backRoute: Ember['default'].computed('appController.currentRouteName', function () {
-            var appController = this.get('appController'),
-                currentRoute = Ember['default'].get(appController, 'currentRouteName');
+        // set at controller level because it's shared by routes and components
+        mobileWidth: 600,
 
-            return currentRoute === 'setup.two' ? 'setup.one' : 'setup.two';
-        })
+        isMobile: false,
+        selectedTag: alias('tagController.tag'),
+
+        tagListFocused: equal('keyboardFocus', 'tagList'),
+        tagContentFocused: equal('keyboardFocus', 'tagContent'),
+
+        // TODO: replace with ordering by page count once supported by the API
+        tags: sort('model', function (a, b) {
+            var idA = +a.get('id'),
+                idB = +b.get('id');
+
+            if (idA > idB) {
+                return 1;
+            } else if (idA < idB) {
+                return -1;
+            }
+
+            return 0;
+        }),
+
+        actions: {
+            enteredMobile: function enteredMobile() {
+                this.set('isMobile', true);
+            },
+
+            leftMobile: function leftMobile() {
+                this.set('isMobile', false);
+
+                // redirect to first tag if possible so that you're not left with
+                // tag settings blank slate when switching from portrait to landscape
+                if (this.get('tags.length') && !this.get('tagController.tag')) {
+                    this.transitionToRoute('settings.tags.tag', this.get('tags.firstObject'));
+                }
+            }
+        }
+
     });
 
 });
@@ -4773,7 +5077,7 @@ define('ghost/controllers/setup/three', ['exports', 'ember', 'ember-data'], func
         }),
 
         authorRole: Ember['default'].computed(function () {
-            return this.store.find('role').then(function (roles) {
+            return this.store.findAll('role', { reload: true }).then(function (roles) {
                 return roles.findBy('name', 'Author');
             });
         }),
@@ -4827,13 +5131,13 @@ define('ghost/controllers/setup/three', ['exports', 'ember', 'ember-data'], func
                                 invitationsString = erroredEmails.length > 1 ? ' invitations: ' : ' invitation: ';
                                 message = 'Failed to send ' + erroredEmails.length + invitationsString;
                                 message += erroredEmails.join(', ');
-                                notifications.showAlert(message, { type: 'error', delayed: successCount > 0 });
+                                notifications.showAlert(message, { type: 'error', delayed: successCount > 0, key: 'signup.send-invitations.failed' });
                             }
 
                             if (successCount > 0) {
                                 // pluralize
                                 invitationsString = successCount > 1 ? 'invitations' : 'invitation';
-                                notifications.showAlert(successCount + ' ' + invitationsString + ' sent!', { type: 'success', delayed: true });
+                                notifications.showAlert(successCount + ' ' + invitationsString + ' sent!', { type: 'success', delayed: true, key: 'signup.send-invitations.success' });
                             }
                             self.send('loadServerNotifications');
                             self.toggleProperty('submitting');
@@ -4862,7 +5166,6 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
         blogTitle: null,
         name: null,
         email: '',
-        validEmail: '',
         password: null,
         image: null,
         blogCreated: false,
@@ -4873,6 +5176,7 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
         notifications: Ember['default'].inject.service(),
         application: Ember['default'].inject.controller(),
         config: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         // ValidationEngine settings
         validationType: 'setup',
@@ -4901,13 +5205,29 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
             });
         },
 
+        _handleSaveError: function _handleSaveError(resp) {
+            this.toggleProperty('submitting');
+            if (resp && resp.jqXHR && resp.jqXHR.responseJSON && resp.jqXHR.responseJSON.errors) {
+                this.set('flowErrors', resp.jqXHR.responseJSON.errors[0].message);
+            } else {
+                this.get('notifications').showAPIError(resp, { key: 'setup.blog-details' });
+            }
+        },
+
+        _handleAuthenticationError: function _handleAuthenticationError(error) {
+            this.toggleProperty('submitting');
+            if (error && error.errors) {
+                this.set('flowErrors', error.errors[0].message);
+            } else {
+                // Connection errors don't return proper status message, only req.body
+                this.get('notifications').showAlert('There was a problem on the server.', { type: 'error', key: 'setup.authenticate.failed' });
+            }
+        },
+
         actions: {
             preValidate: function preValidate(model) {
                 // Only triggers validation if a value has been entered, preventing empty errors on focusOut
                 if (this.get(model)) {
-                    if (model === 'email') {
-                        this.send('handleEmail');
-                    }
                     this.validate({ property: model });
                 }
             },
@@ -4940,10 +5260,7 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
                         config.set('blogTitle', data.blogTitle);
                         // Don't call the success handler, otherwise we will be redirected to admin
                         self.get('application').set('skipAuthSuccessHandler', true);
-                        self.get('session').authenticate('ghost-authenticator:oauth2-password-grant', {
-                            identification: self.get('email'),
-                            password: self.get('password')
-                        }).then(function () {
+                        self.get('session').authenticate('authenticator:oauth2', self.get('email'), self.get('password')).then(function () {
                             self.set('blogCreated', true);
                             if (data.image) {
                                 self.sendImage(result.users[0]).then(function () {
@@ -4951,20 +5268,17 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
                                     self.transitionToRoute('setup.three');
                                 })['catch'](function (resp) {
                                     self.toggleProperty('submitting');
-                                    notifications.showAPIError(resp);
+                                    notifications.showAPIError(resp, { key: 'setup.blog-details' });
                                 });
                             } else {
                                 self.toggleProperty('submitting');
                                 self.transitionToRoute('setup.three');
                             }
+                        })['catch'](function (error) {
+                            self._handleAuthenticationError(error);
                         });
-                    })['catch'](function (resp) {
-                        self.toggleProperty('submitting');
-                        if (resp && resp.jqXHR && resp.jqXHR.responseJSON && resp.jqXHR.responseJSON.errors) {
-                            self.set('flowErrors', resp.jqXHR.responseJSON.errors[0].message);
-                        } else {
-                            notifications.showAPIError(resp);
-                        }
+                    })['catch'](function (error) {
+                        self._handleSaveError(error);
                     });
                 })['catch'](function () {
                     self.toggleProperty('submitting');
@@ -4973,15 +5287,27 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
             },
             setImage: function setImage(image) {
                 this.set('image', image);
-            },
-            handleEmail: function handleEmail() {
-                var self = this;
-
-                this.validate({ property: 'email' }).then(function () {
-                    self.set('validEmail', self.get('email'));
-                });
             }
         }
+    });
+
+});
+define('ghost/controllers/setup', ['exports', 'ember'], function (exports, Ember) {
+
+    'use strict';
+
+    exports['default'] = Ember['default'].Controller.extend({
+        appController: Ember['default'].inject.controller('application'),
+        ghostPaths: Ember['default'].inject.service('ghost-paths'),
+
+        showBackLink: Ember['default'].computed.match('appController.currentRouteName', /^setup\.(two|three)$/),
+
+        backRoute: Ember['default'].computed('appController.currentRouteName', function () {
+            var appController = this.get('appController'),
+                currentRoute = Ember['default'].get(appController, 'currentRouteName');
+
+            return currentRoute === 'setup.two' ? 'setup.one' : 'setup.two';
+        })
     });
 
 });
@@ -4996,6 +5322,8 @@ define('ghost/controllers/signin', ['exports', 'ember', 'ghost/mixins/validation
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
+        application: Ember['default'].inject.controller(),
         flowErrors: '',
 
         // ValidationEngine settings
@@ -5005,29 +5333,30 @@ define('ghost/controllers/signin', ['exports', 'ember', 'ghost/mixins/validation
             authenticate: function authenticate() {
                 var self = this,
                     model = this.get('model'),
-                    authStrategy = 'ghost-authenticator:oauth2-password-grant',
-                    data = model.getProperties(this.authProperties);
+                    authStrategy = 'authenticator:oauth2';
 
                 // Authentication transitions to posts.index, we can leave spinner running unless there is an error
-                this.get('session').authenticate(authStrategy, data)['catch'](function (err) {
+                this.get('session').authenticate(authStrategy, model.get('identification'), model.get('password'))['catch'](function (error) {
                     self.toggleProperty('loggingIn');
 
-                    if (err.errors) {
-                        self.set('flowErrors', err.errors[0].message.string);
+                    if (error && error.errors) {
+                        error.errors.forEach(function (err) {
+                            err.message = err.message.htmlSafe();
+                        });
 
-                        // this catches both 'no user' and 'user inactive' errors
-                        // long term, we probably need to introduce error codes from the server
-                        if (err.errors[0].message.string.match(/user with that email/)) {
+                        self.set('flowErrors', error.errors[0].message.string);
+
+                        if (error.errors[0].message.string.match(/user with that email/)) {
                             self.get('model.errors').add('identification', '');
                         }
 
-                        if (err.errors[0].message.string.match(/password is incorrect/)) {
+                        if (error.errors[0].message.string.match(/password is incorrect/)) {
                             self.get('model.errors').add('password', '');
                         }
+                    } else {
+                        // Connection errors don't return proper status message, only req.body
+                        self.get('notifications').showAlert('There was a problem on the server.', { type: 'error', key: 'session.authenticate.failed' });
                     }
-                    // if authentication fails a rejected promise will be returned.
-                    // it needs to be caught so it doesn't generate an exception in the console,
-                    // but it's actually "handled" by the sessionAuthenticationFailed action handler.
                 });
             },
 
@@ -5045,7 +5374,7 @@ define('ghost/controllers/signin', ['exports', 'ember', 'ghost/mixins/validation
                     self.send('authenticate');
                 })['catch'](function (error) {
                     if (error) {
-                        self.get('notifications').showAPIError(error);
+                        self.get('notifications').showAPIError(error, { key: 'signin.authenticate' });
                     } else {
                         self.set('flowErrors', 'Please fill out the form to sign in.');
                     }
@@ -5073,7 +5402,7 @@ define('ghost/controllers/signin', ['exports', 'ember', 'ghost/mixins/validation
                         }
                     }).then(function () {
                         self.toggleProperty('submitting');
-                        notifications.showAlert('Please check your email for instructions.', { type: 'info' });
+                        notifications.showAlert('Please check your email for instructions.', { type: 'info', key: 'forgot-password.send.success' });
                     })['catch'](function (resp) {
                         self.toggleProperty('submitting');
                         if (resp && resp.jqXHR && resp.jqXHR.responseJSON && resp.jqXHR.responseJSON.errors) {
@@ -5085,11 +5414,11 @@ define('ghost/controllers/signin', ['exports', 'ember', 'ghost/mixins/validation
                                 self.get('model.errors').add('identification', '');
                             }
                         } else {
-                            notifications.showAPIError(resp, { defaultErrorText: 'There was a problem with the reset, please try again.' });
+                            notifications.showAPIError(resp, { defaultErrorText: 'There was a problem with the reset, please try again.', key: 'forgot-password.send' });
                         }
                     });
                 })['catch'](function () {
-                    self.set('flowErrors', 'Please enter an email address then click "Forgot?".');
+                    self.set('flowErrors', 'We need your email address to reset your password!');
                 });
             }
         }
@@ -5107,11 +5436,11 @@ define('ghost/controllers/signup', ['exports', 'ember', 'ic-ajax', 'ghost/mixins
         submitting: false,
         flowErrors: '',
         image: null,
-        validEmail: '',
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         config: Ember['default'].inject.service(),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         sendImage: function sendImage() {
             var self = this,
@@ -5161,22 +5490,19 @@ define('ghost/controllers/signup', ['exports', 'ember', 'ic-ajax', 'ghost/mixins
                             }]
                         }
                     }).then(function () {
-                        self.get('session').authenticate('ghost-authenticator:oauth2-password-grant', {
-                            identification: self.get('model.email'),
-                            password: self.get('model.password')
-                        }).then(function () {
+                        self.get('session').authenticate('authenticator:oauth2', self.get('model.email'), self.get('model.password')).then(function () {
                             if (image) {
                                 self.sendImage();
                             }
                         })['catch'](function (resp) {
-                            notifications.showAPIError(resp);
+                            notifications.showAPIError(resp, { key: 'signup.complete' });
                         });
                     })['catch'](function (resp) {
                         self.toggleProperty('submitting');
                         if (resp && resp.jqXHR && resp.jqXHR.responseJSON && resp.jqXHR.responseJSON.errors) {
                             self.set('flowErrors', resp.jqXHR.responseJSON.errors[0].message);
                         } else {
-                            notifications.showAPIError(resp);
+                            notifications.showAPIError(resp, { key: 'signup.complete' });
                         }
                     });
                 })['catch'](function () {
@@ -5185,28 +5511,18 @@ define('ghost/controllers/signup', ['exports', 'ember', 'ic-ajax', 'ghost/mixins
             },
             setImage: function setImage(image) {
                 this.set('image', image);
-            },
-            handleEmail: function handleEmail() {
-                var self = this;
-
-                this.validate({ property: 'email' }).then(function () {
-                    self.set('validEmail', self.get('email'));
-                });
             }
         }
     });
 
 });
-define('ghost/controllers/team/index', ['exports', 'ember', 'ghost/mixins/pagination-controller'], function (exports, Ember, PaginationControllerMixin) {
+define('ghost/controllers/team/index', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    exports['default'] = Ember['default'].Controller.extend(PaginationControllerMixin['default'], {
-        init: function init() {
-            // let the PaginationControllerMixin know what type of model we will be paginating
-            // this is necessary because we do not have access to the model inside the Controller::init method
-            this._super({ modelType: 'user' });
-        },
+    exports['default'] = Ember['default'].Controller.extend({
+
+        session: Ember['default'].inject.service(),
 
         users: Ember['default'].computed.alias('model'),
 
@@ -5234,6 +5550,7 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/models/slug-ge
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         currentUser: Ember['default'].computed.alias('session.user'),
 
@@ -5276,7 +5593,7 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/models/slug-ge
         userImageBackground: Ember['default'].computed('user.image', 'userDefault', function () {
             var url = this.get('user.image') || this.get('userDefault');
 
-            return ('background-image: url(' + url + ')').htmlSafe();
+            return Ember['default'].String.htmlSafe('background-image: url(' + url + ')');
         }),
 
         // end duplicated
@@ -5288,7 +5605,7 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/models/slug-ge
         coverImageBackground: Ember['default'].computed('user.cover', 'coverDefault', function () {
             var url = this.get('user.cover') || this.get('coverDefault');
 
-            return ('background-image: url(' + url + ')').htmlSafe();
+            return Ember['default'].String.htmlSafe('background-image: url(' + url + ')');
         }),
 
         coverTitle: Ember['default'].computed('user.name', function () {
@@ -5304,7 +5621,7 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/models/slug-ge
         }),
 
         roles: Ember['default'].computed(function () {
-            return this.store.find('role', { permissions: 'assign' });
+            return this.store.query('role', { permissions: 'assign' });
         }),
 
         actions: {
@@ -5345,11 +5662,12 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/models/slug-ge
                     }
 
                     self.toggleProperty('submitting');
+                    self.get('notifications').closeAlerts('user.update');
 
                     return model;
                 })['catch'](function (errors) {
                     if (errors) {
-                        self.get('notifications').showErrors(errors);
+                        self.get('notifications').showErrors(errors, { key: 'user.update' });
                     }
 
                     self.toggleProperty('submitting');
@@ -5371,15 +5689,15 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/models/slug-ge
                             ne2Password: ''
                         });
 
-                        self.get('notifications').showAlert('Password updated.', { type: 'success' });
+                        self.get('notifications').showAlert('Password updated.', { type: 'success', key: 'user.change-password.success' });
 
                         return model;
                     })['catch'](function (errors) {
-                        self.get('notifications').showAPIError(errors);
+                        self.get('notifications').showAPIError(errors, { key: 'user.change-password' });
                     });
                 } else {
                     // TODO: switch to in-line validation
-                    self.get('notifications').showErrors(user.get('passwordValidationErrors'));
+                    self.get('notifications').showErrors(user.get('passwordValidationErrors'), { key: 'user.change-password' });
                 }
             },
 
@@ -5443,16 +5761,16 @@ define('ghost/helpers/gh-count-characters', ['exports', 'ember'], function (expo
 
     'use strict';
 
-    var countCharacters = Ember['default'].HTMLBars.makeBoundHelper(function (arr /* hashParams */) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
         var el = document.createElement('span'),
             length,
             content;
 
-        if (!arr || !arr.length) {
+        if (!params || !params.length) {
             return;
         }
 
-        content = arr[0] || '';
+        content = params[0] || '';
         length = content.length;
 
         el.className = 'word-count';
@@ -5468,25 +5786,23 @@ define('ghost/helpers/gh-count-characters', ['exports', 'ember'], function (expo
         return Ember['default'].String.htmlSafe(el.outerHTML);
     });
 
-    exports['default'] = countCharacters;
-
 });
 define('ghost/helpers/gh-count-down-characters', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var countDownCharacters = Ember['default'].HTMLBars.makeBoundHelper(function (arr /* hashParams */) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
         var el = document.createElement('span'),
             content,
             maxCharacters,
             length;
 
-        if (!arr || arr.length < 2) {
+        if (!params || params.length < 2) {
             return;
         }
 
-        content = arr[0] || '';
-        maxCharacters = arr[1];
+        content = params[0] || '';
+        maxCharacters = params[1];
         length = content.length;
 
         el.className = 'word-count';
@@ -5502,21 +5818,19 @@ define('ghost/helpers/gh-count-down-characters', ['exports', 'ember'], function 
         return Ember['default'].String.htmlSafe(el.outerHTML);
     });
 
-    exports['default'] = countDownCharacters;
-
 });
 define('ghost/helpers/gh-count-words', ['exports', 'ember', 'ghost/utils/word-count'], function (exports, Ember, counter) {
 
     'use strict';
 
-    var countWords = Ember['default'].HTMLBars.makeBoundHelper(function (arr /* hashParams */) {
-        if (!arr || !arr.length) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        if (!params || !params.length) {
             return;
         }
 
         var markdown, count;
 
-        markdown = arr[0] || '';
+        markdown = params[0] || '';
 
         if (/^\s*$/.test(markdown)) {
             return '0 words';
@@ -5527,19 +5841,17 @@ define('ghost/helpers/gh-count-words', ['exports', 'ember', 'ghost/utils/word-co
         return count + (count === 1 ? ' word' : ' words');
     });
 
-    exports['default'] = countWords;
-
 });
 define('ghost/helpers/gh-format-html', ['exports', 'ember', 'ghost/utils/caja-sanitizers'], function (exports, Ember, cajaSanitizers) {
 
     'use strict';
 
-    var formatHTML = Ember['default'].HTMLBars.makeBoundHelper(function (arr /* hashParams */) {
-        if (!arr || !arr.length) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        if (!params || !params.length) {
             return;
         }
 
-        var escapedhtml = arr[0] || '';
+        var escapedhtml = params[0] || '';
 
         // replace script and iFrame
         escapedhtml = escapedhtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '<pre class="js-embed-placeholder">Embedded JavaScript</pre>');
@@ -5553,24 +5865,20 @@ define('ghost/helpers/gh-format-html', ['exports', 'ember', 'ghost/utils/caja-sa
         return Ember['default'].String.htmlSafe(escapedhtml);
     });
 
-    exports['default'] = formatHTML;
-
 });
 define('ghost/helpers/gh-format-markdown', ['exports', 'ember', 'ghost/utils/caja-sanitizers'], function (exports, Ember, cajaSanitizers) {
 
     'use strict';
 
-    var showdown, formatMarkdown;
+    var showdown = new Showdown.converter({ extensions: ['ghostimagepreview', 'ghostgfm', 'footnotes', 'highlight'] });
 
-    showdown = new Showdown.converter({ extensions: ['ghostimagepreview', 'ghostgfm', 'footnotes', 'highlight'] });
-
-    formatMarkdown = Ember['default'].HTMLBars.makeBoundHelper(function (arr /* hashParams */) {
-        if (!arr || !arr.length) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        if (!params || !params.length) {
             return;
         }
 
         var escapedhtml = '',
-            markdown = arr[0] || '';
+            markdown = params[0] || '';
 
         // convert markdown to HTML
         escapedhtml = showdown.makeHtml(markdown);
@@ -5587,27 +5895,23 @@ define('ghost/helpers/gh-format-markdown', ['exports', 'ember', 'ghost/utils/caj
         return Ember['default'].String.htmlSafe(escapedhtml);
     });
 
-    exports['default'] = formatMarkdown;
-
 });
 define('ghost/helpers/gh-format-timeago', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var formatTimeago = Ember['default'].HTMLBars.makeBoundHelper(function (arr /* hashParams */) {
-        if (!arr || !arr.length) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        if (!params || !params.length) {
             return;
         }
 
-        var timeago = arr[0];
+        var timeago = params[0];
 
         return moment(timeago).fromNow();
         // stefanpenner says cool for small number of timeagos.
         // For large numbers moment sucks => single Ember.Object based clock better
         // https://github.com/manuelmitasch/ghost-admin-ember-demo/commit/fba3ab0a59238290c85d4fa0d7c6ed1be2a8a82e#commitcomment-5396524
     });
-
-    exports['default'] = formatTimeago;
 
 });
 define('ghost/helpers/gh-path', ['exports', 'ember', 'ghost/utils/ghost-paths'], function (exports, Ember, ghostPaths) {
@@ -5616,7 +5920,7 @@ define('ghost/helpers/gh-path', ['exports', 'ember', 'ghost/utils/ghost-paths'],
 
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
-    function ghostPathsHelper(params /*, hash */) {
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
         var base;
         var paths = ghostPaths['default']();
 
@@ -5662,9 +5966,7 @@ define('ghost/helpers/gh-path', ['exports', 'ember', 'ghost/utils/ghost-paths'],
         }
 
         return Ember['default'].String.htmlSafe(base);
-    }
-
-    exports['default'] = Ember['default'].HTMLBars.makeBoundHelper(ghostPathsHelper);
+    });
 
 });
 define('ghost/helpers/gh-user-can-admin', ['exports', 'ember'], function (exports, Ember) {
@@ -5677,7 +5979,9 @@ define('ghost/helpers/gh-user-can-admin', ['exports', 'ember'], function (export
         return !!(params[0].get('isOwner') || params[0].get('isAdmin'));
     }
 
-    exports['default'] = Ember['default'].HTMLBars.makeBoundHelper(ghUserCanAdmin);
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        return ghUserCanAdmin(params);
+    });
 
 });
 define('ghost/helpers/is-equal', ['exports', 'ember'], function (exports, Ember) {
@@ -5688,7 +5992,7 @@ define('ghost/helpers/is-equal', ['exports', 'ember'], function (exports, Ember)
 
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
-    function isEqual(params /*, hash*/) {
+    function isEqual(params) {
         var _params = _slicedToArray(params, 2);
 
         var lhs = _params[0];
@@ -5697,7 +6001,9 @@ define('ghost/helpers/is-equal', ['exports', 'ember'], function (exports, Ember)
         return lhs === rhs;
     }
 
-    exports['default'] = Ember['default'].HTMLBars.makeBoundHelper(isEqual);
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        return isEqual(params);
+    });
 
 });
 define('ghost/helpers/is-not', ['exports', 'ember'], function (exports, Ember) {
@@ -5706,11 +6012,20 @@ define('ghost/helpers/is-not', ['exports', 'ember'], function (exports, Ember) {
 
     exports.isNot = isNot;
 
-    function isNot(params /*, hash*/) {
+    function isNot(params) {
         return !params;
     }
 
-    exports['default'] = Ember['default'].HTMLBars.makeBoundHelper(isNot);
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        return isNot(params);
+    });
+
+});
+define('ghost/helpers/pluralize', ['exports', 'ember-inflector/lib/helpers/pluralize'], function (exports, pluralize) {
+
+	'use strict';
+
+	exports['default'] = pluralize['default'];
 
 });
 define('ghost/helpers/read-path', ['exports', 'ember'], function (exports, Ember) {
@@ -5721,7 +6036,7 @@ define('ghost/helpers/read-path', ['exports', 'ember'], function (exports, Ember
 
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
-    function readPath(params /*, hash*/) {
+    function readPath(params) {
         var _params = _slicedToArray(params, 2);
 
         var obj = _params[0];
@@ -5730,7 +6045,30 @@ define('ghost/helpers/read-path', ['exports', 'ember'], function (exports, Ember
         return Ember['default'].get(obj, path);
     }
 
-    exports['default'] = Ember['default'].HTMLBars.makeBoundHelper(readPath);
+    exports['default'] = Ember['default'].Helper.helper(function (params) {
+        return readPath(params);
+    });
+
+});
+define('ghost/helpers/singularize', ['exports', 'ember-inflector/lib/helpers/singularize'], function (exports, singularize) {
+
+	'use strict';
+
+	exports['default'] = singularize['default'];
+
+});
+define('ghost/initializers/app-version', ['exports', 'ember-cli-app-version/initializer-factory', 'ghost/config/environment'], function (exports, initializerFactory, config) {
+
+  'use strict';
+
+  var _config$APP = config['default'].APP;
+  var name = _config$APP.name;
+  var version = _config$APP.version;
+
+  exports['default'] = {
+    name: 'App Version',
+    initialize: initializerFactory['default'](name, version)
+  };
 
 });
 define('ghost/initializers/ember-cli-fastclick', ['exports', 'ember'], function (exports, Ember) {
@@ -5748,6 +6086,65 @@ define('ghost/initializers/ember-cli-fastclick', ['exports', 'ember'], function 
   };
 
   exports['default'] = EmberCliFastclickInitializer;
+
+});
+define('ghost/initializers/ember-cli-mirage', ['exports', 'ember-cli-mirage/utils/read-modules', 'ghost/config/environment', 'ghost/mirage/config', 'ember-cli-mirage/server'], function (exports, readModules, ENV, config, Server) {
+
+  'use strict';
+
+  exports['default'] = {
+    name: 'ember-cli-mirage',
+    initialize: function initialize(application) {
+      if (arguments.length > 1) {
+        // Ember < 2.1
+        var container = arguments[0],
+            application = arguments[1];
+      }
+      var environment = ENV['default'].environment;
+
+      if (_shouldUseMirage(environment, ENV['default']['ember-cli-mirage'])) {
+        var modules = readModules['default'](ENV['default'].modulePrefix);
+        var options = _.assign(modules, { environment: environment, baseConfig: config['default'], testConfig: config.testConfig });
+
+        new Server['default'](options);
+      }
+    }
+  };
+
+  function _shouldUseMirage(env, addonConfig) {
+    var userDeclaredEnabled = typeof addonConfig.enabled !== 'undefined';
+    var defaultEnabled = _defaultEnabled(env, addonConfig);
+
+    return userDeclaredEnabled ? addonConfig.enabled : defaultEnabled;
+  }
+
+  /*
+    Returns a boolean specifying the default behavior for whether
+    to initialize Mirage.
+  */
+  function _defaultEnabled(env, addonConfig) {
+    var usingInDev = env === 'development' && !addonConfig.usingProxy;
+    var usingInTest = env === 'test';
+
+    return usingInDev || usingInTest;
+  }
+
+});
+define('ghost/initializers/ember-simple-auth', ['exports', 'ghost/config/environment', 'ghost/utils/ghost-paths', 'ember-simple-auth/configuration', 'ember-simple-auth/initializers/setup-session', 'ember-simple-auth/initializers/setup-session-service'], function (exports, ENV, ghostPaths, Configuration, setupSession, setupSessionService) {
+
+    'use strict';
+
+    exports['default'] = {
+        name: 'ember-simple-auth',
+        initialize: function initialize(registry) {
+            var config = ENV['default']['ember-simple-auth'] || {};
+            config.baseURL = ghostPaths['default']().adminRoot;
+            Configuration['default'].load(config);
+
+            setupSession['default'](registry);
+            setupSessionService['default'](registry);
+        }
+    };
 
 });
 define('ghost/initializers/export-application-global', ['exports', 'ember', 'ghost/config/environment'], function (exports, Ember, config) {
@@ -5781,26 +6178,11 @@ define('ghost/initializers/export-application-global', ['exports', 'ember', 'gho
     }
   }
 
-  ;
-
   exports['default'] = {
     name: 'export-application-global',
 
     initialize: initialize
   };
-
-});
-define('ghost/initializers/ghost-authenticator', ['exports', 'ghost/authenticators/oauth2'], function (exports, GhostOauth2Authenticator) {
-
-    'use strict';
-
-    exports['default'] = {
-        name: 'ghost-authentictor',
-
-        initialize: function initialize(container) {
-            container.register('ghost-authenticator:oauth2-password-grant', GhostOauth2Authenticator['default']);
-        }
-    };
 
 });
 define('ghost/initializers/resize', ['exports', 'ember-resize/services/resize', 'ghost/config/environment'], function (exports, ResizeService, config) {
@@ -5830,60 +6212,11 @@ define('ghost/initializers/resize', ['exports', 'ember-resize/services/resize', 
   };
 
 });
-define('ghost/initializers/simple-auth-env', ['exports', 'ghost/config/environment', 'ghost/utils/ghost-paths'], function (exports, ENV, ghostPaths) {
-
-    'use strict';
-
-    var Ghost = ghostPaths['default']();
-
-    exports['default'] = {
-        name: 'simple-auth-env',
-        before: 'simple-auth-oauth2',
-
-        initialize: function initialize() {
-            ENV['default']['simple-auth-oauth2'].serverTokenEndpoint = Ghost.apiRoot + '/authentication/token';
-            ENV['default']['simple-auth-oauth2'].serverTokenRevocationEndpoint = Ghost.apiRoot + '/authentication/revoke';
-
-            ENV['default']['simple-auth'].localStorageKey = 'ghost' + (Ghost.subdir.indexOf('/') === 0 ? '-' + Ghost.subdir.substr(1) : '') + ':session';
-        }
-    };
-
-});
-define('ghost/initializers/simple-auth-oauth2', ['exports', 'simple-auth-oauth2/configuration', 'simple-auth-oauth2/authenticators/oauth2', 'simple-auth-oauth2/authorizers/oauth2', 'ghost/config/environment'], function (exports, Configuration, Authenticator, Authorizer, ENV) {
-
-  'use strict';
-
-  exports['default'] = {
-    name: 'simple-auth-oauth2',
-    before: 'simple-auth',
-    initialize: function initialize(container, application) {
-      Configuration['default'].load(container, ENV['default']['simple-auth-oauth2'] || {});
-      container.register('simple-auth-authorizer:oauth2-bearer', Authorizer['default']);
-      container.register('simple-auth-authenticator:oauth2-password-grant', Authenticator['default']);
-    }
-  };
-
-});
-define('ghost/initializers/simple-auth', ['exports', 'simple-auth/configuration', 'simple-auth/setup', 'ghost/config/environment'], function (exports, Configuration, setup, ENV) {
-
-  'use strict';
-
-  exports['default'] = {
-    name: 'simple-auth',
-    initialize: function initialize(container, application) {
-      Configuration['default'].load(container, ENV['default']['simple-auth'] || {});
-      setup['default'](container, application);
-    }
-  };
-
-});
 define('ghost/initializers/trailing-history', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var trailingHistory, registerTrailingLocationHistory;
-
-    trailingHistory = Ember['default'].HistoryLocation.extend({
+    var trailingHistory = Ember['default'].HistoryLocation.extend({
         formatURL: function formatURL() {
             // jscs: disable
             return this._super.apply(this, arguments).replace(/\/?$/, '/');
@@ -5891,63 +6224,773 @@ define('ghost/initializers/trailing-history', ['exports', 'ember'], function (ex
         }
     });
 
-    registerTrailingLocationHistory = {
+    exports['default'] = {
         name: 'registerTrailingLocationHistory',
 
-        initialize: function initialize(container, application) {
+        initialize: function initialize(registry, application) {
             application.register('location:trailing-history', trailingHistory);
         }
     };
 
-    exports['default'] = registerTrailingLocationHistory;
-
 });
-define('ghost/instance-initializers/app-version', ['exports', 'ghost/config/environment', 'ember'], function (exports, config, Ember) {
+define('ghost/instance-initializers/ember-simple-auth', ['exports', 'ember-simple-auth/instance-initializers/setup-session-restoration'], function (exports, setupSessionRestoration) {
 
   'use strict';
 
-  var classify = Ember['default'].String.classify;
-  var registered = false;
-
   exports['default'] = {
-    name: 'App Version',
-    initialize: function initialize(application) {
-      if (!registered) {
-        var appName = classify(application.toString());
-        Ember['default'].libraries.register(appName, config['default'].APP.version);
-        registered = true;
-      }
+    name: 'ember-simple-auth',
+    initialize: function initialize(instance) {
+      setupSessionRestoration['default'](instance);
     }
   };
 
 });
-define('ghost/instance-initializers/authentication', ['exports', 'ember'], function (exports, Ember) {
+define('ghost/instance-initializers/oauth-prefilter', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var AuthenticationInitializer = {
-        name: 'authentication',
+    exports['default'] = {
+        name: 'oauth-prefilter',
+        after: 'ember-simple-auth',
 
-        initialize: function initialize(instance) {
-            var store = instance.container.lookup('store:main'),
-                Session = instance.container.lookup('simple-auth-session:main');
+        initialize: function initialize(application) {
+            var session = application.container.lookup('service:session');
 
-            Session.reopen({
-                user: Ember['default'].computed(function () {
-                    return store.find('user', 'me');
-                })
+            Ember['default'].$.ajaxPrefilter(function (options) {
+                session.authorize('authorizer:oauth2', function (headerName, headerValue) {
+                    var headerObject = {};
+
+                    headerObject[headerName] = headerValue;
+                    options.headers = Ember['default'].merge(options.headers || {}, headerObject);
+                });
             });
         }
     };
 
-    exports['default'] = AuthenticationInitializer;
+});
+define('ghost/mirage/config', ['exports', 'ember'], function (exports, Ember) {
+
+    'use strict';
+
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
+
+    var isBlank = Ember['default'].isBlank;
+
+    function paginatedResponse(modelName, allModels, request) {
+        var page = +request.queryParams.page || 1;
+        var limit = request.queryParams.limit || 15;
+        var pages = undefined,
+            models = undefined,
+            next = undefined,
+            prev = undefined;
+
+        allModels = allModels || [];
+
+        if (limit === 'all') {
+            models = allModels;
+            pages = 1;
+        } else {
+            limit = +limit;
+
+            var start = (page - 1) * limit,
+                end = start + limit;
+
+            models = allModels.slice(start, end);
+            pages = Math.ceil(allModels.length / limit);
+
+            if (start > 0) {
+                prev = page - 1;
+            }
+
+            if (end < allModels.length) {
+                next = page + 1;
+            }
+        }
+
+        return _defineProperty({
+            meta: {
+                pagination: {
+                    page: page,
+                    limit: limit,
+                    pages: pages,
+                    total: allModels.length,
+                    next: next || null,
+                    prev: prev || null
+                }
+            }
+        }, modelName, models);
+    }
+
+    exports['default'] = function () {
+        // this.urlPrefix = '';    // make this `http://localhost:8080`, for example, if your API is on a different server
+        this.namespace = 'ghost/api/v0.1'; // make this `api`, for example, if your API is namespaced
+        // this.timing = 400;      // delay for each request, automatically set to 0 during testing
+
+        /* Authentication ------------------------------------------------------- */
+
+        this.post('/authentication/token', function () {
+            return {
+                access_token: '5JhTdKI7PpoZv4ROsFoERc6wCHALKFH5jxozwOOAErmUzWrFNARuH1q01TYTKeZkPW7FmV5MJ2fU00pg9sm4jtH3Z1LjCf8D6nNqLYCfFb2YEKyuvG7zHj4jZqSYVodN2YTCkcHv6k8oJ54QXzNTLIDMlCevkOebm5OjxGiJpafMxncm043q9u1QhdU9eee3zouGRMVVp8zkKVoo5zlGMi3zvS2XDpx7xsfk8hKHpUgd7EDDQxmMueifWv7hv6n',
+                expires_in: 3600,
+                refresh_token: 'XP13eDjwV5mxOcrq1jkIY9idhdvN3R1Br5vxYpYIub2P5Hdc8pdWMOGmwFyoUshiEB62JWHTl8H1kACJR18Z8aMXbnk5orG28br2kmVgtVZKqOSoiiWrQoeKTqrRV0t7ua8uY5HdDUaKpnYKyOdpagsSPn3WEj8op4vHctGL3svOWOjZhq6F2XeVPMR7YsbiwBE8fjT3VhTB3KRlBtWZd1rE0Qo2EtSplWyjGKv1liAEiL0ndQoLeeSOCH4rTP7',
+                token_type: 'Bearer'
+            };
+        });
+
+        /* Download Count ------------------------------------------------------- */
+
+        var downloadCount = 0;
+        this.get('http://ghost.org/count/', function () {
+            downloadCount++;
+            return {
+                count: downloadCount
+            };
+        });
+
+        /* Notifications -------------------------------------------------------- */
+
+        this.get('/notifications/', 'notifications');
+
+        /* Posts ---------------------------------------------------------------- */
+
+        this.post('/posts/', function (db, request) {
+            var _JSON$parse$posts = _slicedToArray(JSON.parse(request.requestBody).posts, 1);
+
+            var attrs = _JSON$parse$posts[0];
+
+            var post = undefined;
+
+            if (isBlank(attrs.slug) && !isBlank(attrs.title)) {
+                attrs.slug = attrs.title.dasherize();
+            }
+
+            // NOTE: this does not use the post factory to fill in blank fields
+            post = db.posts.insert(attrs);
+
+            return {
+                posts: [post]
+            };
+        });
+
+        this.get('/posts/', function (db, request) {
+            // TODO: handle status/staticPages/author params
+            var response = paginatedResponse('posts', db.posts, request);
+            return response;
+        });
+
+        /* Roles ---------------------------------------------------------------- */
+
+        this.get('/roles/', 'roles');
+
+        /* Settings ------------------------------------------------------------- */
+
+        this.get('/settings/', function (db, request) {
+            var filters = request.queryParams.type.split(',');
+            var settings = [];
+
+            filters.forEach(function (filter) {
+                settings.pushObjects(db.settings.where({ type: filter }));
+            });
+
+            return {
+                meta: {
+                    filters: {
+                        type: request.queryParams.type
+                    }
+                },
+                settings: settings
+            };
+        });
+
+        this.put('/settings/', function (db, request) {
+            var newSettings = JSON.parse(request.requestBody);
+
+            db.settings.remove();
+            db.settings.insert(newSettings);
+
+            return {
+                meta: {},
+                settings: db.settings
+            };
+        });
+
+        /* Slugs ---------------------------------------------------------------- */
+
+        this.get('/slugs/post/:slug/', function (db, request) {
+            return {
+                slugs: [{ slug: request.params.slug.dasherize }]
+            };
+        });
+
+        /* Setup ---------------------------------------------------------------- */
+
+        this.post('/authentication/setup', function (db, request) {
+            var _$$deparam$setup = _slicedToArray($.deparam(request.requestBody).setup, 1);
+
+            var attrs = _$$deparam$setup[0];
+
+            var _db$roles$where = db.roles.where({ name: 'Owner' });
+
+            var _db$roles$where2 = _slicedToArray(_db$roles$where, 1);
+
+            var role = _db$roles$where2[0];
+
+            var user = undefined;
+
+            // create owner role unless already exists
+            if (!role) {
+                role = db.roles.insert({ name: 'Owner' });
+            }
+            attrs.roles = [role];
+
+            if (!isBlank(attrs.email)) {
+                attrs.slug = attrs.email.split('@')[0].dasherize();
+            }
+
+            // NOTE: this does not use the user factory to fill in blank fields
+            user = db.users.insert(attrs);
+
+            delete user.roles;
+
+            return {
+                users: [user]
+            };
+        });
+
+        this.get('/authentication/setup/', function () {
+            return {
+                setup: [{ status: true }]
+            };
+        });
+
+        /* Tags ----------------------------------------------------------------- */
+
+        this.post('/tags/', function (db, request) {
+            var _JSON$parse$tags = _slicedToArray(JSON.parse(request.requestBody).tags, 1);
+
+            var attrs = _JSON$parse$tags[0];
+
+            var tag = undefined;
+
+            if (isBlank(attrs.slug) && !isBlank(attrs.name)) {
+                attrs.slug = attrs.name.dasherize();
+            }
+
+            // NOTE: this does not use the tag factory to fill in blank fields
+            tag = db.tags.insert(attrs);
+
+            return {
+                tag: tag
+            };
+        });
+
+        this.get('/tags/', function (db, request) {
+            var response = paginatedResponse('tags', db.tags, request);
+            // TODO: remove post_count unless requested?
+            return response;
+        });
+
+        this.get('/tags/slug/:slug/', function (db, request) {
+            var _db$tags$where = db.tags.where({ slug: request.params.slug });
+
+            var _db$tags$where2 = _slicedToArray(_db$tags$where, 1);
+
+            var tag = _db$tags$where2[0];
+
+            // TODO: remove post_count unless requested?
+
+            return {
+                tag: tag
+            };
+        });
+
+        this.put('/tags/:id/', function (db, request) {
+            var id = request.params.id;
+
+            var _JSON$parse$tags2 = _slicedToArray(JSON.parse(request.requestBody).tags, 1);
+
+            var attrs = _JSON$parse$tags2[0];
+
+            var record = db.tags.update(id, attrs);
+
+            return {
+                tag: record
+            };
+        });
+
+        this.del('/tags/:id/', 'tag');
+
+        /* Users ---------------------------------------------------------------- */
+
+        this.post('/users/', function (db, request) {
+            var _JSON$parse$users = _slicedToArray(JSON.parse(request.requestBody).users, 1);
+
+            var attrs = _JSON$parse$users[0];
+
+            var user = undefined;
+
+            if (!isBlank(attrs.email)) {
+                attrs.slug = attrs.email.split('@')[0].dasherize();
+            }
+
+            // NOTE: this does not use the user factory to fill in blank fields
+            user = db.users.insert(attrs);
+
+            return {
+                users: [user]
+            };
+        });
+
+        // /users/me = Always return the user with ID=1
+        this.get('/users/me', function (db) {
+            return {
+                users: [db.users.find(1)]
+            };
+        });
+
+        this.get('/users/', 'users');
+    }
+
+    /*
+    You can optionally export a config that is only loaded during tests
+    export function testConfig() {
+
+    }
+    */
+
+});
+define('ghost/mirage/factories/notification', ['exports', 'ember-cli-mirage'], function (exports, Mirage) {
+
+    'use strict';
+
+    /* jscs:disable */
+    exports['default'] = Mirage['default'].Factory.extend({
+        dismissible: true,
+        message: 'This is an alert',
+        status: 'alert',
+        type: 'error'
+    });
+
+});
+define('ghost/mirage/factories/post', ['exports', 'ember-cli-mirage'], function (exports, Mirage) {
+
+    'use strict';
+
+    /* jscs:disable */
+    exports['default'] = Mirage['default'].Factory.extend({
+        // TODO: fill in with actual factory data
+    });
+
+});
+define('ghost/mirage/factories/role', ['exports', 'ember-cli-mirage'], function (exports, Mirage) {
+
+    'use strict';
+
+    /* jscs:disable */
+    exports['default'] = Mirage['default'].Factory.extend({
+        created_at: function created_at() {
+            return '2013-11-25T14:48:11.000Z';
+        },
+        created_by: function created_by() {
+            return 1;
+        },
+        description: function description(i) {
+            return 'Role ' + i;
+        },
+        name: function name() {
+            return '';
+        },
+        updated_at: function updated_at() {
+            return '2013-11-25T14:48:11.000Z';
+        },
+        updated_by: function updated_by() {
+            return 1;
+        },
+        uuid: function uuid(i) {
+            return 'role-' + i;
+        }
+    });
+
+});
+define('ghost/mirage/factories/setting', ['exports', 'ember-cli-mirage'], function (exports, Mirage) {
+
+    'use strict';
+
+    /* jscs:disable */
+    exports['default'] = Mirage['default'].Factory.extend({
+        uuid: function uuid(i) {
+            return 'setting-' + i;
+        },
+        key: function key(i) {
+            return 'setting-' + i;
+        },
+        value: function value() {
+            return null;
+        },
+        type: function type() {
+            return 'blog';
+        },
+        created_at: function created_at() {
+            return '2015-01-12T18:29:01.000Z';
+        },
+        created_by: function created_by() {
+            return 1;
+        },
+        updated_at: function updated_at() {
+            return '2015-10-27T17:39:58.288Z';
+        },
+        updated_by: function updated_by() {
+            return 1;
+        }
+    });
+
+});
+define('ghost/mirage/factories/tag', ['exports', 'ember-cli-mirage'], function (exports, Mirage) {
+
+    'use strict';
+
+    /* jscs:disable */
+    exports['default'] = Mirage['default'].Factory.extend({
+        created_at: function created_at() {
+            return '2015-09-11T09:44:29.871Z';
+        },
+        created_by: function created_by() {
+            return 1;
+        },
+        description: function description(i) {
+            return 'Description for tag ' + i + '.';
+        },
+        hidden: function hidden() {
+            return false;
+        },
+        image: function image(i) {
+            return '/content/images/2015/10/tag-' + i + '.jpg';
+        },
+        meta_description: function meta_description(i) {
+            return 'Meta description for tag ' + i + '.';
+        },
+        meta_title: function meta_title(i) {
+            return 'Meta Title for tag ' + i;
+        },
+        name: function name(i) {
+            return 'Tag ' + i;
+        },
+        parent: function parent() {
+            return null;
+        },
+        slug: function slug(i) {
+            return 'tag-' + i;
+        },
+        updated_at: function updated_at() {
+            return '2015-10-19T16:25:07.756Z';
+        },
+        updated_by: function updated_by() {
+            return 1;
+        },
+        uuid: function uuid(i) {
+            return 'tag-' + i;
+        },
+        count: function count() {
+            return {
+                posts: 1
+            };
+        }
+    });
+
+});
+define('ghost/mirage/factories/user', ['exports', 'ember-cli-mirage'], function (exports, Mirage) {
+
+    'use strict';
+
+    /* jscs:disable */
+    exports['default'] = Mirage['default'].Factory.extend({
+        accessibility: function accessibility() {
+            return null;
+        },
+        bio: function bio() {
+            return null;
+        },
+        cover: function cover() {
+            return null;
+        },
+        created_at: function created_at() {
+            return '2015-09-02T13:41:50.000Z';
+        },
+        created_by: function created_by() {
+            return null;
+        },
+        email: function email(i) {
+            return 'user-' + i + '@example.com';
+        },
+        image: function image() {
+            return '//www.gravatar.com/avatar/3ae045bc198a157401827c8455cd7c99?s=250&d=mm&r=x';
+        },
+        language: function language() {
+            return 'en_US';
+        },
+        last_login: function last_login() {
+            return '2015-11-02T16:12:05.000Z';
+        },
+        location: function location() {
+            return null;
+        },
+        meta_description: function meta_description() {
+            return null;
+        },
+        meta_title: function meta_title() {
+            return null;
+        },
+        name: function name(i) {
+            return 'User ' + i;
+        },
+        slug: function slug(i) {
+            return 'user-' + i;
+        },
+        status: function status() {
+            return 'active';
+        },
+        tour: function tour() {
+            return null;
+        },
+        updated_at: function updated_at() {
+            return '2015-11-02T16:12:05.000Z';
+        },
+        updated_by: function updated_by() {
+            return '2015-09-02T13:41:50.000Z';
+        },
+        uuid: function uuid(i) {
+            return 'user-' + i;
+        },
+        website: function website() {
+            return 'http://example.com';
+        },
+
+        roles: function roles() {
+            return [];
+        }
+    });
+
+});
+define('ghost/mirage/fixtures/roles', ['exports'], function (exports) {
+
+    'use strict';
+
+    exports['default'] = [{
+        id: 1,
+        uuid: 'b2576c4e-fa4e-41d4-8236-ced75f735222',
+        name: 'Administrator',
+        description: 'Administrators',
+        created_at: '2015-11-13T16:01:29.131Z',
+        created_by: 1,
+        updated_at: '2015-11-13T16:01:29.131Z',
+        updated_by: 1
+    }, {
+        id: 2,
+        uuid: '6ee03efb-322e-4f6e-9c91-bc228b5eec6b',
+        name: 'Editor',
+        description: 'Editors',
+        created_at: '2015-11-13T16:01:29.131Z',
+        created_by: 1,
+        updated_at: '2015-11-13T16:01:29.131Z',
+        updated_by: 1
+    }, {
+        id: 3,
+        uuid: 'de481b62-63f8-42c7-b5b9-6c5f5a877f53',
+        name: 'Author',
+        description: 'Authors',
+        created_at: '2015-11-13T16:01:29.131Z',
+        created_by: 1,
+        updated_at: '2015-11-13T16:01:29.131Z',
+        updated_by: 1
+    }, {
+        id: 4,
+        uuid: 'ac8cbaf6-e6be-4129-b0fb-ec9ddfa61056',
+        name: 'Owner',
+        description: 'Blog Owner',
+        created_at: '2015-11-13T16:01:29.132Z',
+        created_by: 1,
+        updated_at: '2015-11-13T16:01:29.132Z',
+        updated_by: 1
+    }];
+
+});
+define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
+
+    'use strict';
+
+    exports['default'] = [{
+        created_at: '2015-09-11T09:44:30.805Z',
+        created_by: 1,
+        id: 1,
+        key: 'title',
+        type: 'blog',
+        updated_at: '2015-10-04T16:26:05.195Z',
+        updated_by: 1,
+        uuid: '39e16daf-43fa-4bf0-87d4-44948ba8bf4c',
+        value: 'Test Blog'
+    }, {
+        created_at: '2015-09-11T09:44:30.806Z',
+        created_by: 1,
+        id: 2,
+        key: 'description',
+        type: 'blog',
+        updated_at: '2015-10-04T16:26:05.198Z',
+        updated_by: 1,
+        uuid: 'e6c8b636-6925-4c4a-a5d9-1dc0870fb8ea',
+        value: 'Thoughts, stories and ideas.'
+    }, {
+        id: 3,
+        uuid: '347cedbe-f867-4184-a04d-e176dff24053',
+        key: 'email',
+        value: 'info@example.com',
+        type: 'blog',
+        created_at: '2013-11-25T14:48:11.000Z',
+        created_by: 1,
+        updated_at: '2015-08-20T04:30:20.000Z',
+        updated_by: 1
+    }, {
+        id: 4,
+        uuid: '4339ce48-b485-418a-acc2-1d34cf17a5e3',
+        key: 'logo',
+        value: '/content/images/2013/Nov/logo.png',
+        type: 'blog',
+        created_at: '2013-11-25T14:48:11.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.273Z',
+        updated_by: 1
+    }, {
+        id: 5,
+        uuid: 'e41b6c2a-7f72-45ea-96d8-ee016f06d78b',
+        key: 'cover',
+        value: '/content/images/2014/Feb/cover.jpg',
+        type: 'blog',
+        created_at: '2013-11-25T14:48:11.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.276Z',
+        updated_by: 1
+    }, {
+        id: 6,
+        uuid: '4558457e-9f61-47a5-9d45-8b83829bf1cf',
+        key: 'defaultLang',
+        value: 'en_US',
+        type: 'blog',
+        created_at: '2013-11-25T14:48:11.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.278Z',
+        updated_by: 1
+    }, {
+        created_at: '2015-09-11T09:44:30.809Z',
+        created_by: 1,
+        id: 7,
+        key: 'postsPerPage',
+        type: 'blog',
+        updated_at: '2015-10-04T16:26:05.211Z',
+        updated_by: 1,
+        uuid: '775e6ca1-bcc3-4347-a53d-15d5d76c04a4',
+        value: '5'
+    }, {
+        id: 8,
+        uuid: '3c93b240-d22b-473f-9063-537023e06c2d',
+        key: 'forceI18n',
+        value: 'true',
+        type: 'blog',
+        created_at: '2013-11-25T14:48:11.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.280Z',
+        updated_by: 1
+    }, {
+        id: 9,
+        uuid: '4e58389f-f173-4387-b28c-0435623882ad',
+        key: 'activeTheme',
+        value: 'casper',
+        type: 'theme',
+        created_at: '2013-11-25T14:48:11.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.284Z',
+        updated_by: 1
+    }, {
+        id: 10,
+        uuid: '8052c2bf-9c19-4d6c-8944-7465321d00be',
+        key: 'permalinks',
+        value: '/:slug/',
+        type: 'blog',
+        created_at: '2014-01-14T12:01:51.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.282Z',
+        updated_by: 1
+    }, {
+        created_at: '2015-09-11T09:44:30.809Z',
+        created_by: 1,
+        id: 11,
+        key: 'ghost_head',
+        type: 'blog',
+        updated_at: '2015-09-23T13:32:49.858Z',
+        updated_by: 1,
+        uuid: 'df7f3151-bc08-4a77-be9d-dd315b630d51',
+        value: ''
+    }, {
+        created_at: '2015-09-11T09:44:30.809Z',
+        created_by: 1,
+        id: 12,
+        key: 'ghost_foot',
+        type: 'blog',
+        updated_at: '2015-09-23T13:32:49.858Z',
+        updated_by: 1,
+        uuid: '0649d45e-828b-4dd0-8381-3dff6d1d5ddb',
+        value: ''
+    }, {
+        id: 13,
+        uuid: 'd806f358-7996-4c74-b153-8876959c4b70',
+        key: 'labs',
+        value: '{"codeInjectionUI":true}',
+        type: 'blog',
+        created_at: '2015-01-12T18:29:01.000Z',
+        created_by: 1,
+        updated_at: '2015-10-27T17:39:58.288Z',
+        updated_by: 1
+    }, {
+        created_at: '2015-09-11T09:44:30.810Z',
+        created_by: 1,
+        id: 14,
+        key: 'navigation',
+        type: 'blog',
+        updated_at: '2015-09-23T13:32:49.868Z',
+        updated_by: 1,
+        uuid: '4cc51d1c-fcbd-47e6-a71b-fdd1abb223fc',
+        value: JSON.stringify([{ label: 'Home', url: '/' }, { label: 'About', url: '/about' }])
+    }, {
+        key: 'availableThemes',
+        value: [{
+            name: 'casper',
+            'package': {
+                name: 'Blog',
+                version: '1.0'
+            },
+            active: true
+        }],
+        type: 'theme'
+    }];
+
+});
+define('ghost/mirage/scenarios/default', ['exports'], function (exports) {
+
+    'use strict';
+
+    exports['default'] = function () /* server */{
+        // Seed your development database using your factories. This
+        // data will not be loaded in your tests.
+
+        // server.createList('contact', 10);
+    }
 
 });
 define('ghost/mixins/body-event-listener', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var BodyEventListener = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         bodyElementSelector: 'html',
         bodyClick: Ember['default'].K,
 
@@ -5988,14 +7031,12 @@ define('ghost/mixins/body-event-listener', ['exports', 'ember'], function (expor
         }
     });
 
-    exports['default'] = BodyEventListener;
-
 });
 define('ghost/mixins/current-user-settings', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var CurrentUserSettings = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         transitionAuthor: function transitionAuthor() {
             var self = this;
 
@@ -6021,14 +7062,12 @@ define('ghost/mixins/current-user-settings', ['exports', 'ember'], function (exp
         }
     });
 
-    exports['default'] = CurrentUserSettings;
-
 });
 define('ghost/mixins/dropdown-mixin', ['exports', 'ember'], function (exports, Ember) {
 
   'use strict';
 
-  var DropdownMixin = Ember['default'].Mixin.create(Ember['default'].Evented, {
+  exports['default'] = Ember['default'].Mixin.create(Ember['default'].Evented, {
       classNameBindings: ['isOpen:open:closed'],
       isOpen: false,
 
@@ -6039,14 +7078,12 @@ define('ghost/mixins/dropdown-mixin', ['exports', 'ember'], function (exports, E
       }
   });
 
-  exports['default'] = DropdownMixin;
-
 });
 define('ghost/mixins/ed-editor-api', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var EditorAPI = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         /**
          * Get Value
          *
@@ -6179,14 +7216,12 @@ define('ghost/mixins/ed-editor-api', ['exports', 'ember'], function (exports, Em
         }
     });
 
-    exports['default'] = EditorAPI;
-
 });
 define('ghost/mixins/ed-editor-scroll', ['exports', 'ember', 'ghost/utils/set-scroll-classname'], function (exports, Ember, setScrollClassName) {
 
     'use strict';
 
-    var EditorScroll = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         /**
          * Determine if the cursor is at the end of the textarea
          */
@@ -6286,15 +7321,13 @@ define('ghost/mixins/ed-editor-scroll', ['exports', 'ember', 'ghost/utils/set-sc
         }
     });
 
-    exports['default'] = EditorScroll;
-
 });
 define('ghost/mixins/ed-editor-shortcuts', ['exports', 'ember', 'ghost/utils/titleize'], function (exports, Ember, titleize) {
 
     'use strict';
 
     /* global moment, Showdown */
-    var simpleShortcutSyntax, shortcuts, EditorShortcuts;
+    var simpleShortcutSyntax, shortcuts;
 
     // Used for simple, noncomputational replace-and-go! shortcuts.
     // See default case in shortcut function below.
@@ -6428,7 +7461,7 @@ define('ghost/mixins/ed-editor-shortcuts', ['exports', 'ember', 'ghost/utils/tit
         }
     };
 
-    EditorShortcuts = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         shortcut: function shortcut(type) {
             var selection = this.getSelection(),
                 replacement = {
@@ -6463,14 +7496,12 @@ define('ghost/mixins/ed-editor-shortcuts', ['exports', 'ember', 'ghost/utils/tit
         }
     });
 
-    exports['default'] = EditorShortcuts;
-
 });
 define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models/post', 'ghost/utils/bound-one-way', 'ghost/utils/ed-image-manager'], function (exports, Ember, PostModel, boundOneWay, imageManager) {
 
     'use strict';
 
-    var watchedProps = ['model.scratch', 'model.titleScratch', 'model.isDirty', 'model.tags.[]'];
+    var watchedProps = ['model.scratch', 'model.titleScratch', 'model.hasDirtyAttributes', 'model.tags.[]'];
 
     PostModel['default'].eachAttribute(function (name) {
         watchedProps.push('model.' + name);
@@ -6479,20 +7510,19 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
     exports['default'] = Ember['default'].Mixin.create({
         postSettingsMenuController: Ember['default'].inject.controller('post-settings-menu'),
 
-        autoSaveId: null,
-        timedSaveId: null,
+        _autoSaveId: null,
+        _timedSaveId: null,
         editor: null,
         submitting: false,
 
         notifications: Ember['default'].inject.service(),
 
         init: function init() {
-            var self = this;
+            var _this = this;
 
-            this._super();
-
+            this._super.apply(this, arguments);
             window.onbeforeunload = function () {
-                return self.get('isDirty') ? self.unloadDirtyMessage() : null;
+                return _this.get('hasDirtyAttributes') ? _this.unloadDirtyMessage() : null;
             };
         },
 
@@ -6510,10 +7540,10 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
                 };
 
                 timedSaveId = Ember['default'].run.throttle(this, 'send', 'save', saveOptions, 60000, false);
-                this.set('timedSaveId', timedSaveId);
+                this._timedSaveId = timedSaveId;
 
                 autoSaveId = Ember['default'].run.debounce(this, 'send', 'save', saveOptions, 3000);
-                this.set('autoSaveId', autoSaveId);
+                this._autoSaveId = autoSaveId;
             }
         }),
 
@@ -6524,8 +7554,8 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
          */
         willPublish: boundOneWay['default']('model.isPublished'),
 
-        // set by the editor route and `isDirty`. useful when checking
-        // whether the number of tags has changed for `isDirty`.
+        // set by the editor route and `hasDirtyAttributes`. useful when checking
+        // whether the number of tags has changed for `hasDirtyAttributes`.
         previousTagNames: null,
 
         tagNames: Ember['default'].computed('model.tags.@each.name', function () {
@@ -6565,22 +7595,22 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
             // rather than in all other places save is called
             model.updateTags();
 
-            // set previousTagNames to current tagNames for isDirty check
+            // set previousTagNames to current tagNames for hasDirtyAttributes check
             this.set('previousTagNames', this.get('tagNames'));
 
-            // `updateTags` triggers `isDirty => true`.
+            // `updateTags` triggers `hasDirtyAttributes => true`.
             // for a saved model it would otherwise be false.
 
             // if the two "scratch" properties (title and content) match the model, then
-            // it's ok to set isDirty to false
+            // it's ok to set hasDirtyAttributes to false
             if (model.get('titleScratch') === model.get('title') && model.get('scratch') === model.get('markdown')) {
-                this.set('isDirty', false);
+                this.set('hasDirtyAttributes', false);
             }
         },
 
         // an ugly hack, but necessary to watch all the model's properties
         // and more, without having to be explicit and do it manually
-        isDirty: Ember['default'].computed.apply(Ember['default'], watchedProps.concat({
+        hasDirtyAttributes: Ember['default'].computed.apply(Ember['default'], watchedProps.concat({
             get: function get() {
                 var model = this.get('model'),
                     markdown = model.get('markdown'),
@@ -6609,10 +7639,10 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
                     return true;
                 }
 
-                // models created on the client always return `isDirty: true`,
+                // models created on the client always return `hasDirtyAttributes: true`,
                 // so we need to see which properties have actually changed.
                 if (model.get('isNew')) {
-                    changedAttributes = Ember['default'].keys(model.changedAttributes());
+                    changedAttributes = Object.keys(model.changedAttributes());
 
                     if (changedAttributes.length) {
                         return true;
@@ -6622,10 +7652,10 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
                 }
 
                 // even though we use the `scratch` prop to show edits,
-                // which does *not* change the model's `isDirty` property,
-                // `isDirty` will tell us if the other props have changed,
+                // which does *not* change the model's `hasDirtyAttributes` property,
+                // `hasDirtyAttributes` will tell us if the other props have changed,
                 // as long as the model is not new (model.isNew === false).
-                return model.get('isDirty');
+                return model.get('hasDirtyAttributes');
             },
             set: function set(key, value) {
                 return value;
@@ -6704,7 +7734,7 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
 
             message += '<br />' + error;
 
-            notifications.showAlert(message.htmlSafe(), { type: 'error', delayed: delay });
+            notifications.showAlert(message.htmlSafe(), { type: 'error', delayed: delay, key: 'post.save' });
         },
 
         actions: {
@@ -6712,8 +7742,8 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
                 var status,
                     prevStatus = this.get('model.status'),
                     isNew = this.get('model.isNew'),
-                    autoSaveId = this.get('autoSaveId'),
-                    timedSaveId = this.get('timedSaveId'),
+                    autoSaveId = this._autoSaveId,
+                    timedSaveId = this._timedSaveId,
                     self = this,
                     psmController = this.get('postSettingsMenuController'),
                     promise;
@@ -6738,12 +7768,12 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
 
                 if (autoSaveId) {
                     Ember['default'].run.cancel(autoSaveId);
-                    this.set('autoSaveId', null);
+                    this._autoSaveId = null;
                 }
 
                 if (timedSaveId) {
                     Ember['default'].run.cancel(timedSaveId);
-                    this.set('timedSaveId', null);
+                    this._timedSaveId = null;
                 }
 
                 // Set the properties that are indirected
@@ -6856,7 +7886,7 @@ define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shor
 
     'use strict';
 
-    var EditorBaseRoute = Ember['default'].Mixin.create(styleBody['default'], ShortcutsRoute['default'], {
+    exports['default'] = Ember['default'].Mixin.create(styleBody['default'], ShortcutsRoute['default'], {
         classNames: ['editor'],
 
         actions: {
@@ -6886,9 +7916,9 @@ define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shor
             willTransition: function willTransition(transition) {
                 var controller = this.get('controller'),
                     scratch = controller.get('model.scratch'),
-                    controllerIsDirty = controller.get('isDirty'),
+                    controllerIsDirty = controller.get('hasDirtyAttributes'),
                     model = controller.get('model'),
-                    state = model.getProperties('isDeleted', 'isSaving', 'isDirty', 'isNew'),
+                    state = model.getProperties('isDeleted', 'isSaving', 'hasDirtyAttributes', 'isNew'),
                     fromNewToEdit,
                     deletedWithoutChanges;
 
@@ -6905,7 +7935,7 @@ define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shor
 
                 fromNewToEdit = this.get('routeName') === 'editor.new' && transition.targetName === 'editor.edit' && transition.intent.contexts && transition.intent.contexts[0] && transition.intent.contexts[0].id === model.get('id');
 
-                deletedWithoutChanges = state.isDeleted && (state.isSaving || !state.isDirty);
+                deletedWithoutChanges = state.isDeleted && (state.isSaving || !state.hasDirtyAttributes);
 
                 if (!fromNewToEdit && !deletedWithoutChanges && controllerIsDirty) {
                     transition.abort();
@@ -6947,7 +7977,7 @@ define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shor
 
         attachModelHooks: function attachModelHooks(controller, model) {
             // this will allow us to track when the model is saved and update the controller
-            // so that we can be sure controller.isDirty is correct, without having to update the
+            // so that we can be sure controller.hasDirtyAttributes is correct, without having to update the
             // controller on each instance of `model.save()`.
             //
             // another reason we can't do this on `model.save().then()` is because the post-settings-menu
@@ -6983,8 +8013,6 @@ define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shor
             this.attachModelHooks(controller, model);
         }
     });
-
-    exports['default'] = EditorBaseRoute;
 
 });
 define('ghost/mixins/infinite-scroll', ['exports', 'ember'], function (exports, Ember) {
@@ -7029,18 +8057,30 @@ define('ghost/mixins/infinite-scroll', ['exports', 'ember'], function (exports, 
     });
 
 });
-define('ghost/mixins/pagination-controller', ['exports', 'ember', 'ghost/utils/ajax'], function (exports, Ember, getRequestErrorMessage) {
+define('ghost/mixins/pagination-route', ['exports', 'ember', 'ghost/utils/ajax'], function (exports, Ember, getRequestErrorMessage) {
 
     'use strict';
+
+    var defaultPaginationSettings = {
+        page: 1,
+        limit: 15
+    };
 
     exports['default'] = Ember['default'].Mixin.create({
         notifications: Ember['default'].inject.service(),
 
-        // set from PaginationRouteMixin
+        paginationModel: null,
         paginationSettings: null,
+        paginationMeta: null,
 
-        // indicates whether we're currently loading the next page
-        isLoading: null,
+        init: function init() {
+            var paginationSettings = this.get('paginationSettings'),
+                settings = Ember['default'].$.extend({}, defaultPaginationSettings, paginationSettings);
+
+            this._super.apply(this, arguments);
+            this.set('paginationSettings', settings);
+            this.set('paginationMeta', {});
+        },
 
         /**
          * Takes an ajax response, concatenates any error messages, then generates an error notification.
@@ -7057,10 +8097,29 @@ define('ghost/mixins/pagination-controller', ['exports', 'ember', 'ghost/utils/a
                 message += '.';
             }
 
-            this.get('notifications').showAlert(message, { type: 'error' });
+            this.get('notifications').showAlert(message, { type: 'error', key: 'pagination.load.failed' });
+        },
+
+        loadFirstPage: function loadFirstPage() {
+            var paginationSettings = this.get('paginationSettings'),
+                modelName = this.get('paginationModel'),
+                self = this;
+
+            paginationSettings.page = 1;
+
+            return this.get('store').query(modelName, paginationSettings).then(function (results) {
+                self.set('paginationMeta', results.meta);
+                return results;
+            }, function (response) {
+                self.reportLoadError(response);
+            });
         },
 
         actions: {
+            loadFirstPage: function loadFirstPage() {
+                return this.loadFirstPage();
+            },
+
             /**
              * Loads the next paginated page of posts into the ember-data store. Will cause the posts list UI to update.
              * @return
@@ -7068,8 +8127,8 @@ define('ghost/mixins/pagination-controller', ['exports', 'ember', 'ghost/utils/a
             loadNextPage: function loadNextPage() {
                 var self = this,
                     store = this.get('store'),
-                    recordType = this.get('model').get('type'),
-                    metadata = this.store.metadataFor(recordType),
+                    modelName = this.get('paginationModel'),
+                    metadata = this.get('paginationMeta'),
                     nextPage = metadata.pagination && metadata.pagination.next,
                     paginationSettings = this.get('paginationSettings');
 
@@ -7077,8 +8136,10 @@ define('ghost/mixins/pagination-controller', ['exports', 'ember', 'ghost/utils/a
                     this.set('isLoading', true);
                     this.set('paginationSettings.page', nextPage);
 
-                    store.find(recordType, paginationSettings).then(function () {
+                    store.query(modelName, paginationSettings).then(function (results) {
                         self.set('isLoading', false);
+                        self.set('paginationMeta', results.meta);
+                        return results;
                     }, function (response) {
                         self.reportLoadError(response);
                     });
@@ -7087,44 +8148,9 @@ define('ghost/mixins/pagination-controller', ['exports', 'ember', 'ghost/utils/a
 
             resetPagination: function resetPagination() {
                 this.set('paginationSettings.page', 1);
-                this.store.setMetadataFor('tag', { pagination: undefined });
             }
         }
     });
-
-});
-define('ghost/mixins/pagination-route', ['exports', 'ember'], function (exports, Ember) {
-
-    'use strict';
-
-    var defaultPaginationSettings, PaginationRoute;
-
-    defaultPaginationSettings = {
-        page: 1,
-        limit: 15
-    };
-
-    PaginationRoute = Ember['default'].Mixin.create({
-        /**
-         * Sets up pagination details
-         * @param {object} settings specifies additional pagination details
-         */
-        setupPagination: function setupPagination(settings) {
-            settings = settings || {};
-            for (var key in defaultPaginationSettings) {
-                if (defaultPaginationSettings.hasOwnProperty(key)) {
-                    if (!settings.hasOwnProperty(key)) {
-                        settings[key] = defaultPaginationSettings[key];
-                    }
-                }
-            }
-
-            this.set('paginationSettings', settings);
-            this.controller.set('paginationSettings', settings);
-        }
-    });
-
-    exports['default'] = PaginationRoute;
 
 });
 define('ghost/mixins/resize-aware', ['exports', 'ember-resize/mixins/resize-aware'], function (exports, resize_aware) {
@@ -7133,7 +8159,7 @@ define('ghost/mixins/resize-aware', ['exports', 'ember-resize/mixins/resize-awar
 
 
 
-	exports.default = resize_aware.default;
+	exports['default'] = resize_aware['default'];
 
 });
 define('ghost/mixins/settings-menu-controller', ['exports', 'ember'], function (exports, Ember) {
@@ -7231,12 +8257,12 @@ define('ghost/mixins/shortcuts-route', ['exports', 'ember'], function (exports, 
      * To have all your shortcut work in all scopes, give it the scope "all".
      * Find out more at the keymaster docs
      */
-    var ShortcutsRoute = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         registerShortcuts: function registerShortcuts() {
             var self = this,
                 shortcuts = this.get('shortcuts');
 
-            Ember['default'].keys(shortcuts).forEach(function (shortcut) {
+            Object.keys(shortcuts).forEach(function (shortcut) {
                 var scope = shortcuts[shortcut].scope || 'default',
                     action = shortcuts[shortcut],
                     options;
@@ -7249,7 +8275,9 @@ define('ghost/mixins/shortcuts-route', ['exports', 'ember'], function (exports, 
                 key(shortcut, scope, function (event) {
                     // stop things like ctrl+s from actually opening a save dialogue
                     event.preventDefault();
-                    self.send(action, options);
+                    Ember['default'].run(self, function () {
+                        this.send(action, options);
+                    });
                 });
             });
         },
@@ -7257,7 +8285,7 @@ define('ghost/mixins/shortcuts-route', ['exports', 'ember'], function (exports, 
         removeShortcuts: function removeShortcuts() {
             var shortcuts = this.get('shortcuts');
 
-            Ember['default'].keys(shortcuts).forEach(function (shortcut) {
+            Object.keys(shortcuts).forEach(function (shortcut) {
                 var scope = shortcuts[shortcut].scope || 'default';
                 key.unbind(shortcut, scope);
             });
@@ -7274,14 +8302,32 @@ define('ghost/mixins/shortcuts-route', ['exports', 'ember'], function (exports, 
         }
     });
 
-    exports['default'] = ShortcutsRoute;
+});
+define('ghost/mixins/slug-url', ['exports', 'ember'], function (exports, Ember) {
+
+    'use strict';
+
+    var isBlank = Ember['default'].isBlank;
+
+    exports['default'] = Ember['default'].Mixin.create({
+        buildURL: function buildURL(_modelName, _id, _snapshot, _requestType, query) {
+            var url = this._super.apply(this, arguments);
+
+            if (query && !isBlank(query.slug)) {
+                url += 'slug/' + query.slug + '/';
+                delete query.slug;
+            }
+
+            return url;
+        }
+    });
 
 });
 define('ghost/mixins/style-body', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var styleBody = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         activate: function activate() {
             this._super();
 
@@ -7309,14 +8355,12 @@ define('ghost/mixins/style-body', ['exports', 'ember'], function (exports, Ember
         }
     });
 
-    exports['default'] = styleBody;
-
 });
 define('ghost/mixins/text-input', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var BlurField = Ember['default'].Mixin.create({
+    exports['default'] = Ember['default'].Mixin.create({
         selectOnClick: false,
         stopEnterKeyDownPropagation: false,
 
@@ -7337,8 +8381,6 @@ define('ghost/mixins/text-input', ['exports', 'ember'], function (exports, Ember
             }
         }
     });
-
-    exports['default'] = BlurField;
 
 });
 define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'ghost/utils/ajax', 'ghost/utils/validator-extensions', 'ghost/validators/post', 'ghost/validators/setup', 'ghost/validators/signup', 'ghost/validators/signin', 'ghost/validators/setting', 'ghost/validators/reset', 'ghost/validators/user', 'ghost/validators/tag-settings', 'ghost/validators/nav-item'], function (exports, Ember, DS, getRequestErrorMessage, ValidatorExtensions, PostValidator, SetupValidator, SignupValidator, SigninValidator, SettingValidator, ResetValidator, UserValidator, TagSettingsValidator, NavItemValidator) {
@@ -7518,14 +8560,12 @@ define('ghost/models/notification', ['exports', 'ember-data'], function (exports
 
     'use strict';
 
-    var Notification = DS['default'].Model.extend({
+    exports['default'] = DS['default'].Model.extend({
         dismissible: DS['default'].attr('boolean'),
         status: DS['default'].attr('string'),
         type: DS['default'].attr('string'),
         message: DS['default'].attr('string')
     });
-
-    exports['default'] = Notification;
 
 });
 define('ghost/models/post', ['exports', 'ember', 'ember-data', 'ghost/mixins/validation-engine'], function (exports, Ember, DS, ValidationEngine) {
@@ -7555,7 +8595,10 @@ define('ghost/models/post', ['exports', 'ember', 'ember-data', 'ghost/mixins/val
         published_by: DS['default'].belongsTo('user', { async: true }),
         created_at: DS['default'].attr('moment-date'),
         created_by: DS['default'].attr(),
-        tags: DS['default'].hasMany('tag', { embedded: 'always' }),
+        tags: DS['default'].hasMany('tag', {
+            embedded: 'always',
+            async: false
+        }),
         url: DS['default'].attr('string'),
 
         config: Ember['default'].inject.service(),
@@ -7609,7 +8652,7 @@ define('ghost/models/role', ['exports', 'ember', 'ember-data'], function (export
 
     'use strict';
 
-    var Role = DS['default'].Model.extend({
+    exports['default'] = DS['default'].Model.extend({
         uuid: DS['default'].attr('string'),
         name: DS['default'].attr('string'),
         description: DS['default'].attr('string'),
@@ -7623,14 +8666,12 @@ define('ghost/models/role', ['exports', 'ember', 'ember-data'], function (export
         })
     });
 
-    exports['default'] = Role;
-
 });
 define('ghost/models/setting', ['exports', 'ember-data', 'ghost/mixins/validation-engine'], function (exports, DS, ValidationEngine) {
 
     'use strict';
 
-    var Setting = DS['default'].Model.extend(ValidationEngine['default'], {
+    exports['default'] = DS['default'].Model.extend(ValidationEngine['default'], {
         validationType: 'setting',
 
         title: DS['default'].attr('string'),
@@ -7650,8 +8691,6 @@ define('ghost/models/setting', ['exports', 'ember-data', 'ghost/mixins/validatio
         isPrivate: DS['default'].attr('boolean'),
         password: DS['default'].attr('string')
     });
-
-    exports['default'] = Setting;
 
 });
 define('ghost/models/slug-generator', ['exports', 'ember', 'ic-ajax'], function (exports, Ember, ic_ajax) {
@@ -7695,7 +8734,7 @@ define('ghost/models/tag', ['exports', 'ember-data', 'ghost/mixins/validation-en
 
     'use strict';
 
-    var Tag = DS['default'].Model.extend(ValidationEngine['default'], {
+    exports['default'] = DS['default'].Model.extend(ValidationEngine['default'], {
         validationType: 'tag',
 
         uuid: DS['default'].attr('string'),
@@ -7711,10 +8750,8 @@ define('ghost/models/tag', ['exports', 'ember-data', 'ghost/mixins/validation-en
         updated_at: DS['default'].attr('moment-date'),
         created_by: DS['default'].attr(),
         updated_by: DS['default'].attr(),
-        post_count: DS['default'].attr('number')
+        count: DS['default'].attr('raw')
     });
-
-    exports['default'] = Tag;
 
 });
 define('ghost/models/user', ['exports', 'ember', 'ember-data', 'ic-ajax', 'ghost/mixins/validation-engine'], function (exports, Ember, DS, ic_ajax, ValidationEngine) {
@@ -7743,7 +8780,10 @@ define('ghost/models/user', ['exports', 'ember', 'ember-data', 'ic-ajax', 'ghost
         created_by: DS['default'].attr('number'),
         updated_at: DS['default'].attr('moment-date'),
         updated_by: DS['default'].attr('number'),
-        roles: DS['default'].hasMany('role', { embedded: 'always' }),
+        roles: DS['default'].hasMany('role', {
+            embedded: 'always',
+            async: false
+        }),
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
 
@@ -7825,12 +8865,12 @@ define('ghost/models/user', ['exports', 'ember', 'ember-data', 'ic-ajax', 'ghost
     });
 
 });
-define('ghost/router', ['exports', 'ember', 'ghost/utils/ghost-paths', 'ghost/utils/document-title'], function (exports, Ember, ghostPaths, documentTitle) {
+define('ghost/router', ['exports', 'ember', 'ghost/utils/ghost-paths', 'ghost/utils/document-title', 'ghost/config/environment'], function (exports, Ember, ghostPaths, documentTitle, config) {
 
     'use strict';
 
     var Router = Ember['default'].Router.extend({
-        location: 'trailing-history', // use HTML5 History API instead of hash-tag based URLs
+        location: config['default'].locationType, // use HTML5 History API instead of hash-tag based URLs
         rootURL: ghostPaths['default']().adminRoot, // admin interface lives under sub-directory /ghost
 
         notifications: Ember['default'].inject.service(),
@@ -7865,11 +8905,14 @@ define('ghost/router', ['exports', 'ember', 'ghost/utils/ghost-paths', 'ghost/ut
         });
 
         this.route('team', { path: '/team' }, function () {
-            this.route('user', { path: ':slug' });
+            this.route('user', { path: ':user_slug' });
         });
 
         this.route('settings.general', { path: '/settings/general' });
-        this.route('settings.tags', { path: '/settings/tags' });
+        this.route('settings.tags', { path: '/settings/tags' }, function () {
+            this.route('tag', { path: ':tag_slug' });
+            this.route('new');
+        });
         this.route('settings.labs', { path: '/settings/labs' });
         this.route('settings.code-injection', { path: '/settings/code-injection' });
         this.route('settings.navigation', { path: '/settings/navigation' });
@@ -7916,7 +8959,7 @@ define('ghost/routes/about', ['exports', 'ember', 'ic-ajax', 'ghost/routes/authe
     });
 
 });
-define('ghost/routes/application', ['exports', 'ember', 'simple-auth/mixins/application-route-mixin', 'simple-auth/configuration', 'ghost/mixins/shortcuts-route', 'ghost/utils/ctrl-or-cmd'], function (exports, Ember, ApplicationRouteMixin, Configuration, ShortcutsRoute, ctrlOrCmd) {
+define('ghost/routes/application', ['exports', 'ember', 'ember-simple-auth/configuration', 'ember-simple-auth/mixins/application-route-mixin', 'ghost/mixins/shortcuts-route', 'ghost/utils/ctrl-or-cmd', 'ghost/utils/window-proxy'], function (exports, Ember, AuthConfiguration, ApplicationRouteMixin, ShortcutsRoute, ctrlOrCmd, windowProxy) {
 
     'use strict';
 
@@ -7936,13 +8979,31 @@ define('ghost/routes/application', ['exports', 'ember', 'simple-auth/mixins/appl
         notifications: Ember['default'].inject.service(),
 
         afterModel: function afterModel(model, transition) {
-            if (this.get('session').isAuthenticated) {
+            if (this.get('session.isAuthenticated')) {
                 transition.send('loadServerNotifications');
             }
         },
 
         title: function title(tokens) {
             return tokens.join(' - ') + ' - ' + this.get('config.blogTitle');
+        },
+
+        sessionAuthenticated: function sessionAuthenticated() {
+            var appController = this.controllerFor('application'),
+                self = this;
+
+            if (appController && appController.get('skipAuthSuccessHandler')) {
+                return;
+            }
+
+            this._super.apply(this, arguments);
+            this.get('session.user').then(function (user) {
+                self.send('signedIn', user);
+            });
+        },
+
+        sessionInvalidated: function sessionInvalidated() {
+            this.send('authorizationFailed');
         },
 
         actions: {
@@ -7968,47 +9029,18 @@ define('ghost/routes/application', ['exports', 'ember', 'simple-auth/mixins/appl
             },
 
             signedIn: function signedIn() {
+                this.get('notifications').clearAll();
                 this.send('loadServerNotifications', true);
             },
 
             invalidateSession: function invalidateSession() {
-                this.get('session').invalidate();
-            },
-
-            sessionAuthenticationFailed: function sessionAuthenticationFailed(error) {
-                if (error.errors) {
-                    // These are server side errors, which can be marked as htmlSafe
-                    error.errors.forEach(function (err) {
-                        err.message = err.message.htmlSafe();
-                    });
-                } else {
-                    // Connection errors don't return proper status message, only req.body
-                    this.get('notifications').showAlert('There was a problem on the server.', { type: 'error' });
-                }
-            },
-
-            sessionAuthenticationSucceeded: function sessionAuthenticationSucceeded() {
-                var appController = this.controllerFor('application'),
-                    self = this;
-
-                if (appController && appController.get('skipAuthSuccessHandler')) {
-                    return;
-                }
-
-                this.get('session.user').then(function (user) {
-                    self.send('signedIn', user);
-                    var attemptedTransition = self.get('session').get('attemptedTransition');
-                    if (attemptedTransition) {
-                        attemptedTransition.retry();
-                        self.get('session').set('attemptedTransition', null);
-                    } else {
-                        self.transitionTo(Configuration['default'].routeAfterAuthentication);
-                    }
+                this.get('session').invalidate()['catch'](function (error) {
+                    this.get('notifications').showAlert(error.message, { type: 'error', key: 'session.invalidate.failed' });
                 });
             },
 
-            sessionInvalidationFailed: function sessionInvalidationFailed(error) {
-                this.get('notifications').showAlert(error.message, { type: 'error' });
+            authorizationFailed: function authorizationFailed() {
+                windowProxy['default'].replaceLocation(AuthConfiguration['default'].baseURL);
             },
 
             openModal: function openModal(modalName, model, type) {
@@ -8056,10 +9088,10 @@ define('ghost/routes/application', ['exports', 'ember', 'simple-auth/mixins/appl
             loadServerNotifications: function loadServerNotifications(isDelayed) {
                 var self = this;
 
-                if (this.session.isAuthenticated) {
+                if (this.get('session.isAuthenticated')) {
                     this.get('session.user').then(function (user) {
                         if (!user.get('isAuthor') && !user.get('isEditor')) {
-                            self.store.findAll('notification').then(function (serverNotifications) {
+                            self.store.findAll('notification', { reload: true }).then(function (serverNotifications) {
                                 serverNotifications.forEach(function (notification) {
                                     self.get('notifications').handleNotification(notification, isDelayed);
                                 });
@@ -8075,20 +9107,18 @@ define('ghost/routes/application', ['exports', 'ember', 'simple-auth/mixins/appl
     });
 
 });
-define('ghost/routes/authenticated', ['exports', 'ember', 'simple-auth/mixins/authenticated-route-mixin'], function (exports, Ember, AuthenticatedRouteMixin) {
+define('ghost/routes/authenticated', ['exports', 'ember', 'ember-simple-auth/mixins/authenticated-route-mixin'], function (exports, Ember, AuthenticatedRouteMixin) {
 
 	'use strict';
 
-	var AuthenticatedRoute = Ember['default'].Route.extend(AuthenticatedRouteMixin['default']);
-
-	exports['default'] = AuthenticatedRoute;
+	exports['default'] = Ember['default'].Route.extend(AuthenticatedRouteMixin['default']);
 
 });
 define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/editor-base-route', 'ghost/utils/isNumber', 'ghost/utils/isFinite'], function (exports, AuthenticatedRoute, base, isNumber, isFinite) {
 
     'use strict';
 
-    var EditorEditRoute = AuthenticatedRoute['default'].extend(base['default'], {
+    exports['default'] = AuthenticatedRoute['default'].extend(base['default'], {
         titleToken: 'Editor',
 
         beforeModel: function beforeModel(transition) {
@@ -8114,14 +9144,14 @@ define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'gh
                 staticPages: 'all'
             };
 
-            return self.store.find('post', query).then(function (records) {
+            return self.store.query('post', query).then(function (records) {
                 var post = records.get('firstObject');
 
                 if (post) {
                     return post;
                 }
 
-                return self.replaceWith('posts.index');
+                return self.replaceRoute('posts.index');
             });
         },
 
@@ -8130,7 +9160,7 @@ define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'gh
 
             return self.get('session.user').then(function (user) {
                 if (user.get('isAuthor') && !post.isAuthoredByUser(user)) {
-                    return self.replaceWith('posts.index');
+                    return self.replaceRoute('posts.index');
                 }
             });
         },
@@ -8148,20 +9178,16 @@ define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'gh
         }
     });
 
-    exports['default'] = EditorEditRoute;
-
 });
 define('ghost/routes/editor/index', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var EditorRoute = Ember['default'].Route.extend({
+    exports['default'] = Ember['default'].Route.extend({
         beforeModel: function beforeModel() {
             this.transitionTo('editor.new');
         }
     });
-
-    exports['default'] = EditorRoute;
 
 });
 define('ghost/routes/editor/new', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/editor-base-route'], function (exports, AuthenticatedRoute, base) {
@@ -8223,7 +9249,7 @@ define('ghost/routes/error404', ['exports', 'ember'], function (exports, Ember) 
 
     'use strict';
 
-    var Error404Route = Ember['default'].Route.extend({
+    exports['default'] = Ember['default'].Route.extend({
         controllerName: 'error',
         templateName: 'error',
         titleToken: 'Error',
@@ -8235,14 +9261,12 @@ define('ghost/routes/error404', ['exports', 'ember'], function (exports, Ember) 
         }
     });
 
-    exports['default'] = Error404Route;
-
 });
 define('ghost/routes/mobile-index-route', ['exports', 'ember', 'ghost/utils/mobile'], function (exports, Ember, mobileQuery) {
 
     'use strict';
 
-    var MobileIndexRoute = Ember['default'].Route.extend({
+    exports['default'] = Ember['default'].Route.extend({
         desktopTransition: Ember['default'].K,
 
         activate: function attachDesktopTransition() {
@@ -8265,45 +9289,168 @@ define('ghost/routes/mobile-index-route', ['exports', 'ember', 'ghost/utils/mobi
         })
     });
 
-    exports['default'] = MobileIndexRoute;
-
 });
-define('ghost/routes/posts', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination-route'], function (exports, Ember, AuthenticatedRoute, ShortcutsRoute, PaginationRouteMixin) {
+define('ghost/routes/posts/index', ['exports', 'ember-simple-auth/mixins/authenticated-route-mixin', 'ghost/routes/mobile-index-route', 'ghost/utils/mobile'], function (exports, AuthenticatedRouteMixin, MobileIndexRoute, mobileQuery) {
 
     'use strict';
 
-    var paginationSettings = {
-        status: 'all',
-        staticPages: 'all',
-        page: 1
-    };
+    exports['default'] = MobileIndexRoute['default'].extend(AuthenticatedRouteMixin['default'], {
+        noPosts: false,
 
-    exports['default'] = AuthenticatedRoute['default'].extend(ShortcutsRoute['default'], PaginationRouteMixin['default'], {
-        titleToken: 'Content',
+        // Transition to a specific post if we're not on mobile
+        beforeModel: function beforeModel() {
+            if (!mobileQuery['default'].matches) {
+                return this.goToPost();
+            }
+        },
 
-        model: function model() {
-            var self = this;
+        setupController: function setupController(controller, model) {
+            /*jshint unused:false*/
+            controller.set('noPosts', this.get('noPosts'));
+        },
+
+        goToPost: function goToPost() {
+            var self = this,
+
+            // the store has been populated by PostsRoute
+            posts = this.store.peekAll('post'),
+                post;
 
             return this.get('session.user').then(function (user) {
-                if (user.get('isAuthor')) {
-                    paginationSettings.author = user.get('slug');
-                }
-
-                // using `.filter` allows the template to auto-update when new models are pulled in from the server.
-                // we just need to 'return true' to allow all models by default.
-                return self.store.filter('post', paginationSettings, function (post) {
+                post = posts.find(function (post) {
+                    // Authors can only see posts they've written
                     if (user.get('isAuthor')) {
                         return post.isAuthoredByUser(user);
                     }
 
                     return true;
                 });
+
+                if (post) {
+                    return self.transitionTo('posts.post', post);
+                }
+
+                self.set('noPosts', true);
+            });
+        },
+
+        // Mobile posts route callback
+        desktopTransition: function desktopTransition() {
+            this.goToPost();
+        }
+    });
+
+});
+define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/utils/isNumber', 'ghost/utils/isFinite'], function (exports, AuthenticatedRoute, ShortcutsRoute, isNumber, isFinite) {
+
+    'use strict';
+
+    exports['default'] = AuthenticatedRoute['default'].extend(ShortcutsRoute['default'], {
+        model: function model(params) {
+            var self = this,
+                post,
+                postId,
+                query;
+
+            postId = Number(params.post_id);
+
+            if (!isNumber['default'](postId) || !isFinite['default'](postId) || postId % 1 !== 0 || postId <= 0) {
+                return this.transitionTo('error404', params.post_id);
+            }
+
+            post = this.store.peekRecord('post', postId);
+            if (post) {
+                return post;
+            }
+
+            query = {
+                id: postId,
+                status: 'all',
+                staticPages: 'all'
+            };
+
+            return self.store.queryRecord('post', query).then(function (post) {
+                if (post) {
+                    return post;
+                }
+
+                return self.replaceRoute('posts.index');
+            });
+        },
+
+        afterModel: function afterModel(post) {
+            var self = this;
+
+            return self.get('session.user').then(function (user) {
+                if (user.get('isAuthor') && !post.isAuthoredByUser(user)) {
+                    return self.replaceRoute('posts.index');
+                }
             });
         },
 
         setupController: function setupController(controller, model) {
             this._super(controller, model);
-            this.setupPagination(paginationSettings);
+
+            this.controllerFor('posts').set('currentPost', model);
+        },
+
+        shortcuts: {
+            'enter, o': 'openEditor',
+            'command+backspace, ctrl+backspace': 'deletePost'
+        },
+
+        actions: {
+            openEditor: function openEditor(post) {
+                post = post || this.get('controller.model');
+
+                if (!post) {
+                    return;
+                }
+
+                this.transitionTo('editor.edit', post.get('id'));
+            },
+
+            deletePost: function deletePost() {
+                this.send('openModal', 'delete-post', this.get('controller.model'));
+            }
+        }
+    });
+
+});
+define('ghost/routes/posts', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination-route'], function (exports, Ember, AuthenticatedRoute, ShortcutsRoute, PaginationRouteMixin) {
+
+    'use strict';
+
+    exports['default'] = AuthenticatedRoute['default'].extend(ShortcutsRoute['default'], PaginationRouteMixin['default'], {
+        titleToken: 'Content',
+
+        paginationModel: 'post',
+        paginationSettings: {
+            status: 'all',
+            staticPages: 'all'
+        },
+
+        model: function model() {
+            var paginationSettings = this.get('paginationSettings'),
+                self = this;
+
+            return this.get('session.user').then(function (user) {
+                if (user.get('isAuthor')) {
+                    paginationSettings.filter = paginationSettings.filter ? paginationSettings.filter + '+author:' + user.get('slug') : 'author:' + user.get('slug');
+                }
+
+                return self.loadFirstPage().then(function () {
+                    // using `.filter` allows the template to auto-update when new models are pulled in from the server.
+                    // we just need to 'return true' to allow all models by default.
+                    return self.store.filter('post', function (post) {
+                        if (user.get('isAuthor')) {
+                            return post.isAuthoredByUser(user);
+                        }
+
+                        return true;
+                    });
+                });
+            });
         },
 
         stepThroughPosts: function stepThroughPosts(step) {
@@ -8371,140 +9518,7 @@ define('ghost/routes/posts', ['exports', 'ember', 'ghost/routes/authenticated', 
     });
 
 });
-define('ghost/routes/posts/index', ['exports', 'simple-auth/mixins/authenticated-route-mixin', 'ghost/routes/mobile-index-route', 'ghost/utils/mobile'], function (exports, AuthenticatedRouteMixin, MobileIndexRoute, mobileQuery) {
-
-    'use strict';
-
-    var PostsIndexRoute = MobileIndexRoute['default'].extend(AuthenticatedRouteMixin['default'], {
-        noPosts: false,
-
-        // Transition to a specific post if we're not on mobile
-        beforeModel: function beforeModel() {
-            if (!mobileQuery['default'].matches) {
-                return this.goToPost();
-            }
-        },
-
-        setupController: function setupController(controller, model) {
-            /*jshint unused:false*/
-            controller.set('noPosts', this.get('noPosts'));
-        },
-
-        goToPost: function goToPost() {
-            var self = this,
-
-            // the store has been populated by PostsRoute
-            posts = this.store.all('post'),
-                post;
-
-            return this.get('session.user').then(function (user) {
-                post = posts.find(function (post) {
-                    // Authors can only see posts they've written
-                    if (user.get('isAuthor')) {
-                        return post.isAuthoredByUser(user);
-                    }
-
-                    return true;
-                });
-
-                if (post) {
-                    return self.transitionTo('posts.post', post);
-                }
-
-                self.set('noPosts', true);
-            });
-        },
-
-        // Mobile posts route callback
-        desktopTransition: function desktopTransition() {
-            this.goToPost();
-        }
-    });
-
-    exports['default'] = PostsIndexRoute;
-
-});
-define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/utils/isNumber', 'ghost/utils/isFinite'], function (exports, AuthenticatedRoute, ShortcutsRoute, isNumber, isFinite) {
-
-    'use strict';
-
-    var PostsPostRoute = AuthenticatedRoute['default'].extend(ShortcutsRoute['default'], {
-        model: function model(params) {
-            var self = this,
-                post,
-                postId,
-                query;
-
-            postId = Number(params.post_id);
-
-            if (!isNumber['default'](postId) || !isFinite['default'](postId) || postId % 1 !== 0 || postId <= 0) {
-                return this.transitionTo('error404', params.post_id);
-            }
-
-            post = this.store.getById('post', postId);
-            if (post) {
-                return post;
-            }
-
-            query = {
-                id: postId,
-                status: 'all',
-                staticPages: 'all'
-            };
-
-            return self.store.find('post', query).then(function (records) {
-                var post = records.get('firstObject');
-
-                if (post) {
-                    return post;
-                }
-
-                return self.replaceWith('posts.index');
-            });
-        },
-
-        afterModel: function afterModel(post) {
-            var self = this;
-
-            return self.get('session.user').then(function (user) {
-                if (user.get('isAuthor') && !post.isAuthoredByUser(user)) {
-                    return self.replaceWith('posts.index');
-                }
-            });
-        },
-
-        setupController: function setupController(controller, model) {
-            this._super(controller, model);
-
-            this.controllerFor('posts').set('currentPost', model);
-        },
-
-        shortcuts: {
-            'enter, o': 'openEditor',
-            'command+backspace, ctrl+backspace': 'deletePost'
-        },
-
-        actions: {
-            openEditor: function openEditor(post) {
-                post = post || this.get('controller.model');
-
-                if (!post) {
-                    return;
-                }
-
-                this.transitionTo('editor.edit', post.get('id'));
-            },
-
-            deletePost: function deletePost() {
-                this.send('openModal', 'delete-post', this.get('controller.model'));
-            }
-        }
-    });
-
-    exports['default'] = PostsPostRoute;
-
-});
-define('ghost/routes/reset', ['exports', 'ember', 'simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, Ember, Configuration, styleBody) {
+define('ghost/routes/reset', ['exports', 'ember', 'ember-simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, Ember, Configuration, styleBody) {
 
     'use strict';
 
@@ -8512,10 +9526,11 @@ define('ghost/routes/reset', ['exports', 'ember', 'simple-auth/configuration', '
         classNames: ['ghost-reset'],
 
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         beforeModel: function beforeModel() {
-            if (this.get('session').isAuthenticated) {
-                this.get('notifications').showAlert('You can\'t reset your password while you\'re signed in.', { type: 'warn', delayed: true });
+            if (this.get('session.isAuthenticated')) {
+                this.get('notifications').showAlert('You can\'t reset your password while you\'re signed in.', { type: 'warn', delayed: true, key: 'password.reset.signed-in' });
                 this.transitionTo(Configuration['default'].routeAfterAuthentication);
             }
         },
@@ -8546,7 +9561,7 @@ define('ghost/routes/settings/code-injection', ['exports', 'ghost/routes/authent
         },
 
         model: function model() {
-            return this.store.find('setting', { type: 'blog,theme' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme' }).then(function (records) {
                 return records.get('firstObject');
             });
         },
@@ -8574,7 +9589,7 @@ define('ghost/routes/settings/general', ['exports', 'ghost/routes/authenticated'
         },
 
         model: function model() {
-            return this.store.find('setting', { type: 'blog,theme,private' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme,private' }).then(function (records) {
                 return records.get('firstObject');
             });
         },
@@ -8602,7 +9617,7 @@ define('ghost/routes/settings/labs', ['exports', 'ghost/routes/authenticated', '
         },
 
         model: function model() {
-            return this.store.find('setting', { type: 'blog,theme' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme' }).then(function (records) {
                 return records.get('firstObject');
             });
         }
@@ -8613,7 +9628,7 @@ define('ghost/routes/settings/navigation', ['exports', 'ghost/routes/authenticat
 
     'use strict';
 
-    var NavigationRoute = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], {
+    exports['default'] = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], {
         titleToken: 'Settings - Navigation',
 
         classNames: ['settings-view-navigation'],
@@ -8624,7 +9639,7 @@ define('ghost/routes/settings/navigation', ['exports', 'ghost/routes/authenticat
         },
 
         model: function model() {
-            return this.store.find('setting', { type: 'blog,theme' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme' }).then(function (records) {
                 return records.get('firstObject');
             });
         },
@@ -8636,98 +9651,180 @@ define('ghost/routes/settings/navigation', ['exports', 'ghost/routes/authenticat
                 $('.page-actions .btn-blue').focus();
 
                 this.get('controller').send('save');
+            },
+
+            willTransition: function willTransition() {
+                // reset the model so that our CPs re-calc and unsaved changes aren't
+                // persisted across transitions
+                this.set('controller.model', null);
+                return this._super.apply(this, arguments);
             }
         }
     });
 
-    exports['default'] = NavigationRoute;
-
 });
-define('ghost/routes/settings/tags', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/pagination-route'], function (exports, AuthenticatedRoute, CurrentUserSettings, PaginationRouteMixin) {
+define('ghost/routes/settings/tags/index', ['exports', 'ember', 'ghost/routes/authenticated'], function (exports, Ember, AuthenticatedRoute) {
 
     'use strict';
 
-    var TagsRoute, paginationSettings;
+    exports['default'] = AuthenticatedRoute['default'].extend({
 
-    paginationSettings = {
-        page: 1,
-        include: 'post_count',
-        limit: 15
-    };
+        // HACK: ugly way of changing behaviour when on mobile
+        beforeModel: function beforeModel() {
+            var firstTag = this.modelFor('settings.tags').get('firstObject'),
+                mobileWidth = this.controllerFor('settings.tags').get('mobileWidth'),
+                viewportWidth = Ember['default'].$(window).width();
 
-    TagsRoute = AuthenticatedRoute['default'].extend(CurrentUserSettings['default'], PaginationRouteMixin['default'], {
+            if (firstTag && viewportWidth > mobileWidth) {
+                this.transitionTo('settings.tags.tag', firstTag);
+            }
+        }
+
+    });
+
+});
+define('ghost/routes/settings/tags/new', ['exports', 'ghost/routes/authenticated'], function (exports, AuthenticatedRoute) {
+
+    'use strict';
+
+    exports['default'] = AuthenticatedRoute['default'].extend({
+
+        controllerName: 'settings.tags.tag',
+
+        model: function model() {
+            return this.store.createRecord('tag');
+        },
+
+        renderTemplate: function renderTemplate() {
+            this.render('settings.tags.tag');
+        },
+
+        // reset the model so that mobile screens react to an empty selectedTag
+        deactivate: function deactivate() {
+            this.set('controller.model', null);
+        }
+
+    });
+
+});
+define('ghost/routes/settings/tags/tag', ['exports', 'ghost/routes/authenticated'], function (exports, AuthenticatedRoute) {
+
+    'use strict';
+
+    exports['default'] = AuthenticatedRoute['default'].extend({
+
+        model: function model(params) {
+            return this.store.queryRecord('tag', { slug: params.tag_slug });
+        },
+
+        serialize: function serialize(model) {
+            return { tag_slug: model.get('slug') };
+        },
+
+        // reset the model so that mobile screens react to an empty selectedTag
+        deactivate: function deactivate() {
+            this.set('controller.model', null);
+        }
+
+    });
+
+});
+define('ghost/routes/settings/tags', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination-route'], function (exports, Ember, AuthenticatedRoute, CurrentUserSettings, ShortcutsRoute, PaginationRoute) {
+
+    'use strict';
+
+    exports['default'] = AuthenticatedRoute['default'].extend(CurrentUserSettings['default'], PaginationRoute['default'], ShortcutsRoute['default'], {
         titleToken: 'Settings - Tags',
 
-        beforeModel: function beforeModel(transition) {
-            this._super(transition);
+        paginationModel: 'tag',
+        paginationSettings: {
+            include: 'count.posts',
+            limit: 15
+        },
+
+        shortcuts: {
+            'up, k': 'moveUp',
+            'down, j': 'moveDown',
+            left: 'focusList',
+            right: 'focusContent',
+            c: 'newTag'
+        },
+
+        beforeModel: function beforeModel() {
+            this._super.apply(this, arguments);
+
             return this.get('session.user').then(this.transitionAuthor());
         },
 
         model: function model() {
+            var _this = this;
+
             this.store.unloadAll('tag');
 
-            return this.store.filter('tag', paginationSettings, function (tag) {
-                return !tag.get('isNew');
-            });
-        },
-
-        setupController: function setupController(controller, model) {
-            this._super(controller, model);
-            this.setupPagination(paginationSettings);
-        },
-
-        renderTemplate: function renderTemplate(controller, model) {
-            this._super(controller, model);
-            this.render('settings/tags/settings-menu', {
-                into: 'application',
-                outlet: 'settings-menu'
+            return this.loadFirstPage().then(function () {
+                return _this.store.filter('tag', function (tag) {
+                    return !tag.get('isNew');
+                });
             });
         },
 
         deactivate: function deactivate() {
-            this.controller.send('resetPagination');
-        }
-    });
+            this.send('resetPagination');
+        },
 
-    exports['default'] = TagsRoute;
+        stepThroughTags: function stepThroughTags(step) {
+            var currentTag = this.modelFor('settings.tags.tag'),
+                tags = this.get('controller.tags'),
+                length = tags.get('length');
 
-});
-define('ghost/routes/setup', ['exports', 'ember', 'ic-ajax', 'simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, Ember, ic_ajax, Configuration, styleBody) {
+            if (currentTag && length) {
+                var newPosition = tags.indexOf(currentTag) + step;
 
-    'use strict';
-
-    exports['default'] = Ember['default'].Route.extend(styleBody['default'], {
-        titleToken: 'Setup',
-
-        classNames: ['ghost-setup'],
-
-        ghostPaths: Ember['default'].inject.service('ghost-paths'),
-
-        // use the beforeModel hook to check to see whether or not setup has been
-        // previously completed.  If it has, stop the transition into the setup page.
-        beforeModel: function beforeModel() {
-            var self = this;
-
-            // If user is logged in, setup has already been completed.
-            if (this.get('session').isAuthenticated) {
-                this.transitionTo(Configuration['default'].routeAfterAuthentication);
-                return;
-            }
-
-            // If user is not logged in, check the state of the setup process via the API
-            return ic_ajax.request(this.get('ghostPaths.url').api('authentication/setup'), {
-                type: 'GET'
-            }).then(function (result) {
-                var setup = result.setup[0].status;
-
-                if (setup) {
-                    return self.transitionTo('signin');
+                if (newPosition >= length) {
+                    return;
+                } else if (newPosition < 0) {
+                    return;
                 }
-            });
+
+                this.transitionTo('settings.tags.tag', tags.objectAt(newPosition));
+            }
         },
-        deactivate: function deactivate() {
-            this._super();
-            this.controllerFor('setup/two').set('password', '');
+
+        scrollContent: function scrollContent(amount) {
+            var content = Ember['default'].$('.tag-settings-pane'),
+                scrolled = content.scrollTop();
+
+            content.scrollTop(scrolled + 50 * amount);
+        },
+
+        actions: {
+            moveUp: function moveUp() {
+                if (this.controller.get('tagContentFocused')) {
+                    this.scrollContent(-1);
+                } else {
+                    this.stepThroughTags(-1);
+                }
+            },
+
+            moveDown: function moveDown() {
+                if (this.controller.get('tagContentFocused')) {
+                    this.scrollContent(1);
+                } else {
+                    this.stepThroughTags(1);
+                }
+            },
+
+            focusList: function focusList() {
+                this.set('controller.keyboardFocus', 'tagList');
+            },
+
+            focusContent: function focusContent() {
+                this.set('controller.keyboardFocus', 'tagContent');
+            },
+
+            newTag: function newTag() {
+                this.transitionTo('settings.tags.new');
+            }
         }
     });
 
@@ -8736,13 +9833,11 @@ define('ghost/routes/setup/index', ['exports', 'ember'], function (exports, Embe
 
     'use strict';
 
-    var SetupRoute = Ember['default'].Route.extend({
+    exports['default'] = Ember['default'].Route.extend({
         beforeModel: function beforeModel() {
             this.transitionTo('setup.one');
         }
     });
-
-    exports['default'] = SetupRoute;
 
 });
 define('ghost/routes/setup/one', ['exports', 'ember', 'ic-ajax'], function (exports, Ember, ic_ajax) {
@@ -8760,12 +9855,14 @@ define('ghost/routes/setup/one', ['exports', 'ember', 'ic-ajax'], function (expo
         },
 
         poll: function poll() {
-            var interval = 2000,
+            var interval = Ember['default'].testing ? 20 : 2000,
                 runId;
 
             runId = Ember['default'].run.later(this, function () {
                 this.downloadCounter();
-                this.poll();
+                if (!Ember['default'].testing) {
+                    this.poll();
+                }
             }, interval);
 
             this.set('runId', runId);
@@ -8818,18 +9915,60 @@ define('ghost/routes/setup/three', ['exports', 'ember'], function (exports, Embe
     });
 
 });
-define('ghost/routes/signin', ['exports', 'ember', 'simple-auth/configuration', 'ghost/mixins/style-body', 'ember-data'], function (exports, Ember, Configuration, styleBody, DS) {
+define('ghost/routes/setup', ['exports', 'ember', 'ic-ajax', 'ember-simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, Ember, ic_ajax, Configuration, styleBody) {
 
     'use strict';
 
-    var SigninRoute = Ember['default'].Route.extend(styleBody['default'], {
+    exports['default'] = Ember['default'].Route.extend(styleBody['default'], {
+        titleToken: 'Setup',
+
+        classNames: ['ghost-setup'],
+
+        ghostPaths: Ember['default'].inject.service('ghost-paths'),
+        session: Ember['default'].inject.service(),
+
+        // use the beforeModel hook to check to see whether or not setup has been
+        // previously completed.  If it has, stop the transition into the setup page.
+        beforeModel: function beforeModel() {
+            var self = this;
+
+            if (this.get('session.isAuthenticated')) {
+                this.transitionTo(Configuration['default'].routeIfAlreadyAuthenticated);
+                return;
+            }
+
+            // If user is not logged in, check the state of the setup process via the API
+            return ic_ajax.request(this.get('ghostPaths.url').api('authentication/setup'), {
+                type: 'GET'
+            }).then(function (result) {
+                var setup = result.setup[0].status;
+
+                if (setup) {
+                    return self.transitionTo('signin');
+                }
+            });
+        },
+        deactivate: function deactivate() {
+            this._super();
+            this.controllerFor('setup/two').set('password', '');
+        }
+    });
+
+});
+define('ghost/routes/signin', ['exports', 'ember', 'ghost/mixins/style-body', 'ember-simple-auth/configuration', 'ember-data'], function (exports, Ember, styleBody, Configuration, DS) {
+
+    'use strict';
+
+    exports['default'] = Ember['default'].Route.extend(styleBody['default'], {
         titleToken: 'Sign In',
 
         classNames: ['ghost-login'],
 
+        session: Ember['default'].inject.service(),
+
         beforeModel: function beforeModel() {
-            if (this.get('session').isAuthenticated) {
-                this.transitionTo(Configuration['default'].routeAfterAuthentication);
+            if (this.get('session.isAuthenticated')) {
+                this.transitionTo(Configuration['default'].routeIfAlreadyAuthenticated);
             }
         },
 
@@ -8853,8 +9992,6 @@ define('ghost/routes/signin', ['exports', 'ember', 'simple-auth/configuration', 
         }
     });
 
-    exports['default'] = SigninRoute;
-
 });
 define('ghost/routes/signout', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/style-body'], function (exports, Ember, AuthenticatedRoute, styleBody) {
 
@@ -8868,7 +10005,7 @@ define('ghost/routes/signout', ['exports', 'ember', 'ghost/routes/authenticated'
         notifications: Ember['default'].inject.service(),
 
         afterModel: function afterModel(model, transition) {
-            this.get('notifications').closeAll();
+            this.get('notifications').clearAll();
             if (Ember['default'].canInvoke(transition, 'send')) {
                 transition.send('invalidateSession');
                 transition.abort();
@@ -8879,7 +10016,7 @@ define('ghost/routes/signout', ['exports', 'ember', 'ghost/routes/authenticated'
     });
 
 });
-define('ghost/routes/signup', ['exports', 'ember', 'ember-data', 'ic-ajax', 'simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, Ember, DS, ic_ajax, Configuration, styleBody) {
+define('ghost/routes/signup', ['exports', 'ember', 'ember-data', 'ic-ajax', 'ember-simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, Ember, DS, ic_ajax, Configuration, styleBody) {
 
     'use strict';
 
@@ -8888,11 +10025,12 @@ define('ghost/routes/signup', ['exports', 'ember', 'ember-data', 'ic-ajax', 'sim
 
         ghostPaths: Ember['default'].inject.service('ghost-paths'),
         notifications: Ember['default'].inject.service(),
+        session: Ember['default'].inject.service(),
 
         beforeModel: function beforeModel() {
-            if (this.get('session').isAuthenticated) {
-                this.get('notifications').showAlert('You need to sign out to register as a new user.', { type: 'warn', delayed: true });
-                this.transitionTo(Configuration['default'].routeAfterAuthentication);
+            if (this.get('session.isAuthenticated')) {
+                this.get('notifications').showAlert('You need to sign out to register as a new user.', { type: 'warn', delayed: true, key: 'signup.create.already-authenticated' });
+                this.transitionTo(Configuration['default'].routeIfAlreadyAuthenticated);
             }
         },
 
@@ -8905,7 +10043,7 @@ define('ghost/routes/signup', ['exports', 'ember', 'ember-data', 'ic-ajax', 'sim
 
             return new Ember['default'].RSVP.Promise(function (resolve) {
                 if (!re.test(params.token)) {
-                    self.get('notifications').showAlert('Invalid token.', { type: 'error', delayed: true });
+                    self.get('notifications').showAlert('Invalid token.', { type: 'error', delayed: true, key: 'signup.create.invalid-token' });
 
                     return resolve(self.transitionTo('signin'));
                 }
@@ -8926,7 +10064,7 @@ define('ghost/routes/signup', ['exports', 'ember', 'ember-data', 'ic-ajax', 'sim
                     }
                 }).then(function (response) {
                     if (response && response.invitation && response.invitation[0].valid === false) {
-                        self.get('notifications').showAlert('The invitation does not exist or is no longer valid.', { type: 'warn', delayed: true });
+                        self.get('notifications').showAlert('The invitation does not exist or is no longer valid.', { type: 'warn', delayed: true, key: 'signup.create.invalid-invitation' });
 
                         return resolve(self.transitionTo('signin'));
                     }
@@ -8951,33 +10089,24 @@ define('ghost/routes/team/index', ['exports', 'ghost/routes/authenticated', 'gho
 
     'use strict';
 
-    var paginationSettings;
-
-    paginationSettings = {
-        page: 1,
-        limit: 20,
-        status: 'active'
-    };
-
     exports['default'] = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], PaginationRouteMixin['default'], {
         titleToken: 'Team',
 
         classNames: ['view-team'],
 
-        setupController: function setupController(controller, model) {
-            this._super(controller, model);
-            this.setupPagination(paginationSettings);
-        },
-
-        beforeModel: function beforeModel(transition) {
-            this._super(transition);
+        paginationModel: 'user',
+        paginationSettings: {
+            status: 'active',
+            limit: 20
         },
 
         model: function model() {
             var self = this;
 
-            return self.store.find('user', { limit: 'all', status: 'invited' }).then(function () {
-                return self.store.filter('user', paginationSettings, function () {
+            this.loadFirstPage();
+
+            return self.store.query('user', { limit: 'all', status: 'invited' }).then(function () {
+                return self.store.filter('user', function () {
                     return true;
                 });
             });
@@ -8995,26 +10124,17 @@ define('ghost/routes/team/user', ['exports', 'ghost/routes/authenticated', 'ghos
 
     'use strict';
 
-    var TeamUserRoute = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], {
+    exports['default'] = AuthenticatedRoute['default'].extend(styleBody['default'], CurrentUserSettings['default'], {
         titleToken: 'Team - User',
 
         classNames: ['team-view-user'],
 
         model: function model(params) {
-            var self = this;
-            // TODO: Make custom user adapter that uses /api/users/:slug endpoint
-            // return this.store.find('user', { slug: params.slug });
+            return this.store.queryRecord('user', { slug: params.user_slug });
+        },
 
-            // Instead, get all the users and then find by slug
-            return this.store.find('user').then(function (result) {
-                var user = result.findBy('slug', params.slug);
-
-                if (!user) {
-                    return self.transitionTo('error404', 'team/' + params.slug);
-                }
-
-                return user;
-            });
+        serialize: function serialize(model) {
+            return { user_slug: model.get('slug') };
         },
 
         afterModel: function afterModel(user) {
@@ -9035,8 +10155,8 @@ define('ghost/routes/team/user', ['exports', 'ghost/routes/authenticated', 'ghos
             var model = this.modelFor('team.user');
 
             // we want to revert any unsaved changes on exit
-            if (model && model.get('isDirty')) {
-                model.rollback();
+            if (model && model.get('hasDirtyAttributes')) {
+                model.rollbackAttributes();
             }
 
             model.get('errors').clear();
@@ -9055,14 +10175,15 @@ define('ghost/routes/team/user', ['exports', 'ghost/routes/authenticated', 'ghos
         }
     });
 
-    exports['default'] = TeamUserRoute;
-
 });
 define('ghost/serializers/application', ['exports', 'ember', 'ember-data'], function (exports, Ember, DS) {
 
     'use strict';
 
-    var ApplicationSerializer = DS['default'].RESTSerializer.extend({
+    exports['default'] = DS['default'].RESTSerializer.extend({
+
+        isNewSerializerAPI: true,
+
         serializeIntoHash: function serializeIntoHash(hash, type, record, options) {
             // Our API expects an id on the posted object
             options = options || {};
@@ -9079,40 +10200,37 @@ define('ghost/serializers/application', ['exports', 'ember', 'ember-data'], func
         }
     });
 
-    exports['default'] = ApplicationSerializer;
-
 });
 define('ghost/serializers/post', ['exports', 'ember', 'ember-data', 'ghost/serializers/application'], function (exports, Ember, DS, ApplicationSerializer) {
 
     'use strict';
 
-    var PostSerializer = ApplicationSerializer['default'].extend(DS['default'].EmbeddedRecordsMixin, {
+    exports['default'] = ApplicationSerializer['default'].extend(DS['default'].EmbeddedRecordsMixin, {
         // settings for the EmbeddedRecordsMixin.
         attrs: {
             tags: { embedded: 'always' }
         },
 
-        normalize: function normalize(type, hash) {
+        normalize: function normalize(typeClass, hash, prop) {
             // this is to enable us to still access the raw author_id
             // without requiring an extra get request (since it is an
             // async relationship).
             hash.author_id = hash.author;
 
-            return this._super(type, hash);
+            return this._super(typeClass, hash, prop);
         },
 
-        extractSingle: function extractSingle(store, primaryType, payload) {
-            var root = this.keyForAttribute(primaryType.modelName),
-                pluralizedRoot = Ember['default'].String.pluralize(primaryType.modelName);
+        normalizeSingleResponse: function normalizeSingleResponse(store, primaryModelClass, payload) {
+            var root = this.keyForAttribute(primaryModelClass.modelName),
+                pluralizedRoot = Ember['default'].String.pluralize(primaryModelClass.modelName);
 
-            // make payload { post: { title: '', tags: [obj, obj], etc. } }.
-            // this allows ember-data to pull the embedded tags out again,
-            // in the function `updatePayloadWithEmbeddedHasMany` of the
-            // EmbeddedRecordsMixin (line: `if (!partial[attribute])`):
-            // https://github.com/emberjs/data/blob/master/packages/activemodel-adapter/lib/system/embedded_records_mixin.js#L499
             payload[root] = payload[pluralizedRoot][0];
             delete payload[pluralizedRoot];
 
+            return this._super.apply(this, arguments);
+        },
+
+        normalizeArrayResponse: function normalizeArrayResponse() {
             return this._super.apply(this, arguments);
         },
 
@@ -9137,14 +10255,12 @@ define('ghost/serializers/post', ['exports', 'ember', 'ember-data', 'ghost/seria
         }
     });
 
-    exports['default'] = PostSerializer;
-
 });
 define('ghost/serializers/setting', ['exports', 'ember', 'ghost/serializers/application'], function (exports, Ember, ApplicationSerializer) {
 
     'use strict';
 
-    var SettingSerializer = ApplicationSerializer['default'].extend({
+    exports['default'] = ApplicationSerializer['default'].extend({
         serializeIntoHash: function serializeIntoHash(hash, type, record, options) {
             // Settings API does not want ids
             options = options || {};
@@ -9163,31 +10279,33 @@ define('ghost/serializers/setting', ['exports', 'ember', 'ghost/serializers/appl
             hash[root] = payload;
         },
 
-        extractArray: function extractArray(store, type, _payload) {
+        normalizeArrayResponse: function normalizeArrayResponse(store, primaryModelClass, _payload, id, requestType) {
+            var payload = { settings: [this._extractObjectFromArrayPayload(_payload)] };
+            return this._super(store, primaryModelClass, payload, id, requestType);
+        },
+
+        normalizeSingleResponse: function normalizeSingleResponse(store, primaryModelClass, _payload, id, requestType) {
+            var payload = { setting: this._extractObjectFromArrayPayload(_payload) };
+            return this._super(store, primaryModelClass, payload, id, requestType);
+        },
+
+        _extractObjectFromArrayPayload: function _extractObjectFromArrayPayload(_payload) {
             var payload = { id: '0' };
 
             _payload.settings.forEach(function (setting) {
                 payload[setting.key] = setting.value;
             });
 
-            payload = this.normalize(type, payload);
-
-            return [payload];
-        },
-
-        extractSingle: function extractSingle(store, type, payload) {
-            return this.extractArray(store, type, payload).pop();
+            return payload;
         }
     });
-
-    exports['default'] = SettingSerializer;
 
 });
 define('ghost/serializers/tag', ['exports', 'ember', 'ghost/serializers/application'], function (exports, Ember, ApplicationSerializer) {
 
     'use strict';
 
-    var TagSerializer = ApplicationSerializer['default'].extend({
+    exports['default'] = ApplicationSerializer['default'].extend({
         serializeIntoHash: function serializeIntoHash(hash, type, record, options) {
             options = options || {};
             options.includeId = true;
@@ -9198,20 +10316,18 @@ define('ghost/serializers/tag', ['exports', 'ember', 'ghost/serializers/applicat
             // Properties that exist on the model but we don't want sent in the payload
 
             delete data.uuid;
-            delete data.post_count;
+            delete data.count;
 
             hash[root] = [data];
         }
     });
-
-    exports['default'] = TagSerializer;
 
 });
 define('ghost/serializers/user', ['exports', 'ember', 'ember-data', 'ghost/serializers/application'], function (exports, Ember, DS, ApplicationSerializer) {
 
     'use strict';
 
-    var UserSerializer = ApplicationSerializer['default'].extend(DS['default'].EmbeddedRecordsMixin, {
+    exports['default'] = ApplicationSerializer['default'].extend(DS['default'].EmbeddedRecordsMixin, {
         attrs: {
             roles: { embedded: 'always' }
         },
@@ -9224,10 +10340,18 @@ define('ghost/serializers/user', ['exports', 'ember', 'ember-data', 'ghost/seria
             delete payload[pluralizedRoot];
 
             return this._super.apply(this, arguments);
+        },
+
+        normalizeSingleResponse: function normalizeSingleResponse(store, primaryModelClass, payload) {
+            var root = this.keyForAttribute(primaryModelClass.modelName),
+                pluralizedRoot = Ember['default'].String.pluralize(primaryModelClass.modelName);
+
+            payload[root] = payload[pluralizedRoot][0];
+            delete payload[pluralizedRoot];
+
+            return this._super.apply(this, arguments);
         }
     });
-
-    exports['default'] = UserSerializer;
 
 });
 define('ghost/services/config', ['exports', 'ember'], function (exports, Ember) {
@@ -9334,6 +10458,11 @@ define('ghost/services/notifications', ['exports', 'ember'], function (exports, 
                 Ember['default'].set(message, 'status', 'notification');
             }
 
+            // close existing duplicate alerts/notifications to avoid stacking
+            if (Ember['default'].get(message, 'key')) {
+                this._removeItems(Ember['default'].get(message, 'status'), Ember['default'].get(message, 'key'));
+            }
+
             if (!delayed) {
                 this.get('content').pushObject(message);
             } else {
@@ -9347,7 +10476,8 @@ define('ghost/services/notifications', ['exports', 'ember'], function (exports, 
             this.handleNotification({
                 message: message,
                 status: 'alert',
-                type: options.type
+                type: options.type,
+                key: options.key
             }, options.delayed);
         },
 
@@ -9356,31 +10486,43 @@ define('ghost/services/notifications', ['exports', 'ember'], function (exports, 
 
             if (!options.doNotCloseNotifications) {
                 this.closeNotifications();
+            } else {
+                // TODO: this should be removed along with showErrors
+                options.key = undefined;
             }
 
             this.handleNotification({
                 message: message,
                 status: 'notification',
-                type: options.type
+                type: options.type,
+                key: options.key
             }, options.delayed);
         },
 
         // TODO: review whether this can be removed once no longer used by validations
         showErrors: function showErrors(errors, options) {
             options = options || {};
+            options.type = options.type || 'error';
+            // TODO: getting keys from the server would be useful here (necessary for i18n)
+            options.key = options.key && options.key + '.api-error' || 'api-error';
 
             if (!options.doNotCloseNotifications) {
                 this.closeNotifications();
             }
 
+            // ensure all errors that are passed in get shown
+            options.doNotCloseNotifications = true;
+
             for (var i = 0; i < errors.length; i += 1) {
-                this.showNotification(errors[i].message || errors[i], { type: 'error', doNotCloseNotifications: true });
+                this.showNotification(errors[i].message || errors[i], options);
             }
         },
 
         showAPIError: function showAPIError(resp, options) {
             options = options || {};
             options.type = options.type || 'error';
+            // TODO: getting keys from the server would be useful here (necessary for i18n)
+            options.key = options.key && options.key + '.api-error' || 'api-error';
 
             if (!options.doNotCloseNotifications) {
                 this.closeNotifications();
@@ -9395,7 +10537,7 @@ define('ghost/services/notifications', ['exports', 'ember'], function (exports, 
             } else if (resp && resp.jqXHR && resp.jqXHR.responseJSON && resp.jqXHR.responseJSON.message) {
                 this.showAlert(resp.jqXHR.responseJSON.message, options);
             } else {
-                this.showAlert(options.defaultErrorText, { type: options.type, doNotCloseNotifications: true });
+                this.showAlert(options.defaultErrorText, options);
             }
         },
 
@@ -9421,12 +10563,46 @@ define('ghost/services/notifications', ['exports', 'ember'], function (exports, 
             }
         },
 
-        closeNotifications: function closeNotifications() {
-            this.set('content', this.get('content').rejectBy('status', 'notification'));
+        closeNotifications: function closeNotifications(key) {
+            this._removeItems('notification', key);
         },
 
-        closeAll: function closeAll() {
+        closeAlerts: function closeAlerts(key) {
+            this._removeItems('alert', key);
+        },
+
+        clearAll: function clearAll() {
             this.get('content').clear();
+        },
+
+        _removeItems: function _removeItems(status, key) {
+            var _this = this;
+
+            if (key) {
+                (function () {
+                    var keyBase = _this._getKeyBase(key),
+
+                    // TODO: keys should only have . special char but we should
+                    // probably use a better regexp escaping function/polyfill
+                    escapedKeyBase = keyBase.replace('.', '\\.'),
+                        keyRegex = new RegExp('^' + escapedKeyBase);
+
+                    _this.set('content', _this.get('content').reject(function (item) {
+                        var itemKey = Ember['default'].get(item, 'key'),
+                            itemStatus = Ember['default'].get(item, 'status');
+
+                        return itemStatus === status && itemKey && itemKey.match(keyRegex);
+                    }));
+                })();
+            } else {
+                this.set('content', this.get('content').rejectBy('status', status));
+            }
+        },
+
+        // take a key and return the first two elements, eg:
+        // "invite.revoke.failed" => "invite.revoke"
+        _getKeyBase: function _getKeyBase(key) {
+            return key.split('.').slice(0, 2).join('.');
         }
     });
 
@@ -9437,7 +10613,29 @@ define('ghost/services/resize', ['exports', 'ember-resize/services/resize'], fun
 
 
 
-	exports.default = resize.default;
+	exports['default'] = resize['default'];
+
+});
+define('ghost/services/session', ['exports', 'ember', 'ember-simple-auth/services/session'], function (exports, Ember, SessionService) {
+
+    'use strict';
+
+    exports['default'] = SessionService['default'].extend({
+        store: Ember['default'].inject.service(),
+
+        user: Ember['default'].computed(function () {
+            return this.get('store').findRecord('user', 'me');
+        })
+    });
+
+});
+define('ghost/session-stores/application', ['exports', 'ember-simple-auth/session-stores/local-storage'], function (exports, LocalStorageStore) {
+
+    'use strict';
+
+    exports['default'] = LocalStorageStore['default'].extend({
+        key: 'ghost:session'
+    });
 
 });
 define('ghost/templates/-contributors', ['exports'], function (exports) {
@@ -9447,7 +10645,7 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -9508,31 +10706,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/cobbspur");
-        dom.setAttribute(el2,"title","cobbspur");
+        dom.setAttribute(el2,"href","https://github.com/sebgie");
+        dom.setAttribute(el2,"title","sebgie");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","cobbspur");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/JohnONolan");
-        dom.setAttribute(el2,"title","JohnONolan");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","JohnONolan");
+        dom.setAttribute(el3,"alt","sebgie");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9565,12 +10744,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/halfdan");
-        dom.setAttribute(el2,"title","halfdan");
+        dom.setAttribute(el2,"href","https://github.com/JohnONolan");
+        dom.setAttribute(el2,"title","JohnONolan");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","halfdan");
+        dom.setAttribute(el3,"alt","JohnONolan");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9584,12 +10763,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/sebgie");
-        dom.setAttribute(el2,"title","sebgie");
+        dom.setAttribute(el2,"href","https://github.com/cobbspur");
+        dom.setAttribute(el2,"title","cobbspur");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","sebgie");
+        dom.setAttribute(el3,"alt","cobbspur");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9603,12 +10782,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/jaswilli");
-        dom.setAttribute(el2,"title","jaswilli");
+        dom.setAttribute(el2,"href","https://github.com/vdemedes");
+        dom.setAttribute(el2,"title","vdemedes");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","jaswilli");
+        dom.setAttribute(el3,"alt","vdemedes");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9622,69 +10801,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/jomahoney");
-        dom.setAttribute(el2,"title","jomahoney");
+        dom.setAttribute(el2,"href","https://github.com/delgermurun");
+        dom.setAttribute(el2,"title","delgermurun");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","jomahoney");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/Remchi");
-        dom.setAttribute(el2,"title","Remchi");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","Remchi");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/rwjblue");
-        dom.setAttribute(el2,"title","rwjblue");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","rwjblue");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/lukaszklis");
-        dom.setAttribute(el2,"title","lukaszklis");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","lukaszklis");
+        dom.setAttribute(el3,"alt","delgermurun");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9717,69 +10839,12 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/hoxoa");
-        dom.setAttribute(el2,"title","hoxoa");
+        dom.setAttribute(el2,"href","https://github.com/mixonic");
+        dom.setAttribute(el2,"title","mixonic");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","hoxoa");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/kowsheek");
-        dom.setAttribute(el2,"title","kowsheek");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","kowsheek");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/auermi");
-        dom.setAttribute(el2,"title","auermi");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","auermi");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2,"href","https://github.com/BlueHatbRit");
-        dom.setAttribute(el2,"title","BlueHatbRit");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3,"alt","BlueHatbRit");
+        dom.setAttribute(el3,"alt","mixonic");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9799,6 +10864,139 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3,"alt","joecannatti");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/novaugust");
+        dom.setAttribute(el2,"title","novaugust");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","novaugust");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/javorszky");
+        dom.setAttribute(el2,"title","javorszky");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","javorszky");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/HParker");
+        dom.setAttribute(el2,"title","HParker");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","HParker");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/yanntech");
+        dom.setAttribute(el2,"title","yanntech");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","yanntech");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/lcamacho");
+        dom.setAttribute(el2,"title","lcamacho");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","lcamacho");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/olsio");
+        dom.setAttribute(el2,"title","olsio");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","olsio");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2,"href","https://github.com/cusackalex");
+        dom.setAttribute(el2,"title","cusackalex");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3,"alt","cusackalex");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -9849,24 +11047,24 @@ define('ghost/templates/-contributors', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/ErisDS"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/kevinansfield"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/cobbspur"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/JohnONolan"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/acburdine"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/halfdan"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/sebgie"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/jaswilli"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/jomahoney"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/Remchi"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/rwjblue"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/lukaszklis"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/Gargol"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/hoxoa"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/kowsheek"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/auermi"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/BlueHatbRit"]]],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[]],"/joecannatti"]]]
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[3,18],[3,57]]]],"/ErisDS"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[8,18],[8,57]]]],"/kevinansfield"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[13,18],[13,57]]]],"/sebgie"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[18,18],[18,57]]]],"/acburdine"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[23,18],[23,57]]]],"/JohnONolan"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[28,18],[28,57]]]],"/cobbspur"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[33,18],[33,57]]]],"/vdemedes"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[38,18],[38,57]]]],"/delgermurun"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[43,18],[43,57]]]],"/Gargol"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[48,18],[48,57]]]],"/mixonic"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[53,18],[53,57]]]],"/joecannatti"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[58,18],[58,57]]]],"/novaugust"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[63,18],[63,57]]]],"/javorszky"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[68,18],[68,57]]]],"/HParker"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[73,18],[73,57]]]],"/yanntech"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[78,18],[78,57]]]],"/lcamacho"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[83,18],[83,57]]]],"/olsio"]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/contributors"],[],["loc",[null,[88,18],[88,57]]]],"/cusackalex"]]]
       ],
       locals: [],
       templates: []
@@ -9883,7 +11081,7 @@ define('ghost/templates/-import-errors', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -9920,7 +11118,7 @@ define('ghost/templates/-import-errors', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["content","error.message"]
+            ["content","error.message",["loc",[null,[4,12],[4,29]]]]
           ],
           locals: ["error"],
           templates: []
@@ -9928,7 +11126,7 @@ define('ghost/templates/-import-errors', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -9964,7 +11162,7 @@ define('ghost/templates/-import-errors', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","each",[["get","importErrors"]],[],0,null]
+          ["block","each",[["get","importErrors",["loc",[null,[3,8],[3,20]]]]],[],0,null,["loc",[null,[3,0],[5,9]]]]
         ],
         locals: [],
         templates: [child0]
@@ -9972,7 +11170,7 @@ define('ghost/templates/-import-errors', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -10003,7 +11201,7 @@ define('ghost/templates/-import-errors', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","if",[["get","importErrors"]],[],0,null]
+        ["block","if",[["get","importErrors",["loc",[null,[1,6],[1,18]]]]],[],0,null,["loc",[null,[1,0],[7,7]]]]
       ],
       locals: [],
       templates: [child0]
@@ -10020,7 +11218,7 @@ define('ghost/templates/-user-list-item', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -10057,8 +11255,8 @@ define('ghost/templates/-user-list-item', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["attribute","class",["concat",["role-label ",["get","role.lowerCaseName"]]]],
-            ["content","role.name"]
+            ["attribute","class",["concat",["role-label ",["get","role.lowerCaseName",["loc",[null,[15,38],[15,56]]]]]]],
+            ["content","role.name",["loc",[null,[15,60],[15,73]]]]
           ],
           locals: ["role"],
           templates: []
@@ -10066,7 +11264,7 @@ define('ghost/templates/-user-list-item', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -10097,7 +11295,7 @@ define('ghost/templates/-user-list-item', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","each",[["get","user.roles"]],[],0,null]
+          ["block","each",[["get","user.roles",["loc",[null,[14,16],[14,26]]]]],[],0,null,["loc",[null,[14,8],[16,17]]]]
         ],
         locals: [],
         templates: [child0]
@@ -10105,7 +11303,7 @@ define('ghost/templates/-user-list-item', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -10194,11 +11392,11 @@ define('ghost/templates/-user-list-item', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["attribute","style",["get","component.userImageBackground"]],
-        ["content","user.name"],
-        ["content","user.name"],
-        ["content","component.lastLogin"],
-        ["block","unless",[["get","session.user.isAuthor"]],[],0,null]
+        ["attribute","style",["get","component.userImageBackground",["loc",[null,[1,44],[1,73]]]]],
+        ["content","user.name",["loc",[null,[2,34],[2,47]]]],
+        ["content","user.name",["loc",[null,[7,8],[7,21]]]],
+        ["content","component.lastLogin",["loc",[null,[10,41],[10,64]]]],
+        ["block","unless",[["get","session.user.isAuthor",["loc",[null,[13,14],[13,35]]]]],[],0,null,["loc",[null,[13,4],[17,15]]]]
       ],
       locals: [],
       templates: [child0]
@@ -10214,7 +11412,7 @@ define('ghost/templates/about', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -10250,7 +11448,7 @@ define('ghost/templates/about', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -10281,7 +11479,7 @@ define('ghost/templates/about', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["content","model.mail"]
+          ["content","model.mail",["loc",[null,[17,60],[17,74]]]]
         ],
         locals: [],
         templates: []
@@ -10290,7 +11488,7 @@ define('ghost/templates/about', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -10323,7 +11521,7 @@ define('ghost/templates/about', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -10369,7 +11567,9 @@ define('ghost/templates/about', ['exports'], function (exports) {
         dom.setAttribute(el4,"class","gh-logo");
         dom.setAttribute(el4,"alt","Ghost");
         dom.appendChild(el3, el4);
-        var el4 = dom.createTextNode("\n            ");
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("            ");
         dom.appendChild(el3, el4);
         var el4 = dom.createComment("");
         dom.appendChild(el3, el4);
@@ -10554,7 +11754,7 @@ define('ghost/templates/about', ['exports'], function (exports) {
         var morphs = new Array(8);
         morphs[0] = dom.createMorphAt(dom.childAt(element0, [1]),1,1);
         morphs[1] = dom.createAttrMorph(element3, 'src');
-        morphs[2] = dom.createMorphAt(element2,3,3);
+        morphs[2] = dom.createMorphAt(element2,4,4);
         morphs[3] = dom.createMorphAt(dom.childAt(element4, [1]),2,2);
         morphs[4] = dom.createMorphAt(dom.childAt(element4, [3]),2,2);
         morphs[5] = dom.createMorphAt(dom.childAt(element4, [5]),2,2);
@@ -10563,14 +11763,14 @@ define('ghost/templates/about', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/ghost-logo.png"],[]]]]],
-        ["inline","gh-notifications",[],["location","about-upgrade","notify","updateNotificationChange"]],
-        ["content","model.version"],
-        ["content","model.environment"],
-        ["content","model.database"],
-        ["block","if",[["get","model.mail"]],[],1,2],
-        ["inline","partial",["contributors"],[]]
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,100]]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/ghost-logo.png"],[],["loc",[null,[7,38],[7,79]]]]]]],
+        ["inline","gh-notifications",[],["location","about-upgrade","notify","updateNotificationChange"],["loc",[null,[9,12],[9,91]]]],
+        ["content","model.version",["loc",[null,[14,73],[14,90]]]],
+        ["content","model.environment",["loc",[null,[15,49],[15,70]]]],
+        ["content","model.database",["loc",[null,[16,80],[16,98]]]],
+        ["block","if",[["get","model.mail",["loc",[null,[17,48],[17,58]]]]],[],1,2,["loc",[null,[17,42],[17,95]]]],
+        ["inline","partial",["contributors"],[],["loc",[null,[29,16],[29,42]]]]
       ],
       locals: [],
       templates: [child0, child1, child2]
@@ -10587,7 +11787,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -10621,7 +11821,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -10654,7 +11854,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-nav-menu",[],["open",["subexpr","@mut",[["get","autoNavOpen"]],[]],"toggleMaximise","toggleAutoNav","openAutoNav","openAutoNav","openModal","openModal","closeMobileMenu","closeMobileMenu"]]
+            ["inline","gh-nav-menu",[],["open",["subexpr","@mut",[["get","autoNavOpen",["loc",[null,[8,31],[8,42]]]]],[],[]],"toggleMaximise","toggleAutoNav","openAutoNav","openAutoNav","openModal","openModal","closeMobileMenu","closeMobileMenu"],["loc",[null,[8,12],[8,157]]]]
           ],
           locals: [],
           templates: []
@@ -10663,7 +11863,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
       var child2 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -10696,7 +11896,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["content","outlet"]
+            ["content","outlet",["loc",[null,[12,12],[12,22]]]]
           ],
           locals: [],
           templates: []
@@ -10704,7 +11904,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -10780,15 +11980,15 @@ define('ghost/templates/application', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","gh-skip-link",[],["anchor",".gh-main"],0,null],
-          ["inline","gh-alerts",[],["notify","topNotificationChange"]],
-          ["attribute","class",["concat",["gh-viewport ",["subexpr","if",[["get","autoNav"],"gh-autonav"],[]]," ",["subexpr","if",[["get","showSettingsMenu"],"settings-menu-expanded"],[]]," ",["subexpr","if",[["get","showMobileMenu"],"mobile-menu-expanded"],[]]]]],
-          ["block","unless",[["get","signedOut"]],[],1,null],
-          ["block","gh-main",[],["onMouseEnter","closeAutoNav","data-notification-count",["subexpr","@mut",[["get","topNotificationCount"]],[]]],2,null],
-          ["content","gh-notifications"],
-          ["inline","gh-content-cover",[],["onClick","closeMenus","onMouseEnter","closeAutoNav"]],
-          ["inline","outlet",["modal"],[]],
-          ["inline","outlet",["settings-menu"],[]]
+          ["block","gh-skip-link",[],["anchor",".gh-main"],0,null,["loc",[null,[2,4],[2,76]]]],
+          ["inline","gh-alerts",[],["notify","topNotificationChange"],["loc",[null,[4,4],[4,48]]]],
+          ["attribute","class",["concat",["gh-viewport ",["subexpr","if",[["get","autoNav",["loc",[null,[6,33],[6,40]]]],"gh-autonav"],[],["loc",[null,[6,28],[6,55]]]]," ",["subexpr","if",[["get","showSettingsMenu",["loc",[null,[6,61],[6,77]]]],"settings-menu-expanded"],[],["loc",[null,[6,56],[6,104]]]]," ",["subexpr","if",[["get","showMobileMenu",["loc",[null,[6,110],[6,124]]]],"mobile-menu-expanded"],[],["loc",[null,[6,105],[6,149]]]]]]],
+          ["block","unless",[["get","signedOut",["loc",[null,[7,18],[7,27]]]]],[],1,null,["loc",[null,[7,8],[9,19]]]],
+          ["block","gh-main",[],["onMouseEnter","closeAutoNav","data-notification-count",["subexpr","@mut",[["get","topNotificationCount",["loc",[null,[11,71],[11,91]]]]],[],[]]],2,null,["loc",[null,[11,8],[13,20]]]],
+          ["content","gh-notifications",["loc",[null,[16,8],[16,28]]]],
+          ["inline","gh-content-cover",[],["onClick","closeMenus","onMouseEnter","closeAutoNav"],["loc",[null,[18,8],[18,77]]]],
+          ["inline","outlet",["modal"],[],["loc",[null,[20,8],[20,26]]]],
+          ["inline","outlet",["settings-menu"],[],["loc",[null,[21,8],[21,34]]]]
         ],
         locals: [],
         templates: [child0, child1, child2]
@@ -10796,7 +11996,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -10827,7 +12027,7 @@ define('ghost/templates/application', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-app",[],["showSettingsMenu",["subexpr","@mut",[["get","showSettingsMenu"]],[]]],0,null]
+        ["block","gh-app",[],["showSettingsMenu",["subexpr","@mut",[["get","showSettingsMenu",["loc",[null,[1,27],[1,43]]]]],[],[]]],0,null,["loc",[null,[1,0],[23,11]]]]
       ],
       locals: [],
       templates: [child0]
@@ -10843,7 +12043,7 @@ define('ghost/templates/components/gh-activating-list-item', ['exports'], functi
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -10877,8 +12077,8 @@ define('ghost/templates/components/gh-activating-list-item', ['exports'], functi
           return morphs;
         },
         statements: [
-          ["content","title"],
-          ["content","yield"]
+          ["content","title",["loc",[null,[1,87],[1,96]]]],
+          ["content","yield",["loc",[null,[1,96],[1,105]]]]
         ],
         locals: [],
         templates: []
@@ -10886,7 +12086,7 @@ define('ghost/templates/components/gh-activating-list-item', ['exports'], functi
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -10918,7 +12118,7 @@ define('ghost/templates/components/gh-activating-list-item', ['exports'], functi
         return morphs;
       },
       statements: [
-        ["block","link-to",[["get","route"]],["alternateActive",["subexpr","action",["setActive"],[]],"class",["subexpr","concat",[["subexpr","if",[["get","linkClasses"],["subexpr","-normalize-class",["linkClasses",["get","linkClasses"]],[]]],[]]," "],[]]],0,null]
+        ["block","link-to",[["get","route",["loc",[null,[1,11],[1,16]]]]],["alternateActive",["subexpr","action",["setActive"],[],["loc",[null,[1,33],[1,53]]]],"class",["subexpr","concat",[["subexpr","if",[["get","linkClasses",[]],["subexpr","-normalize-class",["linkClasses",["get","linkClasses",[]]],[],[]]],[],[]]," "],[],[]]],0,null,["loc",[null,[1,0],[1,117]]]]
       ],
       locals: [],
       templates: [child0]
@@ -10933,7 +12133,7 @@ define('ghost/templates/components/gh-alert', ['exports'], function (exports) {
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -10981,8 +12181,8 @@ define('ghost/templates/components/gh-alert', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["content","message.message"],
-        ["element","action",["closeNotification"],[]]
+        ["content","message.message",["loc",[null,[2,4],[2,23]]]],
+        ["element","action",["closeNotification"],[],["loc",[null,[4,38],[4,68]]]]
       ],
       locals: [],
       templates: []
@@ -10998,7 +12198,7 @@ define('ghost/templates/components/gh-alerts', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -11031,7 +12231,7 @@ define('ghost/templates/components/gh-alerts', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-alert",[],["message",["subexpr","@mut",[["get","message"]],[]]]]
+          ["inline","gh-alert",[],["message",["subexpr","@mut",[["get","message",["loc",[null,[2,23],[2,30]]]]],[],[]]],["loc",[null,[2,4],[2,32]]]]
         ],
         locals: ["message"],
         templates: []
@@ -11039,7 +12239,7 @@ define('ghost/templates/components/gh-alerts', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11070,7 +12270,7 @@ define('ghost/templates/components/gh-alerts', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","each",[["get","messages"]],[],0,null]
+        ["block","each",[["get","messages",["loc",[null,[1,8],[1,16]]]]],[],0,null,["loc",[null,[1,0],[3,9]]]]
       ],
       locals: [],
       templates: [child0]
@@ -11085,7 +12285,7 @@ define('ghost/templates/components/gh-app', ['exports'], function (exports) {
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11117,7 +12317,7 @@ define('ghost/templates/components/gh-app', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["content","yield"]
+        ["content","yield",["loc",[null,[1,0],[1,9]]]]
       ],
       locals: [],
       templates: []
@@ -11132,7 +12332,7 @@ define('ghost/templates/components/gh-blog-url', ['exports'], function (exports)
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11163,7 +12363,7 @@ define('ghost/templates/components/gh-blog-url', ['exports'], function (exports)
         return morphs;
       },
       statements: [
-        ["content","config.blogUrl"]
+        ["content","config.blogUrl",["loc",[null,[1,0],[1,20]]]]
       ],
       locals: [],
       templates: []
@@ -11178,7 +12378,7 @@ define('ghost/templates/components/gh-content-preview-content', ['exports'], fun
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11210,7 +12410,7 @@ define('ghost/templates/components/gh-content-preview-content', ['exports'], fun
         return morphs;
       },
       statements: [
-        ["content","yield"]
+        ["content","yield",["loc",[null,[1,0],[1,9]]]]
       ],
       locals: [],
       templates: []
@@ -11225,7 +12425,7 @@ define('ghost/templates/components/gh-content-view-container', ['exports'], func
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11257,7 +12457,7 @@ define('ghost/templates/components/gh-content-view-container', ['exports'], func
         return morphs;
       },
       statements: [
-        ["inline","yield",[["get","this"]],[]]
+        ["inline","yield",[["get","this",["loc",[null,[1,8],[1,12]]]]],[],["loc",[null,[1,0],[1,14]]]]
       ],
       locals: [],
       templates: []
@@ -11272,7 +12472,7 @@ define('ghost/templates/components/gh-ed-preview', ['exports'], function (export
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11304,7 +12504,7 @@ define('ghost/templates/components/gh-ed-preview', ['exports'], function (export
         return morphs;
       },
       statements: [
-        ["inline","gh-format-markdown",[["get","markdown"]],[]]
+        ["inline","gh-format-markdown",[["get","markdown",["loc",[null,[1,21],[1,29]]]]],[],["loc",[null,[1,0],[1,31]]]]
       ],
       locals: [],
       templates: []
@@ -11320,7 +12520,7 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -11351,7 +12551,7 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
           return morphs;
         },
         statements: [
-          ["content","saveText"]
+          ["content","saveText",["loc",[null,[1,150],[1,162]]]]
         ],
         locals: [],
         templates: []
@@ -11360,7 +12560,7 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -11407,7 +12607,7 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -11457,8 +12657,8 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
             return morphs;
           },
           statements: [
-            ["element","action",["delete"],[]],
-            ["content","deleteText"]
+            ["element","action",["delete"],[],["loc",[null,[18,19],[18,38]]]],
+            ["content","deleteText",["loc",[null,[18,48],[18,62]]]]
           ],
           locals: [],
           templates: []
@@ -11466,7 +12666,7 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -11543,13 +12743,13 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
           return morphs;
         },
         statements: [
-          ["attribute","class",["concat",["post-save-publish ",["subexpr","if",[["get","willPublish"],"active"],[]]]]],
-          ["element","action",["setSaveType","publish"],[]],
-          ["content","publishText"],
-          ["attribute","class",["concat",["post-save-draft ",["subexpr","unless",[["get","willPublish"],"active"],[]]]]],
-          ["element","action",["setSaveType","draft"],[]],
-          ["content","draftText"],
-          ["block","unless",[["get","isNew"]],[],0,null]
+          ["attribute","class",["concat",["post-save-publish ",["subexpr","if",[["get","willPublish",["loc",[null,[9,42],[9,53]]]],"active"],[],["loc",[null,[9,37],[9,64]]]]]]],
+          ["element","action",["setSaveType","publish"],[],["loc",[null,[10,15],[10,49]]]],
+          ["content","publishText",["loc",[null,[10,59],[10,74]]]],
+          ["attribute","class",["concat",["post-save-draft ",["subexpr","unless",[["get","willPublish",["loc",[null,[12,44],[12,55]]]],"active"],[],["loc",[null,[12,35],[12,66]]]]]]],
+          ["element","action",["setSaveType","draft"],[],["loc",[null,[13,15],[13,47]]]],
+          ["content","draftText",["loc",[null,[13,57],[13,70]]]],
+          ["block","unless",[["get","isNew",["loc",[null,[15,18],[15,23]]]]],[],0,null,["loc",[null,[15,8],[20,19]]]]
         ],
         locals: [],
         templates: [child0]
@@ -11557,7 +12757,7 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11596,9 +12796,9 @@ define('ghost/templates/components/gh-editor-save-button', ['exports'], function
         return morphs;
       },
       statements: [
-        ["block","gh-spin-button",[],["type","button","action","save","submitting",["subexpr","@mut",[["get","submitting"]],[]],"class",["subexpr","concat",["btn"," ","btn-sm"," ","js-publish-button"," ",["subexpr","if",[["get","isDangerous"],"btn-red","btn-blue"],[]]," "],[]]],0,null],
-        ["block","gh-dropdown-button",[],["dropdownName","post-save-menu","class",["subexpr","concat",["btn"," ","btn-sm"," ",["subexpr","if",[["get","isDangerous"],"btn-red","btn-blue"],[]]," ",["subexpr","if",[["get","btnopen"],"active"],[]]," ","dropdown-toggle"," ","up"," "],[]]],1,null],
-        ["block","gh-dropdown",[],["name","post-save-menu","closeOnClick","true","classNames","editor-options"],2,null]
+        ["block","gh-spin-button",[],["type","button","action","save","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[1,138],[1,148]]]]],[],[]],"class",["subexpr","concat",["btn"," ","btn-sm"," ","js-publish-button"," ",["subexpr","if",[["get","isDangerous",[]],"btn-red","btn-blue"],[],[]]," "],[],[]]],0,null,["loc",[null,[1,0],[1,181]]]],
+        ["block","gh-dropdown-button",[],["dropdownName","post-save-menu","class",["subexpr","concat",["btn"," ","btn-sm"," ",["subexpr","if",[["get","isDangerous",[]],"btn-red","btn-blue"],[],[]]," ",["subexpr","if",[["get","btnopen",[]],"active"],[],[]]," ","dropdown-toggle"," ","up"," "],[],[]]],1,null,["loc",[null,[3,0],[6,23]]]],
+        ["block","gh-dropdown",[],["name","post-save-menu","closeOnClick","true","classNames","editor-options"],2,null,["loc",[null,[7,0],[22,16]]]]
       ],
       locals: [],
       templates: [child0, child1, child2]
@@ -11613,7 +12813,7 @@ define('ghost/templates/components/gh-editor', ['exports'], function (exports) {
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11645,7 +12845,7 @@ define('ghost/templates/components/gh-editor', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["inline","yield",[["get","this"]],[]]
+        ["inline","yield",[["get","this",["loc",[null,[1,8],[1,12]]]]],[],["loc",[null,[1,0],[1,14]]]]
       ],
       locals: [],
       templates: []
@@ -11660,7 +12860,7 @@ define('ghost/templates/components/gh-error-message', ['exports'], function (exp
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11692,7 +12892,7 @@ define('ghost/templates/components/gh-error-message', ['exports'], function (exp
         return morphs;
       },
       statements: [
-        ["content","message"]
+        ["content","message",["loc",[null,[1,0],[1,11]]]]
       ],
       locals: [],
       templates: []
@@ -11707,7 +12907,7 @@ define('ghost/templates/components/gh-file-upload', ['exports'], function (expor
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11760,10 +12960,10 @@ define('ghost/templates/components/gh-file-upload', ['exports'], function (expor
         return morphs;
       },
       statements: [
-        ["attribute","accept",["concat",[["get","options.acceptEncoding"]]]],
-        ["attribute","disabled",["get","uploadButtonDisabled"]],
-        ["element","action",["upload"],[]],
-        ["content","uploadButtonText"]
+        ["attribute","accept",["concat",[["get","options.acceptEncoding",["loc",[null,[1,92],[1,114]]]]]]],
+        ["attribute","disabled",["get","uploadButtonDisabled",["loc",[null,[2,82],[2,102]]]]],
+        ["element","action",["upload"],[],["loc",[null,[2,105],[2,124]]]],
+        ["content","uploadButtonText",["loc",[null,[3,4],[3,24]]]]
       ],
       locals: [],
       templates: []
@@ -11778,7 +12978,7 @@ define('ghost/templates/components/gh-infinite-scroll-box', ['exports'], functio
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11810,7 +13010,7 @@ define('ghost/templates/components/gh-infinite-scroll-box', ['exports'], functio
         return morphs;
       },
       statements: [
-        ["content","yield"]
+        ["content","yield",["loc",[null,[1,0],[1,9]]]]
       ],
       locals: [],
       templates: []
@@ -11825,7 +13025,7 @@ define('ghost/templates/components/gh-infinite-scroll', ['exports'], function (e
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11857,7 +13057,7 @@ define('ghost/templates/components/gh-infinite-scroll', ['exports'], function (e
         return morphs;
       },
       statements: [
-        ["content","yield"]
+        ["content","yield",["loc",[null,[1,0],[1,9]]]]
       ],
       locals: [],
       templates: []
@@ -11872,7 +13072,7 @@ define('ghost/templates/components/gh-menu-toggle', ['exports'], function (expor
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -11905,7 +13105,7 @@ define('ghost/templates/components/gh-menu-toggle', ['exports'], function (expor
         return morphs;
       },
       statements: [
-        ["attribute","class",["concat",[["get","iconClass"]]]]
+        ["attribute","class",["concat",[["get","iconClass",["loc",[null,[1,12],[1,21]]]]]]]
       ],
       locals: [],
       templates: []
@@ -11921,7 +13121,7 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -11955,7 +13155,7 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
           return morphs;
         },
         statements: [
-          ["content","title"]
+          ["content","title",["loc",[null,[4,58],[4,67]]]]
         ],
         locals: [],
         templates: []
@@ -11964,7 +13164,7 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12002,7 +13202,7 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
           return morphs;
         },
         statements: [
-          ["element","action",["closeModal"],[]]
+          ["element","action",["closeModal"],[],["loc",[null,[5,75],[5,98]]]]
         ],
         locals: [],
         templates: []
@@ -12011,7 +13211,7 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12034,7 +13234,9 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
           dom.appendChild(el0, el1);
           var el1 = dom.createElement("footer");
           dom.setAttribute(el1,"class","modal-footer");
-          var el2 = dom.createTextNode("\n                ");
+          var el2 = dom.createTextNode("\n");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("                ");
           dom.appendChild(el1, el2);
           var el2 = dom.createElement("button");
           dom.setAttribute(el2,"type","button");
@@ -12055,8 +13257,8 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
           var element0 = dom.childAt(fragment, [1]);
-          var element1 = dom.childAt(element0, [1]);
-          var element2 = dom.childAt(element0, [2]);
+          var element1 = dom.childAt(element0, [2]);
+          var element2 = dom.childAt(element0, [3]);
           var morphs = new Array(6);
           morphs[0] = dom.createAttrMorph(element1, 'class');
           morphs[1] = dom.createElementMorph(element1);
@@ -12067,12 +13269,12 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
           return morphs;
         },
         statements: [
-          ["attribute","class",["concat",[["get","rejectButtonClass"]," btn-minor js-button-reject"]]],
-          ["element","action",["confirm","reject"],[]],
-          ["content","confirm.reject.text"],
-          ["attribute","class",["concat",[["get","acceptButtonClass"]," js-button-accept"]]],
-          ["element","action",["confirm","accept"],[]],
-          ["content","confirm.accept.text"]
+          ["attribute","class",["concat",[["get","rejectButtonClass",["loc",[null,[12,47],[12,64]]]]," btn-minor js-button-reject"]]],
+          ["element","action",["confirm","reject"],[],["loc",[null,[12,95],[12,124]]]],
+          ["content","confirm.reject.text",["loc",[null,[12,125],[12,148]]]],
+          ["attribute","class",["concat",[["get","acceptButtonClass",["loc",[null,[12,188],[12,205]]]]," js-button-accept"]]],
+          ["element","action",["confirm","accept"],[],["loc",[null,[12,226],[12,255]]]],
+          ["content","confirm.accept.text",["loc",[null,[12,256],[12,279]]]]
         ],
         locals: [],
         templates: []
@@ -12080,7 +13282,7 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -12164,13 +13366,13 @@ define('ghost/templates/components/gh-modal-dialog', ['exports'], function (expo
         return morphs;
       },
       statements: [
-        ["element","action",["closeModal"],[]],
-        ["attribute","class",["concat",[["get","klass"]," js-modal"]]],
-        ["element","action",["noBubble"],["bubbles",false,"preventDefault",false]],
-        ["block","if",[["get","title"]],[],0,null],
-        ["block","if",[["get","showClose"]],[],1,null],
-        ["content","yield"],
-        ["block","if",[["get","confirm"]],[],2,null]
+        ["element","action",["closeModal"],[],["loc",[null,[1,48],[1,71]]]],
+        ["attribute","class",["concat",[["get","klass",["loc",[null,[2,22],[2,27]]]]," js-modal"]]],
+        ["element","action",["noBubble"],["bubbles",false,"preventDefault",false],["loc",[null,[3,39],[3,95]]]],
+        ["block","if",[["get","title",["loc",[null,[4,18],[4,23]]]]],[],0,null,["loc",[null,[4,12],[4,88]]]],
+        ["block","if",[["get","showClose",["loc",[null,[5,18],[5,27]]]]],[],1,null,["loc",[null,[5,12],[5,143]]]],
+        ["content","yield",["loc",[null,[7,16],[7,25]]]],
+        ["block","if",[["get","confirm",["loc",[null,[9,18],[9,25]]]]],[],2,null,["loc",[null,[9,12],[14,19]]]]
       ],
       locals: [],
       templates: [child0, child1, child2]
@@ -12186,7 +13388,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12249,8 +13451,8 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
           return morphs;
         },
         statements: [
-          ["content","config.blogTitle"],
-          ["content","session.user.name"]
+          ["content","config.blogTitle",["loc",[null,[4,46],[4,66]]]],
+          ["content","session.user.name",["loc",[null,[5,46],[5,67]]]]
         ],
         locals: [],
         templates: []
@@ -12260,7 +13462,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12297,7 +13499,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12334,7 +13536,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child2 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12370,7 +13572,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12437,9 +13639,9 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
           return morphs;
         },
         statements: [
-          ["block","link-to",["about"],["classNames","gh-nav-menu-about dropdown-item js-nav-item","role","menuitem","tabindex","-1"],0,null],
-          ["block","link-to",["team.user",["get","session.user.slug"]],["classNames","dropdown-item user-menu-profile js-nav-item","role","menuitem","tabindex","-1"],1,null],
-          ["block","link-to",["signout"],["classNames","dropdown-item user-menu-signout","role","menuitem","tabindex","-1"],2,null]
+          ["block","link-to",["about"],["classNames","gh-nav-menu-about dropdown-item js-nav-item","role","menuitem","tabindex","-1"],0,null,["loc",[null,[11,32],[11,188]]]],
+          ["block","link-to",["team.user",["get","session.user.slug",["loc",[null,[13,55],[13,72]]]]],["classNames","dropdown-item user-menu-profile js-nav-item","role","menuitem","tabindex","-1"],1,null,["loc",[null,[13,32],[13,211]]]],
+          ["block","link-to",["signout"],["classNames","dropdown-item user-menu-signout","role","menuitem","tabindex","-1"],2,null,["loc",[null,[14,32],[14,178]]]]
         ],
         locals: [],
         templates: [child0, child1, child2]
@@ -12448,7 +13650,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12485,7 +13687,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     var child3 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12522,7 +13724,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     var child4 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12560,7 +13762,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12597,7 +13799,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12634,7 +13836,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child2 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12671,7 +13873,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child3 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12708,7 +13910,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       var child4 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -12744,7 +13946,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12780,7 +13982,9 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
           var el3 = dom.createComment("");
           dom.appendChild(el2, el3);
           dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n            ");
+          var el2 = dom.createTextNode("\n");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("            ");
           dom.appendChild(el1, el2);
           var el2 = dom.createElement("li");
           var el3 = dom.createComment("");
@@ -12815,18 +14019,18 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
           var element1 = dom.childAt(fragment, [1]);
           var morphs = new Array(5);
           morphs[0] = dom.createMorphAt(dom.childAt(element1, [3]),0,0);
-          morphs[1] = dom.createMorphAt(dom.childAt(element1, [5]),0,0);
-          morphs[2] = dom.createMorphAt(dom.childAt(element1, [7]),0,0);
-          morphs[3] = dom.createMorphAt(dom.childAt(element1, [9]),0,0);
-          morphs[4] = dom.createMorphAt(dom.childAt(element1, [11]),0,0);
+          morphs[1] = dom.createMorphAt(dom.childAt(element1, [6]),0,0);
+          morphs[2] = dom.createMorphAt(dom.childAt(element1, [8]),0,0);
+          morphs[3] = dom.createMorphAt(dom.childAt(element1, [10]),0,0);
+          morphs[4] = dom.createMorphAt(dom.childAt(element1, [12]),0,0);
           return morphs;
         },
         statements: [
-          ["block","link-to",["settings.general"],["classNames","gh-nav-settings-general"],0,null],
-          ["block","link-to",["settings.navigation"],["classNames","gh-nav-settings-navigation"],1,null],
-          ["block","link-to",["settings.tags"],["classNames","gh-nav-settings-tags"],2,null],
-          ["block","link-to",["settings.code-injection"],["classNames","gh-nav-settings-code-injection"],3,null],
-          ["block","link-to",["settings.labs"],["classNames","gh-nav-settings-labs"],4,null]
+          ["block","link-to",["settings.general"],["classNames","gh-nav-settings-general"],0,null,["loc",[null,[32,16],[32,132]]]],
+          ["block","link-to",["settings.navigation"],["classNames","gh-nav-settings-navigation"],1,null,["loc",[null,[34,16],[34,140]]]],
+          ["block","link-to",["settings.tags"],["classNames","gh-nav-settings-tags"],2,null,["loc",[null,[35,16],[35,118]]]],
+          ["block","link-to",["settings.code-injection"],["classNames","gh-nav-settings-code-injection"],3,null,["loc",[null,[36,16],[36,149]]]],
+          ["block","link-to",["settings.labs"],["classNames","gh-nav-settings-labs"],4,null,["loc",[null,[37,16],[37,119]]]]
         ],
         locals: [],
         templates: [child0, child1, child2, child3, child4]
@@ -12835,7 +14039,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     var child6 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -12886,7 +14090,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     var child7 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13019,7 +14223,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
           return morphs;
         },
         statements: [
-          ["element","action",["openModal","markdown"],[]]
+          ["element","action",["openModal","markdown"],[],["loc",[null,[56,122],[56,155]]]]
         ],
         locals: [],
         templates: []
@@ -13027,7 +14231,7 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13067,7 +14271,9 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("ul");
         dom.setAttribute(el2,"class","gh-nav-list gh-nav-main");
-        var el3 = dom.createTextNode("\n        ");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("li");
         var el4 = dom.createComment("");
@@ -13079,13 +14285,17 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
         var el4 = dom.createComment("");
         dom.appendChild(el3, el4);
         dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n        ");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("li");
         var el4 = dom.createComment("");
         dom.appendChild(el3, el4);
         dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("    ");
         dom.appendChild(el2, el3);
         dom.appendChild(el1, el2);
         var el2 = dom.createTextNode("\n");
@@ -13145,9 +14355,9 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
         morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
         morphs[1] = dom.createMorphAt(fragment,1,1,contextualElement);
         morphs[2] = dom.createMorphAt(dom.childAt(element4, [1]),1,1);
-        morphs[3] = dom.createMorphAt(dom.childAt(element5, [1]),0,0);
-        morphs[4] = dom.createMorphAt(dom.childAt(element5, [3]),0,0);
-        morphs[5] = dom.createMorphAt(dom.childAt(element5, [5]),0,0);
+        morphs[3] = dom.createMorphAt(dom.childAt(element5, [2]),0,0);
+        morphs[4] = dom.createMorphAt(dom.childAt(element5, [4]),0,0);
+        morphs[5] = dom.createMorphAt(dom.childAt(element5, [7]),0,0);
         morphs[6] = dom.createMorphAt(element4,5,5);
         morphs[7] = dom.createMorphAt(element6,1,1);
         morphs[8] = dom.createAttrMorph(element7, 'href');
@@ -13158,18 +14368,18 @@ define('ghost/templates/components/gh-nav-menu', ['exports'], function (exports)
         return morphs;
       },
       statements: [
-        ["block","gh-dropdown-button",[],["tagName","header","class","gh-nav-menu","dropdownName","user-menu"],0,null],
-        ["block","gh-dropdown",[],["tagName","div","name","user-menu","closeOnClick","true"],1,null],
-        ["inline","gh-search-input",[],["class","gh-nav-search-input"]],
-        ["block","link-to",["editor.new"],["classNames","gh-nav-main-editor"],2,null],
-        ["block","link-to",["posts"],["classNames","gh-nav-main-content"],3,null],
-        ["block","link-to",["team"],["classNames","gh-nav-main-users"],4,null],
-        ["block","if",[["subexpr","gh-user-can-admin",[["get","session.user"]],[]]],[],5,null],
-        ["inline","gh-menu-toggle",[],["desktopAction","toggleAutoNav","mobileAction","closeMobileMenu"]],
-        ["attribute","href",["concat",[["get","config.blogUrl"],"/"]]],
-        ["block","gh-dropdown-button",[],["dropdownName","help-menu","tagName","div"],6,null],
-        ["block","gh-dropdown",[],["tagName","div","name","help-menu","closeOnClick","true"],7,null],
-        ["element","action",["openAutoNav"],["on","mouseEnter"]]
+        ["block","gh-dropdown-button",[],["tagName","header","class","gh-nav-menu","dropdownName","user-menu"],0,null,["loc",[null,[1,0],[8,23]]]],
+        ["block","gh-dropdown",[],["tagName","div","name","user-menu","closeOnClick","true"],1,null,["loc",[null,[9,0],[16,16]]]],
+        ["inline","gh-search-input",[],["class","gh-nav-search-input"],["loc",[null,[19,8],[19,55]]]],
+        ["block","link-to",["editor.new"],["classNames","gh-nav-main-editor"],2,null,["loc",[null,[23,12],[23,113]]]],
+        ["block","link-to",["posts"],["classNames","gh-nav-main-content"],3,null,["loc",[null,[24,12],[24,112]]]],
+        ["block","link-to",["team"],["classNames","gh-nav-main-users"],4,null,["loc",[null,[26,12],[26,103]]]],
+        ["block","if",[["subexpr","gh-user-can-admin",[["get","session.user",["loc",[null,[29,29],[29,41]]]]],[],["loc",[null,[29,10],[29,42]]]]],[],5,null,["loc",[null,[29,4],[39,11]]]],
+        ["inline","gh-menu-toggle",[],["desktopAction","toggleAutoNav","mobileAction","closeMobileMenu"],["loc",[null,[42,4],[42,83]]]],
+        ["attribute","href",["concat",[["get","config.blogUrl",["loc",[null,[43,46],[43,60]]]],"/"]]],
+        ["block","gh-dropdown-button",[],["dropdownName","help-menu","tagName","div"],6,null,["loc",[null,[45,8],[49,31]]]],
+        ["block","gh-dropdown",[],["tagName","div","name","help-menu","closeOnClick","true"],7,null,["loc",[null,[50,8],[60,24]]]],
+        ["element","action",["openAutoNav"],["on","mouseEnter"],["loc",[null,[63,31],[63,71]]]]
       ],
       locals: [],
       templates: [child0, child1, child2, child3, child4, child5, child6, child7]
@@ -13184,7 +14394,7 @@ define('ghost/templates/components/gh-navigation', ['exports'], function (export
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13216,7 +14426,7 @@ define('ghost/templates/components/gh-navigation', ['exports'], function (export
         return morphs;
       },
       statements: [
-        ["content","yield"]
+        ["content","yield",["loc",[null,[1,0],[1,9]]]]
       ],
       locals: [],
       templates: []
@@ -13232,7 +14442,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13280,7 +14490,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13318,8 +14528,8 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
           return morphs;
         },
         statements: [
-          ["inline","gh-trim-focus-input",[],["focus",["subexpr","@mut",[["get","navItem.last"]],[]],"placeholder","Label","value",["subexpr","@mut",[["get","navItem.label"]],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","label"]]
+          ["inline","gh-trim-focus-input",[],["focus",["subexpr","@mut",[["get","navItem.last",["loc",[null,[9,36],[9,48]]]]],[],[]],"placeholder","Label","value",["subexpr","@mut",[["get","navItem.label",["loc",[null,[9,75],[9,88]]]]],[],[]]],["loc",[null,[9,8],[9,90]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","navItem.errors",["loc",[null,[10,34],[10,48]]]]],[],[]],"property","label"],["loc",[null,[10,8],[10,67]]]]
         ],
         locals: [],
         templates: []
@@ -13328,7 +14538,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13366,8 +14576,8 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
           return morphs;
         },
         statements: [
-          ["inline","gh-navitem-url-input",[],["baseUrl",["subexpr","@mut",[["get","baseUrl"]],[]],"url",["subexpr","@mut",[["get","navItem.url"]],[]],"last",["subexpr","@mut",[["get","navItem.last"]],[]],"change","updateUrl"]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","url"]]
+          ["inline","gh-navitem-url-input",[],["baseUrl",["subexpr","@mut",[["get","baseUrl",["loc",[null,[13,39],[13,46]]]]],[],[]],"url",["subexpr","@mut",[["get","navItem.url",["loc",[null,[13,51],[13,62]]]]],[],[]],"last",["subexpr","@mut",[["get","navItem.last",["loc",[null,[13,68],[13,80]]]]],[],[]],"change","updateUrl"],["loc",[null,[13,8],[13,101]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","navItem.errors",["loc",[null,[14,34],[14,48]]]]],[],[]],"property","url"],["loc",[null,[14,8],[14,65]]]]
         ],
         locals: [],
         templates: []
@@ -13376,7 +14586,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
     var child3 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13424,7 +14634,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
           return morphs;
         },
         statements: [
-          ["element","action",["addItem"],[]]
+          ["element","action",["addItem"],[],["loc",[null,[19,49],[19,69]]]]
         ],
         locals: [],
         templates: []
@@ -13433,7 +14643,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
     var child4 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13481,7 +14691,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
           return morphs;
         },
         statements: [
-          ["element","action",["deleteItem",["get","navItem"]],[]]
+          ["element","action",["deleteItem",["get","navItem",["loc",[null,[23,74],[23,81]]]]],[],["loc",[null,[23,52],[23,83]]]]
         ],
         locals: [],
         templates: []
@@ -13489,7 +14699,7 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13539,10 +14749,10 @@ define('ghost/templates/components/gh-navitem', ['exports'], function (exports) 
         return morphs;
       },
       statements: [
-        ["block","unless",[["get","navItem.last"]],[],0,null],
-        ["block","gh-validation-status-container",[],["tagName","span","class","gh-blognav-label","errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","label","hasValidated",["subexpr","@mut",[["get","navItem.hasValidated"]],[]]],1,null],
-        ["block","gh-validation-status-container",[],["tagName","span","class","gh-blognav-url","errors",["subexpr","@mut",[["get","navItem.errors"]],[]],"property","url","hasValidated",["subexpr","@mut",[["get","navItem.hasValidated"]],[]]],2,null],
-        ["block","if",[["get","navItem.last"]],[],3,4]
+        ["block","unless",[["get","navItem.last",["loc",[null,[1,10],[1,22]]]]],[],0,null,["loc",[null,[1,0],[5,11]]]],
+        ["block","gh-validation-status-container",[],["tagName","span","class","gh-blognav-label","errors",["subexpr","@mut",[["get","navItem.errors",["loc",[null,[8,85],[8,99]]]]],[],[]],"property","label","hasValidated",["subexpr","@mut",[["get","navItem.hasValidated",["loc",[null,[8,130],[8,150]]]]],[],[]]],1,null,["loc",[null,[8,4],[11,39]]]],
+        ["block","gh-validation-status-container",[],["tagName","span","class","gh-blognav-url","errors",["subexpr","@mut",[["get","navItem.errors",["loc",[null,[12,83],[12,97]]]]],[],[]],"property","url","hasValidated",["subexpr","@mut",[["get","navItem.hasValidated",["loc",[null,[12,126],[12,146]]]]],[],[]]],2,null,["loc",[null,[12,4],[15,39]]]],
+        ["block","if",[["get","navItem.last",["loc",[null,[18,6],[18,18]]]]],[],3,4,["loc",[null,[18,0],[26,7]]]]
       ],
       locals: [],
       templates: [child0, child1, child2, child3, child4]
@@ -13557,7 +14767,7 @@ define('ghost/templates/components/gh-notification', ['exports'], function (expo
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13605,8 +14815,8 @@ define('ghost/templates/components/gh-notification', ['exports'], function (expo
         return morphs;
       },
       statements: [
-        ["content","message.message"],
-        ["element","action",["closeNotification"],[]]
+        ["content","message.message",["loc",[null,[2,4],[2,23]]]],
+        ["element","action",["closeNotification"],[],["loc",[null,[4,45],[4,75]]]]
       ],
       locals: [],
       templates: []
@@ -13622,7 +14832,7 @@ define('ghost/templates/components/gh-notifications', ['exports'], function (exp
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13655,7 +14865,7 @@ define('ghost/templates/components/gh-notifications', ['exports'], function (exp
           return morphs;
         },
         statements: [
-          ["inline","gh-notification",[],["message",["subexpr","@mut",[["get","message"]],[]]]]
+          ["inline","gh-notification",[],["message",["subexpr","@mut",[["get","message",["loc",[null,[2,30],[2,37]]]]],[],[]]],["loc",[null,[2,4],[2,39]]]]
         ],
         locals: ["message"],
         templates: []
@@ -13663,7 +14873,7 @@ define('ghost/templates/components/gh-notifications', ['exports'], function (exp
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13694,7 +14904,7 @@ define('ghost/templates/components/gh-notifications', ['exports'], function (exp
         return morphs;
       },
       statements: [
-        ["block","each",[["get","messages"]],[],0,null]
+        ["block","each",[["get","messages",["loc",[null,[1,8],[1,16]]]]],[],0,null,["loc",[null,[1,0],[3,9]]]]
       ],
       locals: [],
       templates: [child0]
@@ -13709,7 +14919,7 @@ define('ghost/templates/components/gh-posts-list-item', ['exports'], function (e
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13741,7 +14951,7 @@ define('ghost/templates/components/gh-posts-list-item', ['exports'], function (e
         return morphs;
       },
       statements: [
-        ["inline","yield",[["get","this"]],[]]
+        ["inline","yield",[["get","this",["loc",[null,[1,8],[1,12]]]]],[],["loc",[null,[1,0],[1,14]]]]
       ],
       locals: [],
       templates: []
@@ -13758,7 +14968,7 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -13803,7 +15013,7 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
             return morphs;
           },
           statements: [
-            ["attribute","style",["get","imageBackground"]]
+            ["attribute","style",["get","imageBackground",["loc",[null,[6,65],[6,80]]]]]
           ],
           locals: [],
           templates: []
@@ -13811,7 +15021,7 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13850,8 +15060,8 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
           return morphs;
         },
         statements: [
-          ["attribute","style",["get","defaultImage"]],
-          ["block","if",[["get","hasEmail"]],[],0,null]
+          ["attribute","style",["get","defaultImage",["loc",[null,[3,45],[3,57]]]]],
+          ["block","if",[["get","displayGravatar",["loc",[null,[5,14],[5,29]]]]],[],0,null,["loc",[null,[5,8],[9,15]]]]
         ],
         locals: [],
         templates: [child0]
@@ -13860,7 +15070,7 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -13896,7 +15106,7 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -13966,8 +15176,8 @@ define('ghost/templates/components/gh-profile-image', ['exports'], function (exp
         return morphs;
       },
       statements: [
-        ["block","unless",[["get","hasUploadedImage"]],[],0,null],
-        ["block","if",[["get","fileStorage"]],[],1,null]
+        ["block","unless",[["get","hasUploadedImage",["loc",[null,[2,14],[2,30]]]]],[],0,null,["loc",[null,[2,4],[10,15]]]],
+        ["block","if",[["get","fileStorage",["loc",[null,[19,10],[19,21]]]]],[],1,null,["loc",[null,[19,4],[19,104]]]]
       ],
       locals: [],
       templates: [child0, child1]
@@ -13982,7 +15192,7 @@ define('ghost/templates/components/gh-search-input', ['exports'], function (expo
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14029,8 +15239,8 @@ define('ghost/templates/components/gh-search-input', ['exports'], function (expo
         return morphs;
       },
       statements: [
-        ["inline","gh-selectize",[],["placeholder","Search","selection",["subexpr","@mut",[["get","selection"]],[]],"content",["subexpr","@mut",[["get","content"]],[]],"loading",["subexpr","@mut",[["get","isLoading"]],[]],"optionValuePath","content.id","optionLabelPath","content.title","optionGroupPath","content.category","openOnFocus",false,"maxItems","1","on-init","onInit","on-focus","onFocus","on-blur","onBlur","update-filter","onType","select-item","openSelected"]],
-        ["element","action",["focusInput"],[]]
+        ["inline","gh-selectize",[],["placeholder","Search","selection",["subexpr","@mut",[["get","selection",["loc",[null,[3,14],[3,23]]]]],[],[]],"content",["subexpr","@mut",[["get","content",["loc",[null,[4,12],[4,19]]]]],[],[]],"loading",["subexpr","@mut",[["get","isLoading",["loc",[null,[5,12],[5,21]]]]],[],[]],"optionValuePath","content.id","optionLabelPath","content.title","optionGroupPath","content.category","openOnFocus",false,"maxItems","1","on-init","onInit","on-focus","onFocus","on-blur","onBlur","update-filter","onType","select-item","openSelected"],["loc",[null,[1,0],[15,32]]]],
+        ["element","action",["focusInput"],[],["loc",[null,[16,37],[16,60]]]]
       ],
       locals: [],
       templates: []
@@ -14046,7 +15256,7 @@ define('ghost/templates/components/gh-select-native', ['exports'], function (exp
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -14088,8 +15298,8 @@ define('ghost/templates/components/gh-select-native', ['exports'], function (exp
           return morphs;
         },
         statements: [
-          ["attribute","selected",["subexpr","is-not",[["get","selection"]],[]]],
-          ["content","prompt"]
+          ["attribute","selected",["subexpr","is-not",[["get","selection",["loc",[null,[3,43],[3,52]]]]],[],["loc",[null,[3,34],[3,54]]]]],
+          ["content","prompt",["loc",[null,[4,10],[4,20]]]]
         ],
         locals: [],
         templates: []
@@ -14098,7 +15308,7 @@ define('ghost/templates/components/gh-select-native', ['exports'], function (exp
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -14140,9 +15350,9 @@ define('ghost/templates/components/gh-select-native', ['exports'], function (exp
           return morphs;
         },
         statements: [
-          ["attribute","value",["concat",[["subexpr","read-path",[["get","item"],["get","optionValuePath"]],[]]]]],
-          ["attribute","selected",["subexpr","is-equal",[["get","item"],["get","selection"]],[]]],
-          ["inline","read-path",[["get","item"],["get","optionLabelPath"]],[]]
+          ["attribute","value",["concat",[["subexpr","read-path",[["get","item",["loc",[null,[9,35],[9,39]]]],["get","optionValuePath",["loc",[null,[9,40],[9,55]]]]],[],["loc",[null,[9,23],[9,57]]]]]]],
+          ["attribute","selected",["subexpr","is-equal",[["get","item",["loc",[null,[10,36],[10,40]]]],["get","selection",["loc",[null,[10,41],[10,50]]]]],[],["loc",[null,[10,25],[10,52]]]]],
+          ["inline","read-path",[["get","item",["loc",[null,[11,24],[11,28]]]],["get","optionLabelPath",["loc",[null,[11,29],[11,44]]]]],[],["loc",[null,[11,12],[11,46]]]]
         ],
         locals: ["item"],
         templates: []
@@ -14150,7 +15360,7 @@ define('ghost/templates/components/gh-select-native', ['exports'], function (exp
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14192,9 +15402,9 @@ define('ghost/templates/components/gh-select-native', ['exports'], function (exp
         return morphs;
       },
       statements: [
-        ["element","action",["change"],["on","change"]],
-        ["block","if",[["get","prompt"]],[],0,null],
-        ["block","each",[["get","content"]],[],1,null]
+        ["element","action",["change"],["on","change"],["loc",[null,[1,8],[1,39]]]],
+        ["block","if",[["get","prompt",["loc",[null,[2,10],[2,16]]]]],[],0,null,["loc",[null,[2,4],[6,11]]]],
+        ["block","each",[["get","content",["loc",[null,[8,12],[8,19]]]]],[],1,null,["loc",[null,[8,4],[13,13]]]]
       ],
       locals: [],
       templates: [child0, child1]
@@ -14210,7 +15420,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -14250,7 +15460,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -14283,7 +15493,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
             return morphs;
           },
           statements: [
-            ["content","buttonText"]
+            ["content","buttonText",["loc",[null,[5,8],[5,22]]]]
           ],
           locals: [],
           templates: []
@@ -14292,7 +15502,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -14325,7 +15535,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
             return morphs;
           },
           statements: [
-            ["content","yield"]
+            ["content","yield",["loc",[null,[7,8],[7,19]]]]
           ],
           locals: [],
           templates: []
@@ -14333,7 +15543,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -14364,7 +15574,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
           return morphs;
         },
         statements: [
-          ["block","if",[["get","buttonText"]],[],0,1]
+          ["block","if",[["get","buttonText",["loc",[null,[4,10],[4,20]]]]],[],0,1,["loc",[null,[4,4],[8,11]]]]
         ],
         locals: [],
         templates: [child0, child1]
@@ -14372,7 +15582,7 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14403,10 +15613,837 @@ define('ghost/templates/components/gh-spin-button', ['exports'], function (expor
         return morphs;
       },
       statements: [
-        ["block","if",[["get","showSpinner"]],[],0,1]
+        ["block","if",[["get","showSpinner",["loc",[null,[1,6],[1,17]]]]],[],0,1,["loc",[null,[1,0],[9,7]]]]
       ],
       locals: [],
       templates: [child0, child1]
+    };
+  }()));
+
+});
+define('ghost/templates/components/gh-tag-settings-form', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      var child0 = (function() {
+        return {
+          meta: {
+            "revision": "Ember@1.13.10",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 4,
+                "column": 12
+              },
+              "end": {
+                "line": 4,
+                "column": 129
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+          },
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createElement("span");
+            dom.setAttribute(el1,"class","hidden");
+            var el2 = dom.createTextNode("Back");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() { return []; },
+          statements: [
+
+          ],
+          locals: [],
+          templates: []
+        };
+      }());
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 3,
+              "column": 8
+            },
+            "end": {
+              "line": 7,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("h4");
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1,"style","width:23px;");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment,1,1,contextualElement);
+          morphs[1] = dom.createMorphAt(dom.childAt(fragment, [3]),0,0);
+          return morphs;
+        },
+        statements: [
+          ["block","link-to",["settings.tags"],["class","back icon-arrow-left settings-menu-header-action"],0,null,["loc",[null,[4,12],[4,141]]]],
+          ["content","title",["loc",[null,[5,16],[5,25]]]]
+        ],
+        locals: [],
+        templates: [child0]
+      };
+    }());
+    var child1 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 7,
+              "column": 8
+            },
+            "end": {
+              "line": 9,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("h4");
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]),0,0);
+          return morphs;
+        },
+        statements: [
+          ["content","title",["loc",[null,[8,16],[8,25]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child2 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 14,
+              "column": 12
+            },
+            "end": {
+              "line": 18,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","tag-name");
+          var el2 = dom.createTextNode("Name");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-input",[],["id","tag-name","name","name","type","text","value",["subexpr","@mut",[["get","scratchName",["loc",[null,[16,71],[16,82]]]]],[],[]],"focus-out",["subexpr","action",["setProperty","name"],[],["loc",[null,[16,93],[16,122]]]]],["loc",[null,[16,16],[16,124]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[17,42],[17,52]]]]],[],[]],"property","name"],["loc",[null,[17,16],[17,70]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child3 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 20,
+              "column": 12
+            },
+            "end": {
+              "line": 25,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","tag-slug");
+          var el2 = dom.createTextNode("URL");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(3);
+          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          morphs[2] = dom.createMorphAt(fragment,7,7,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-input",[],["id","tag-slug","name","slug","type","text","value",["subexpr","@mut",[["get","scratchSlug",["loc",[null,[22,71],[22,82]]]]],[],[]],"focus-out",["subexpr","action",["setProperty","slug"],[],["loc",[null,[22,93],[22,122]]]]],["loc",[null,[22,16],[22,124]]]],
+          ["inline","gh-url-preview",[],["prefix","tag","slug",["subexpr","@mut",[["get","scratchSlug",["loc",[null,[23,51],[23,62]]]]],[],[]],"tagName","p","classNames","description"],["loc",[null,[23,16],[23,101]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[24,42],[24,58]]]]],[],[]],"property","slug"],["loc",[null,[24,16],[24,76]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child4 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 27,
+              "column": 12
+            },
+            "end": {
+              "line": 32,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","tag-description");
+          var el2 = dom.createTextNode("Description");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("Maximum: ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("b");
+          var el3 = dom.createTextNode("200");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode(" characters. You’ve used ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(3);
+          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]),3,3);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-textarea",[],["id","tag-description","name","description","value",["subexpr","@mut",[["get","scratchDescription",["loc",[null,[29,76],[29,94]]]]],[],[]],"focus-out",["subexpr","action",["setProperty","description"],[],["loc",[null,[29,105],[29,141]]]]],["loc",[null,[29,16],[29,143]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[30,42],[30,52]]]]],[],[]],"property","description"],["loc",[null,[30,16],[30,77]]]],
+          ["inline","gh-count-down-characters",[["get","scratchDescription",["loc",[null,[31,90],[31,108]]]],200],[],["loc",[null,[31,63],[31,114]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child5 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 44,
+              "column": 12
+            },
+            "end": {
+              "line": 46,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("button");
+          dom.setAttribute(el1,"type","button");
+          dom.setAttribute(el1,"class","btn btn-link btn-sm tag-delete-button");
+          var el2 = dom.createElement("i");
+          dom.setAttribute(el2,"class","icon-trash");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode(" Delete Tag");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [1]);
+          var morphs = new Array(1);
+          morphs[0] = dom.createElementMorph(element0);
+          return morphs;
+        },
+        statements: [
+          ["element","action",["deleteTag"],[],["loc",[null,[45,84],[45,106]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child6 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 60,
+              "column": 12
+            },
+            "end": {
+              "line": 65,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","meta-title");
+          var el2 = dom.createTextNode("Meta Title");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("Recommended: ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("b");
+          var el3 = dom.createTextNode("70");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode(" characters. You’ve used ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(3);
+          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]),3,3);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-input",[],["id","meta-title","name","meta_title","type","text","value",["subexpr","@mut",[["get","scratchMetaTitle",["loc",[null,[62,79],[62,95]]]]],[],[]],"focus-out",["subexpr","action",["setProperty","meta_title"],[],["loc",[null,[62,106],[62,141]]]]],["loc",[null,[62,16],[62,143]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[63,42],[63,52]]]]],[],[]],"property","meta_title"],["loc",[null,[63,16],[63,76]]]],
+          ["inline","gh-count-down-characters",[["get","scratchMetaTitle",["loc",[null,[64,93],[64,109]]]],70],[],["loc",[null,[64,66],[64,114]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child7 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 67,
+              "column": 12
+            },
+            "end": {
+              "line": 72,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","meta-description");
+          var el2 = dom.createTextNode("Meta Description");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("Recommended: ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("b");
+          var el3 = dom.createTextNode("156");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode(" characters. You’ve used ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(3);
+          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]),3,3);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-textarea",[],["id","meta-description","name","meta_description","value",["subexpr","@mut",[["get","scratchMetaDescription",["loc",[null,[69,82],[69,104]]]]],[],[]],"focus-out",["subexpr","action",["setProperty","meta_description"],[],["loc",[null,[69,115],[69,156]]]]],["loc",[null,[69,16],[69,158]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[70,42],[70,52]]]]],[],[]],"property","meta_description"],["loc",[null,[70,16],[70,82]]]],
+          ["inline","gh-count-down-characters",[["get","scratchMetaDescription",["loc",[null,[71,94],[71,116]]]],156],[],["loc",[null,[71,67],[71,122]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 85,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-tag-settings-form.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("div");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("div");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("div");
+        dom.setAttribute(el2,"class","settings-menu-content");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("form");
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("ul");
+        dom.setAttribute(el4,"class","nav-list nav-list-block");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("li");
+        dom.setAttribute(el5,"class","nav-list-item");
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("button");
+        dom.setAttribute(el6,"type","button");
+        dom.setAttribute(el6,"class","meta-data-button");
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("b");
+        var el8 = dom.createTextNode("Meta Data");
+        dom.appendChild(el7, el8);
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("span");
+        var el8 = dom.createTextNode("Extra content for SEO and social media.");
+        dom.appendChild(el7, el8);
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                    ");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("i");
+        dom.setAttribute(el6,"class","icon-arrow-right");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                ");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("div");
+        dom.setAttribute(el2,"class","settings-menu-header subview");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("button");
+        dom.setAttribute(el3,"class","back icon-arrow-left settings-menu-header-action");
+        var el4 = dom.createElement("span");
+        dom.setAttribute(el4,"class","hidden");
+        var el5 = dom.createTextNode("Back");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("h4");
+        var el4 = dom.createTextNode("Meta Data");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("div");
+        dom.setAttribute(el3,"style","width:23px;");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("div");
+        dom.setAttribute(el2,"class","settings-menu-content");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("form");
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4,"class","form-group");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("label");
+        var el6 = dom.createTextNode("Search Engine Result Preview");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("div");
+        dom.setAttribute(el5,"class","seo-preview");
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("div");
+        dom.setAttribute(el6,"class","seo-preview-title");
+        var el7 = dom.createComment("");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("div");
+        dom.setAttribute(el6,"class","seo-preview-link");
+        var el7 = dom.createComment("");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("div");
+        dom.setAttribute(el6,"class","seo-preview-description");
+        var el7 = dom.createComment("");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                ");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element1 = dom.childAt(fragment, [0]);
+        var element2 = dom.childAt(element1, [1]);
+        var element3 = dom.childAt(element1, [3]);
+        var element4 = dom.childAt(element3, [3]);
+        var element5 = dom.childAt(element4, [7, 1]);
+        var element6 = dom.childAt(fragment, [2]);
+        var element7 = dom.childAt(element6, [1, 1]);
+        var element8 = dom.childAt(element6, [3, 1]);
+        var element9 = dom.childAt(element8, [5, 3]);
+        var morphs = new Array(16);
+        morphs[0] = dom.createAttrMorph(element1, 'class');
+        morphs[1] = dom.createAttrMorph(element2, 'class');
+        morphs[2] = dom.createMorphAt(element2,1,1);
+        morphs[3] = dom.createMorphAt(element3,1,1);
+        morphs[4] = dom.createMorphAt(element4,1,1);
+        morphs[5] = dom.createMorphAt(element4,3,3);
+        morphs[6] = dom.createMorphAt(element4,5,5);
+        morphs[7] = dom.createElementMorph(element5);
+        morphs[8] = dom.createMorphAt(element4,9,9);
+        morphs[9] = dom.createAttrMorph(element6, 'class');
+        morphs[10] = dom.createElementMorph(element7);
+        morphs[11] = dom.createMorphAt(element8,1,1);
+        morphs[12] = dom.createMorphAt(element8,3,3);
+        morphs[13] = dom.createMorphAt(dom.childAt(element9, [1]),0,0);
+        morphs[14] = dom.createMorphAt(dom.childAt(element9, [3]),0,0);
+        morphs[15] = dom.createMorphAt(dom.childAt(element9, [5]),0,0);
+        return morphs;
+      },
+      statements: [
+        ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview",["loc",[null,[1,17],[1,33]]]],"settings-menu-pane-out-left","settings-menu-pane-in"],[],["loc",[null,[1,12],[1,89]]]]," settings-menu settings-menu-pane tag-settings-pane"]]],
+        ["attribute","class",["concat",["settings-menu-header ",["subexpr","if",[["get","isMobile",["loc",[null,[2,42],[2,50]]]],"subview"],[],["loc",[null,[2,37],[2,62]]]]]]],
+        ["block","if",[["get","isMobile",["loc",[null,[3,14],[3,22]]]]],[],0,1,["loc",[null,[3,8],[9,15]]]],
+        ["inline","gh-uploader",[],["uploaded","setCoverImage","canceled","clearCoverImage","description","Add tag image","image",["subexpr","@mut",[["get","tag.image",["loc",[null,[12,108],[12,117]]]]],[],[]],"initUploader","setUploaderReference","tagName","section"],["loc",[null,[12,8],[12,173]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[14,36],[14,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","tag.hasValidated",["loc",[null,[14,60],[14,76]]]]],[],[]],"property","name"],2,null,["loc",[null,[14,12],[18,30]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[20,36],[20,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","tag.hasValidated",["loc",[null,[20,60],[20,76]]]]],[],[]],"property","slug"],3,null,["loc",[null,[20,12],[25,30]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[27,36],[27,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","tag.hasValidated",["loc",[null,[27,60],[27,76]]]]],[],[]],"property","description"],4,null,["loc",[null,[27,12],[32,30]]]],
+        ["element","action",["openMeta"],[],["loc",[null,[35,42],[35,63]]]],
+        ["block","unless",[["get","tag.isNew",["loc",[null,[44,22],[44,31]]]]],[],5,null,["loc",[null,[44,12],[46,23]]]],
+        ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview",["loc",[null,[51,17],[51,33]]]],"settings-menu-pane-in","settings-menu-pane-out-right"],[],["loc",[null,[51,12],[51,90]]]]," settings-menu settings-menu-pane tag-meta-settings-pane"]]],
+        ["element","action",["closeMeta"],[],["loc",[null,[53,16],[53,38]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[60,36],[60,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","tag.hasValidated",["loc",[null,[60,60],[60,76]]]]],[],[]],"property","meta_title"],6,null,["loc",[null,[60,12],[65,30]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","tag.errors",["loc",[null,[67,36],[67,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","tag.hasValidated",["loc",[null,[67,60],[67,76]]]]],[],[]],"property","meta_description"],7,null,["loc",[null,[67,12],[72,30]]]],
+        ["content","seoTitle",["loc",[null,[77,51],[77,63]]]],
+        ["content","seoURL",["loc",[null,[78,50],[78,60]]]],
+        ["content","seoDescription",["loc",[null,[79,57],[79,75]]]]
+      ],
+      locals: [],
+      templates: [child0, child1, child2, child3, child4, child5, child6, child7]
+    };
+  }()));
+
+});
+define('ghost/templates/components/gh-tags-management-container', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 2,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-tags-management-container.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
+        dom.insertBoundary(fragment, 0);
+        return morphs;
+      },
+      statements: [
+        ["inline","yield",[["get","this",["loc",[null,[1,8],[1,12]]]]],[],["loc",[null,[1,0],[1,14]]]]
+      ],
+      locals: [],
+      templates: []
     };
   }()));
 
@@ -14418,7 +16455,7 @@ define('ghost/templates/components/gh-uploader', ['exports'], function (exports)
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14469,8 +16506,8 @@ define('ghost/templates/components/gh-uploader', ['exports'], function (exports)
         return morphs;
       },
       statements: [
-        ["attribute","src",["concat",[["get","imageSource"]]]],
-        ["content","description"]
+        ["attribute","src",["concat",[["get","imageSource",["loc",[null,[1,37],[1,48]]]]]]],
+        ["content","description",["loc",[null,[2,25],[2,40]]]]
       ],
       locals: [],
       templates: []
@@ -14485,7 +16522,7 @@ define('ghost/templates/components/gh-url-preview', ['exports'], function (expor
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14517,7 +16554,7 @@ define('ghost/templates/components/gh-url-preview', ['exports'], function (expor
         return morphs;
       },
       statements: [
-        ["content","url"]
+        ["content","url",["loc",[null,[1,0],[1,7]]]]
       ],
       locals: [],
       templates: []
@@ -14532,7 +16569,7 @@ define('ghost/templates/components/gh-user-active', ['exports'], function (expor
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14564,7 +16601,7 @@ define('ghost/templates/components/gh-user-active', ['exports'], function (expor
         return morphs;
       },
       statements: [
-        ["inline","yield",[["get","this"]],[]]
+        ["inline","yield",[["get","this",["loc",[null,[1,8],[1,12]]]]],[],["loc",[null,[1,0],[1,14]]]]
       ],
       locals: [],
       templates: []
@@ -14579,7 +16616,7 @@ define('ghost/templates/components/gh-user-invited', ['exports'], function (expo
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14611,7 +16648,7 @@ define('ghost/templates/components/gh-user-invited', ['exports'], function (expo
         return morphs;
       },
       statements: [
-        ["inline","yield",[["get","this"]],[]]
+        ["inline","yield",[["get","this",["loc",[null,[1,8],[1,12]]]]],[],["loc",[null,[1,0],[1,14]]]]
       ],
       locals: [],
       templates: []
@@ -14626,7 +16663,7 @@ define('ghost/templates/components/gh-view-title', ['exports'], function (export
   exports['default'] = Ember.HTMLBars.template((function() {
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14673,8 +16710,8 @@ define('ghost/templates/components/gh-view-title', ['exports'], function (export
         return morphs;
       },
       statements: [
-        ["element","action",["openMobileMenu"],[]],
-        ["content","yield"]
+        ["element","action",["openMobileMenu"],[],["loc",[null,[1,8],[1,35]]]],
+        ["content","yield",["loc",[null,[2,0],[2,9]]]]
       ],
       locals: [],
       templates: []
@@ -14691,7 +16728,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -14699,7 +16736,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
                 "column": 8
               },
               "end": {
-                "line": 6,
+                "line": 5,
                 "column": 8
               }
             },
@@ -14724,7 +16761,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-trim-focus-input",[],["type","text","id","entry-title","placeholder","Your Post Title","value",["subexpr","@mut",[["get","model.titleScratch"]],[]],"tabindex","1","focus",["subexpr","@mut",[["get","shouldFocusTitle"]],[]]]]
+            ["inline","gh-trim-focus-input",[],["type","text","id","entry-title","placeholder","Your Post Title","value",["subexpr","@mut",[["get","model.titleScratch",["loc",[null,[4,99],[4,117]]]]],[],[]],"tabindex","1","focus",["subexpr","@mut",[["get","shouldFocusTitle",["loc",[null,[4,137],[4,153]]]]],[],[]]],["loc",[null,[4,12],[4,155]]]]
           ],
           locals: [],
           templates: []
@@ -14732,7 +16769,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -14740,7 +16777,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
               "column": 0
             },
             "end": {
-              "line": 55,
+              "line": 54,
               "column": 0
             }
           },
@@ -14768,6 +16805,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
           var el3 = dom.createElement("button");
           dom.setAttribute(el3,"type","button");
           dom.setAttribute(el3,"class","post-settings");
+          dom.setAttribute(el3,"title","Post Settings");
           var el4 = dom.createTextNode("\n                ");
           dom.appendChild(el3, el4);
           var el4 = dom.createElement("i");
@@ -14830,6 +16868,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
           var el4 = dom.createElement("a");
           dom.setAttribute(el4,"class","markdown-help");
           dom.setAttribute(el4,"href","");
+          dom.setAttribute(el4,"title","Markdown Help");
           var el5 = dom.createElement("i");
           dom.setAttribute(el5,"class","icon-markdown");
           dom.appendChild(el4, el5);
@@ -14955,23 +16994,23 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","gh-view-title",[],["classNames","gh-editor-title","openMobileMenu","openMobileMenu"],0,null],
-          ["element","action",["openSettingsMenu"],[]],
-          ["inline","gh-editor-save-button",[],["isPublished",["subexpr","@mut",[["get","model.isPublished"]],[]],"willPublish",["subexpr","@mut",[["get","willPublish"]],[]],"postOrPage",["subexpr","@mut",[["get","postOrPage"]],[]],"isNew",["subexpr","@mut",[["get","model.isNew"]],[]],"save","save","setSaveType","setSaveType","delete","openDeleteModal","submitting",["subexpr","@mut",[["get","submitting"]],[]]]],
-          ["attribute","class",["concat",["entry-markdown js-entry-markdown ",["subexpr","if",[["get","ghEditor.markdownActive"],"active"],[]]]]],
-          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.markdownActive"],"active"],[]]]]],
-          ["element","action",["selectTab","markdown"],["target",["get","ghEditor"]]],
-          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.previewActive"],"active"],[]]]]],
-          ["element","action",["selectTab","preview"],["target",["get","ghEditor"]]],
-          ["element","action",["openModal","markdown"],[]],
-          ["inline","gh-ed-editor",[],["classNames","markdown-editor js-markdown-editor","tabindex","1","spellcheck","true","value",["subexpr","@mut",[["get","model.scratch"]],[]],"setEditor","setEditor","updateScrollInfo","updateEditorScrollInfo","openModal","openModal","onFocusIn","autoSaveNew","height",["subexpr","@mut",[["get","height"]],[]],"focus",["subexpr","@mut",[["get","shouldFocusEditor"]],[]]]],
-          ["attribute","class",["concat",["entry-preview js-entry-preview ",["subexpr","if",[["get","ghEditor.previewActive"],"active"],[]]]]],
-          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.markdownActive"],"active"],[]]]]],
-          ["element","action",["selectTab","markdown"],["target",["get","ghEditor"]]],
-          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.previewActive"],"active"],[]]]]],
-          ["element","action",["selectTab","preview"],["target",["get","ghEditor"]]],
-          ["inline","gh-count-words",[["get","model.scratch"]],[]],
-          ["inline","gh-ed-preview",[],["classNames","rendered-markdown js-rendered-markdown","markdown",["subexpr","@mut",[["get","model.scratch"]],[]],"scrollPosition",["subexpr","@mut",[["get","ghEditor.scrollPosition"]],[]],"updateHeight","updateHeight","uploadStarted","disableEditor","uploadFinished","enableEditor","uploadSuccess","handleImgUpload"]]
+          ["block","gh-view-title",[],["classNames","gh-editor-title","openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[5,26]]]],
+          ["element","action",["openSettingsMenu"],[],["loc",[null,[7,78],[7,107]]]],
+          ["inline","gh-editor-save-button",[],["isPublished",["subexpr","@mut",[["get","model.isPublished",["loc",[null,[11,28],[11,45]]]]],[],[]],"willPublish",["subexpr","@mut",[["get","willPublish",["loc",[null,[12,28],[12,39]]]]],[],[]],"postOrPage",["subexpr","@mut",[["get","postOrPage",["loc",[null,[13,27],[13,37]]]]],[],[]],"isNew",["subexpr","@mut",[["get","model.isNew",["loc",[null,[14,22],[14,33]]]]],[],[]],"save","save","setSaveType","setSaveType","delete","openDeleteModal","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[18,27],[18,37]]]]],[],[]]],["loc",[null,[10,12],[19,14]]]],
+          ["attribute","class",["concat",["entry-markdown js-entry-markdown ",["subexpr","if",[["get","ghEditor.markdownActive",["loc",[null,[24,62],[24,85]]]],"active"],[],["loc",[null,[24,57],[24,96]]]]]]],
+          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.markdownActive",["loc",[null,[28,94],[28,117]]]],"active"],[],["loc",[null,[28,89],[28,128]]]]]]],
+          ["element","action",["selectTab","markdown"],["target",["get","ghEditor",["loc",[null,[28,71],[28,79]]]]],["loc",[null,[28,32],[28,81]]]],
+          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.previewActive",["loc",[null,[29,93],[29,115]]]],"active"],[],["loc",[null,[29,88],[29,126]]]]]]],
+          ["element","action",["selectTab","preview"],["target",["get","ghEditor",["loc",[null,[29,70],[29,78]]]]],["loc",[null,[29,32],[29,80]]]],
+          ["element","action",["openModal","markdown"],[],["loc",[null,[31,71],[31,104]]]],
+          ["inline","gh-ed-editor",[],["classNames","markdown-editor js-markdown-editor","tabindex","1","spellcheck","true","value",["subexpr","@mut",[["get","model.scratch",["loc",[null,[34,116],[34,129]]]]],[],[]],"setEditor","setEditor","updateScrollInfo","updateEditorScrollInfo","openModal","openModal","onFocusIn","autoSaveNew","height",["subexpr","@mut",[["get","height",["loc",[null,[34,247],[34,253]]]]],[],[]],"focus",["subexpr","@mut",[["get","shouldFocusEditor",["loc",[null,[34,260],[34,277]]]]],[],[]]],["loc",[null,[34,16],[34,279]]]],
+          ["attribute","class",["concat",["entry-preview js-entry-preview ",["subexpr","if",[["get","ghEditor.previewActive",["loc",[null,[38,60],[38,82]]]],"active"],[],["loc",[null,[38,55],[38,93]]]]]]],
+          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.markdownActive",["loc",[null,[42,94],[42,117]]]],"active"],[],["loc",[null,[42,89],[42,128]]]]]]],
+          ["element","action",["selectTab","markdown"],["target",["get","ghEditor",["loc",[null,[42,71],[42,79]]]]],["loc",[null,[42,32],[42,81]]]],
+          ["attribute","class",["concat",[["subexpr","if",[["get","ghEditor.previewActive",["loc",[null,[43,93],[43,115]]]],"active"],[],["loc",[null,[43,88],[43,126]]]]]]],
+          ["element","action",["selectTab","preview"],["target",["get","ghEditor",["loc",[null,[43,70],[43,78]]]]],["loc",[null,[43,32],[43,80]]]],
+          ["inline","gh-count-words",[["get","model.scratch",["loc",[null,[45,64],[45,77]]]]],[],["loc",[null,[45,47],[45,79]]]],
+          ["inline","gh-ed-preview",[],["classNames","rendered-markdown js-rendered-markdown","markdown",["subexpr","@mut",[["get","model.scratch",["loc",[null,[49,29],[49,42]]]]],[],[]],"scrollPosition",["subexpr","@mut",[["get","ghEditor.scrollPosition",["loc",[null,[49,58],[49,81]]]]],[],[]],"updateHeight","updateHeight","uploadStarted","disableEditor","uploadFinished","enableEditor","uploadSuccess","handleImgUpload"],["loc",[null,[48,16],[50,113]]]]
         ],
         locals: ["ghEditor"],
         templates: [child0]
@@ -14979,7 +17018,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -14987,7 +17026,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 56,
+            "line": 55,
             "column": 0
           }
         },
@@ -15010,7 +17049,7 @@ define('ghost/templates/editor/edit', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-editor",[],["editorScrollInfo",["subexpr","@mut",[["get","editorScrollInfo"]],[]]],0,null]
+        ["block","gh-editor",[],["editorScrollInfo",["subexpr","@mut",[["get","editorScrollInfo",["loc",[null,[1,30],[1,46]]]]],[],[]]],0,null,["loc",[null,[1,0],[54,14]]]]
       ],
       locals: [],
       templates: [child0]
@@ -15028,7 +17067,7 @@ define('ghost/templates/error', ['exports'], function (exports) {
         var child0 = (function() {
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -15060,7 +17099,7 @@ define('ghost/templates/error', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["content","item.function"]
+              ["content","item.function",["loc",[null,[20,78],[20,95]]]]
             ],
             locals: [],
             templates: []
@@ -15068,7 +17107,7 @@ define('ghost/templates/error', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -15120,8 +17159,8 @@ define('ghost/templates/error', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","if",[["get","item.function"]],[],0,null],
-            ["content","item.at"]
+            ["block","if",[["get","item.function",["loc",[null,[20,30],[20,43]]]]],[],0,null,["loc",[null,[20,24],[20,107]]]],
+            ["content","item.at",["loc",[null,[21,56],[21,67]]]]
           ],
           locals: ["item"],
           templates: [child0]
@@ -15129,7 +17168,7 @@ define('ghost/templates/error', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -15192,8 +17231,8 @@ define('ghost/templates/error', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["content","message"],
-          ["block","each",[["get","stack"]],[],0,null]
+          ["content","message",["loc",[null,[15,23],[15,34]]]],
+          ["block","each",[["get","stack",["loc",[null,[17,24],[17,29]]]]],[],0,null,["loc",[null,[17,16],[23,25]]]]
         ],
         locals: [],
         templates: [child0]
@@ -15201,7 +17240,7 @@ define('ghost/templates/error', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -15285,11 +17324,11 @@ define('ghost/templates/error', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/404-ghost@2x.png"],[]]]]],
-        ["attribute","srcset",["concat",[["subexpr","gh-path",["admin","/img/404-ghost.png"],[]]," 1x, ",["subexpr","gh-path",["admin","/img/404-ghost@2x.png"],[]]," 2x"]]],
-        ["content","code"],
-        ["content","message"],
-        ["block","if",[["get","stack"]],[],0,null]
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","/img/404-ghost@2x.png"],[],["loc",[null,[4,43],[4,86]]]]]]],
+        ["attribute","srcset",["concat",[["subexpr","gh-path",["admin","/img/404-ghost.png"],[],["loc",[null,[4,96],[4,136]]]]," 1x, ",["subexpr","gh-path",["admin","/img/404-ghost@2x.png"],[],["loc",[null,[4,141],[4,184]]]]," 2x"]]],
+        ["content","code",["loc",[null,[6,40],[6,48]]]],
+        ["content","message",["loc",[null,[7,47],[7,58]]]],
+        ["block","if",[["get","stack",["loc",[null,[12,10],[12,15]]]]],[],0,null,["loc",[null,[12,4],[26,11]]]]
       ],
       locals: [],
       templates: [child0]
@@ -15305,7 +17344,7 @@ define('ghost/templates/modals/copy-html', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -15338,7 +17377,7 @@ define('ghost/templates/modals/copy-html', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","textarea",[],["value",["subexpr","@mut",[["get","generatedHTML"]],[]],"rows","6"]]
+          ["inline","textarea",[],["value",["subexpr","@mut",[["get","generatedHTML",["loc",[null,[4,21],[4,34]]]]],[],[]],"rows","6"],["loc",[null,[4,4],[4,45]]]]
         ],
         locals: [],
         templates: []
@@ -15346,7 +17385,7 @@ define('ghost/templates/modals/copy-html', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -15377,7 +17416,7 @@ define('ghost/templates/modals/copy-html', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","title","Generated HTML","confirm",["subexpr","@mut",[["get","confirm"]],[]],"class","copy-html"],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","title","Generated HTML","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,35],[2,42]]]]],[],[]],"class","copy-html"],0,null,["loc",[null,[1,0],[6,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -15393,7 +17432,7 @@ define('ghost/templates/modals/delete-all', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -15436,7 +17475,7 @@ define('ghost/templates/modals/delete-all', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -15467,7 +17506,7 @@ define('ghost/templates/modals/delete-all', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","type","action","style","wide","title","Would you really like to delete all content from your blog?","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","type","action","style","wide","title","Would you really like to delete all content from your blog?","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,80],[2,87]]]]],[],[]]],0,null,["loc",[null,[1,0],[6,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -15483,7 +17522,7 @@ define('ghost/templates/modals/delete-post', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -15532,7 +17571,7 @@ define('ghost/templates/modals/delete-post', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["content","model.title"]
+          ["content","model.title",["loc",[null,[4,39],[4,54]]]]
         ],
         locals: [],
         templates: []
@@ -15540,7 +17579,7 @@ define('ghost/templates/modals/delete-post', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -15571,7 +17610,7 @@ define('ghost/templates/modals/delete-post', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to delete this post?","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to delete this post?","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,63],[2,70]]]]],[],[]]],0,null,["loc",[null,[1,0],[6,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -15588,7 +17627,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -15647,9 +17686,9 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["content","model.post_count"],
-            ["content","postInflection"],
-            ["content","model.name"]
+            ["content","model.count.posts",["loc",[null,[5,76],[5,97]]]],
+            ["content","postInflection",["loc",[null,[5,98],[5,116]]]],
+            ["content","model.name",["loc",[null,[5,157],[5,171]]]]
           ],
           locals: [],
           templates: []
@@ -15658,7 +17697,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -15699,7 +17738,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["content","model.name"]
+            ["content","model.name",["loc",[null,[7,66],[7,80]]]]
           ],
           locals: [],
           templates: []
@@ -15707,7 +17746,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -15739,7 +17778,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","if",[["get","model.post_count"]],[],0,1]
+          ["block","if",[["get","model.count.posts",["loc",[null,[4,10],[4,27]]]]],[],0,1,["loc",[null,[4,4],[8,11]]]]
         ],
         locals: [],
         templates: [child0, child1]
@@ -15747,7 +17786,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -15778,7 +17817,7 @@ define('ghost/templates/modals/delete-tag', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to delete this tag?","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to delete this tag?","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,62],[2,69]]]]],[],[]]],0,null,["loc",[null,[1,0],[9,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -15796,7 +17835,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
         var child0 = (function() {
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -15848,8 +17887,8 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["content","userPostCount.count"],
-              ["content","userPostCount.inflection"]
+              ["content","userPostCount.count",["loc",[null,[6,83],[6,106]]]],
+              ["content","userPostCount.inflection",["loc",[null,[6,107],[6,135]]]]
             ],
             locals: [],
             templates: []
@@ -15858,7 +17897,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
         var child1 = (function() {
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -15897,7 +17936,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -15928,7 +17967,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","if",[["get","userPostCount.count"]],[],0,1]
+            ["block","if",[["get","userPostCount.count",["loc",[null,[5,14],[5,33]]]]],[],0,1,["loc",[null,[5,8],[9,15]]]]
           ],
           locals: [],
           templates: [child0, child1]
@@ -15936,7 +17975,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -15969,7 +18008,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","unless",[["get","userPostCount.isPending"]],[],0,null]
+          ["block","unless",[["get","userPostCount.isPending",["loc",[null,[4,14],[4,37]]]]],[],0,null,["loc",[null,[4,4],[10,15]]]]
         ],
         locals: [],
         templates: [child0]
@@ -15977,7 +18016,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -16008,7 +18047,7 @@ define('ghost/templates/modals/delete-user', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to delete this user?","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to delete this user?","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,63],[2,70]]]]],[],[]]],0,null,["loc",[null,[1,0],[12,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -16025,7 +18064,7 @@ define('ghost/templates/modals/invite-new-user', ['exports'], function (exports)
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -16070,8 +18109,8 @@ define('ghost/templates/modals/invite-new-user', ['exports'], function (exports)
             return morphs;
           },
           statements: [
-            ["inline","gh-input",[],["enter","confirmAccept","class","email","id","new-user-email","type","email","placeholder","Email Address","name","email","autofocus","autofocus","autocapitalize","off","autocorrect","off","value",["subexpr","@mut",[["get","email"]],[]],"focusOut",["subexpr","action",["validate","email"],[]]]],
-            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"property","email"]]
+            ["inline","gh-input",[],["enter","confirmAccept","class","email","id","new-user-email","type","email","placeholder","Email Address","name","email","autofocus","autofocus","autocapitalize","off","autocorrect","off","value",["subexpr","@mut",[["get","email",["loc",[null,[8,57],[8,62]]]]],[],[]],"focusOut",["subexpr","action",["validate","email"],[],["loc",[null,[8,72],[8,99]]]]],["loc",[null,[7,12],[8,101]]]],
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[9,38],[9,44]]]]],[],[]],"property","email"],["loc",[null,[9,12],[9,63]]]]
           ],
           locals: [],
           templates: []
@@ -16079,7 +18118,7 @@ define('ghost/templates/modals/invite-new-user', ['exports'], function (exports)
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -16146,8 +18185,8 @@ define('ghost/templates/modals/invite-new-user', ['exports'], function (exports)
           return morphs;
         },
         statements: [
-          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","email"],0,null],
-          ["inline","gh-select-native",[],["id","new-user-role","content",["subexpr","@mut",[["get","roles"]],[]],"optionValuePath","id","optionLabelPath","name","selection",["subexpr","@mut",[["get","role"]],[]],"action","setRole"]]
+          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[5,32],[5,38]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[5,52],[5,64]]]]],[],[]],"property","email"],0,null,["loc",[null,[5,8],[10,26]]]],
+          ["inline","gh-select-native",[],["id","new-user-role","content",["subexpr","@mut",[["get","roles",["loc",[null,[16,28],[16,33]]]]],[],[]],"optionValuePath","id","optionLabelPath","name","selection",["subexpr","@mut",[["get","role",["loc",[null,[19,30],[19,34]]]]],[],[]],"action","setRole"],["loc",[null,[15,16],[21,18]]]]
         ],
         locals: [],
         templates: [child0]
@@ -16155,7 +18194,7 @@ define('ghost/templates/modals/invite-new-user', ['exports'], function (exports)
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -16186,7 +18225,7 @@ define('ghost/templates/modals/invite-new-user', ['exports'], function (exports)
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","title","Invite a New User","confirm",["subexpr","@mut",[["get","confirm"]],[]],"class","invite-new-user"],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","title","Invite a New User","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,38],[2,45]]]]],[],[]],"class","invite-new-user"],0,null,["loc",[null,[1,0],[26,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -16202,7 +18241,7 @@ define('ghost/templates/modals/leave-editor', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -16247,7 +18286,7 @@ define('ghost/templates/modals/leave-editor', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -16278,7 +18317,7 @@ define('ghost/templates/modals/leave-editor', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to leave this page?","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Are you sure you want to leave this page?","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,62],[2,69]]]]],[],[]]],0,null,["loc",[null,[1,0],[9,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -16294,7 +18333,7 @@ define('ghost/templates/modals/markdown', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -16682,7 +18721,7 @@ define('ghost/templates/modals/markdown', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -16713,7 +18752,7 @@ define('ghost/templates/modals/markdown', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"style","wide","title","Markdown Help"],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"style","wide","title","Markdown Help"],0,null,["loc",[null,[1,0],[77,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -16730,7 +18769,7 @@ define('ghost/templates/modals/signin', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -16763,7 +18802,7 @@ define('ghost/templates/modals/signin', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -16820,9 +18859,9 @@ define('ghost/templates/modals/signin', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["element","action",["validateAndAuthenticate"],["on","submit"]],
-          ["inline","input",[],["class","gh-input password","type","password","placeholder","Password","name","password","value",["subexpr","@mut",[["get","password"]],[]]]],
-          ["block","gh-spin-button",[],["class","btn btn-blue","type","submit","action","validateAndAuthenticate","submitting",["subexpr","@mut",[["get","submitting"]],[]]],0,null]
+          ["element","action",["validateAndAuthenticate"],["on","submit"],["loc",[null,[4,82],[4,130]]]],
+          ["inline","input",[],["class","gh-input password","type","password","placeholder","Password","name","password","value",["subexpr","@mut",[["get","password",["loc",[null,[6,111],[6,119]]]]],[],[]]],["loc",[null,[6,16],[6,121]]]],
+          ["block","gh-spin-button",[],["class","btn btn-blue","type","submit","action","validateAndAuthenticate","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[8,109],[8,119]]]]],[],[]]],0,null,["loc",[null,[8,12],[8,146]]]]
         ],
         locals: [],
         templates: [child0]
@@ -16830,7 +18869,7 @@ define('ghost/templates/modals/signin', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -16861,7 +18900,7 @@ define('ghost/templates/modals/signin', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","animation","fade","title","Please re-authenticate","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","animation","fade","title","Please re-authenticate","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,43],[2,50]]]]],[],[]]],0,null,["loc",[null,[1,0],[11,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -16877,7 +18916,7 @@ define('ghost/templates/modals/transfer-owner', ['exports'], function (exports) 
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -16916,7 +18955,7 @@ define('ghost/templates/modals/transfer-owner', ['exports'], function (exports) 
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -16947,7 +18986,7 @@ define('ghost/templates/modals/transfer-owner', ['exports'], function (exports) 
         return morphs;
       },
       statements: [
-        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Transfer Ownership","confirm",["subexpr","@mut",[["get","confirm"]],[]]],0,null]
+        ["block","gh-modal-dialog",[],["action","closeModal","showClose",true,"type","action","style","wide","title","Transfer Ownership","confirm",["subexpr","@mut",[["get","confirm",["loc",[null,[2,39],[2,46]]]]],[],[]]],0,null,["loc",[null,[1,0],[6,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -16963,7 +19002,7 @@ define('ghost/templates/modals/upload', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -17017,8 +19056,8 @@ define('ghost/templates/modals/upload', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["attribute","src",["concat",[["get","src"]]]],
-          ["attribute","accept",["concat",[["get","acceptEncoding"]]]]
+          ["attribute","src",["concat",[["get","src",["loc",[null,[3,43],[3,46]]]]]]],
+          ["attribute","accept",["concat",[["get","acceptEncoding",["loc",[null,[4,99],[4,113]]]]]]]
         ],
         locals: [],
         templates: []
@@ -17026,7 +19065,7 @@ define('ghost/templates/modals/upload', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -17057,7 +19096,7 @@ define('ghost/templates/modals/upload', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-upload-modal",[],["action","closeModal","close",true,"type","action","style","wide","model",["subexpr","@mut",[["get","model"]],[]],"imageType",["subexpr","@mut",[["get","imageType"]],[]]],0,null]
+        ["block","gh-upload-modal",[],["action","closeModal","close",true,"type","action","style","wide","model",["subexpr","@mut",[["get","model",["loc",[null,[1,83],[1,88]]]]],[],[]],"imageType",["subexpr","@mut",[["get","imageType",["loc",[null,[1,99],[1,108]]]]],[],[]]],0,null,["loc",[null,[1,0],[7,20]]]]
       ],
       locals: [],
       templates: [child0]
@@ -17074,7 +19113,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -17117,7 +19156,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["attribute","href",["concat",[["get","model.absoluteUrl"]]]]
+            ["attribute","href",["concat",[["get","model.absoluteUrl",["loc",[null,[14,66],[14,83]]]]]]]
           ],
           locals: [],
           templates: []
@@ -17126,7 +19165,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -17169,7 +19208,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["attribute","href",["concat",[["get","model.previewUrl"]]]]
+            ["attribute","href",["concat",[["get","model.previewUrl",["loc",[null,[18,66],[18,82]]]]]]]
           ],
           locals: [],
           templates: []
@@ -17178,7 +19217,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
       var child2 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -17230,8 +19269,8 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-input",[],["class","post-setting-date","id","post-setting-date","value",["subexpr","@mut",[["get","publishedAtValue"]],[]],"name","post-setting-date","focus-out","setPublishedAt","stopEnterKeyDownPropagation","true"]],
-            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","post-setting-date"]]
+            ["inline","gh-input",[],["class","post-setting-date","id","post-setting-date","value",["subexpr","@mut",[["get","publishedAtValue",["loc",[null,[32,86],[32,102]]]]],[],[]],"name","post-setting-date","focus-out","setPublishedAt","stopEnterKeyDownPropagation","true"],["loc",[null,[32,20],[32,191]]]],
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[34,42],[34,54]]]]],[],[]],"property","post-setting-date"],["loc",[null,[34,16],[34,85]]]]
           ],
           locals: [],
           templates: []
@@ -17240,15 +19279,15 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
       var child3 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
-                "line": 51,
+                "line": 52,
                 "column": 12
               },
               "end": {
-                "line": 68,
+                "line": 69,
                 "column": 12
               }
             },
@@ -17302,7 +19341,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-select-native",[],["name","post-setting-author","id","author-list","content",["subexpr","@mut",[["get","authors"]],[]],"optionValuePath","id","optionLabelPath","name","selection",["subexpr","@mut",[["get","selectedAuthor"]],[]],"action","changeAuthor"]]
+            ["inline","gh-select-native",[],["name","post-setting-author","id","author-list","content",["subexpr","@mut",[["get","authors",["loc",[null,[60,32],[60,39]]]]],[],[]],"optionValuePath","id","optionLabelPath","name","selection",["subexpr","@mut",[["get","selectedAuthor",["loc",[null,[63,34],[63,48]]]]],[],[]],"action","changeAuthor"],["loc",[null,[57,20],[65,22]]]]
           ],
           locals: [],
           templates: []
@@ -17311,15 +19350,15 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
       var child4 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
-                "line": 71,
+                "line": 72,
                 "column": 16
               },
               "end": {
-                "line": 77,
+                "line": 78,
                 "column": 16
               }
             },
@@ -17371,15 +19410,15 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
           var child0 = (function() {
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 109,
+                    "line": 110,
                     "column": 12
                   },
                   "end": {
-                    "line": 114,
+                    "line": 115,
                     "column": 12
                   }
                 },
@@ -17431,9 +19470,9 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
                 return morphs;
               },
               statements: [
-                ["inline","gh-input",[],["class","post-setting-meta-title","id","meta-title","value",["subexpr","@mut",[["get","metaTitleScratch"]],[]],"name","post-setting-meta-title","focus-out","setMetaTitle","stopEnterKeyDownPropagation","true"]],
-                ["inline","gh-count-down-characters",[["get","metaTitleScratch"],70],[]],
-                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","meta_title"]]
+                ["inline","gh-input",[],["class","post-setting-meta-title","id","meta-title","value",["subexpr","@mut",[["get","metaTitleScratch",["loc",[null,[112,81],[112,97]]]]],[],[]],"name","post-setting-meta-title","focus-out","setMetaTitle","stopEnterKeyDownPropagation","true"],["loc",[null,[112,16],[112,190]]]],
+                ["inline","gh-count-down-characters",[["get","metaTitleScratch",["loc",[null,[113,93],[113,109]]]],70],[],["loc",[null,[113,66],[113,114]]]],
+                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[114,42],[114,54]]]]],[],[]],"property","meta_title"],["loc",[null,[114,16],[114,78]]]]
               ],
               locals: [],
               templates: []
@@ -17442,15 +19481,15 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
           var child1 = (function() {
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 116,
+                    "line": 117,
                     "column": 12
                   },
                   "end": {
-                    "line": 121,
+                    "line": 122,
                     "column": 12
                   }
                 },
@@ -17502,9 +19541,9 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
                 return morphs;
               },
               statements: [
-                ["inline","gh-textarea",[],["class","gh-input post-setting-meta-description","id","meta-description","value",["subexpr","@mut",[["get","metaDescriptionScratch"]],[]],"name","post-setting-meta-description","focus-out","setMetaDescription","stopEnterKeyDownPropagation","true"]],
-                ["inline","gh-count-down-characters",[["get","metaDescriptionScratch"],156],[]],
-                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","meta_description"]]
+                ["inline","gh-textarea",[],["class","gh-input post-setting-meta-description","id","meta-description","value",["subexpr","@mut",[["get","metaDescriptionScratch",["loc",[null,[119,105],[119,127]]]]],[],[]],"name","post-setting-meta-description","focus-out","setMetaDescription","stopEnterKeyDownPropagation","true"],["loc",[null,[119,16],[119,232]]]],
+                ["inline","gh-count-down-characters",[["get","metaDescriptionScratch",["loc",[null,[120,94],[120,116]]]],156],[],["loc",[null,[120,67],[120,122]]]],
+                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[121,42],[121,54]]]]],[],[]],"property","meta_description"],["loc",[null,[121,16],[121,84]]]]
               ],
               locals: [],
               templates: []
@@ -17512,15 +19551,15 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
           }());
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
-                  "line": 100,
+                  "line": 101,
                   "column": 8
                 },
                 "end": {
-                  "line": 133,
+                  "line": 134,
                   "column": 8
                 }
               },
@@ -17640,13 +19679,13 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["element","action",["closeSubview"],[]],
-              ["element","action",["discardEnter"],["on","submit"]],
-              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","meta_title"],0,null],
-              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","meta_description"],1,null],
-              ["content","seoTitle"],
-              ["content","seoURL"],
-              ["content","seoDescription"]
+              ["element","action",["closeSubview"],[],["loc",[null,[103,20],[103,45]]]],
+              ["element","action",["discardEnter"],["on","submit"],["loc",[null,[109,18],[109,55]]]],
+              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[110,36],[110,48]]]]],[],[]],"property","meta_title"],0,null,["loc",[null,[110,12],[115,30]]]],
+              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[117,36],[117,48]]]]],[],[]],"property","meta_description"],1,null,["loc",[null,[117,12],[122,30]]]],
+              ["content","seoTitle",["loc",[null,[127,51],[127,63]]]],
+              ["content","seoURL",["loc",[null,[128,50],[128,60]]]],
+              ["content","seoDescription",["loc",[null,[129,57],[129,75]]]]
             ],
             locals: [],
             templates: [child0, child1]
@@ -17654,15 +19693,15 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
-                "line": 99,
+                "line": 100,
                 "column": 4
               },
               "end": {
-                "line": 134,
+                "line": 135,
                 "column": 4
               }
             },
@@ -17685,7 +19724,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","if",[["get","isViewingSubview"]],[],0,null]
+            ["block","if",[["get","isViewingSubview",["loc",[null,[101,14],[101,30]]]]],[],0,null,["loc",[null,[101,8],[134,15]]]]
           ],
           locals: [],
           templates: [child0]
@@ -17693,7 +19732,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -17701,7 +19740,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
               "column": 0
             },
             "end": {
-              "line": 137,
+              "line": 138,
               "column": 0
             }
           },
@@ -17931,22 +19970,22 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview"],"settings-menu-pane-out-left","settings-menu-pane-in"],[]]," settings-menu settings-menu-pane"]]],
-          ["element","action",["closeMenus"],[]],
-          ["inline","gh-uploader",[],["uploaded","setCoverImage","canceled","clearCoverImage","description","Add post image","image",["subexpr","@mut",[["get","model.image"]],[]],"uploaderReference",["subexpr","@mut",[["get","uploaderReference"]],[]],"tagName","section"]],
-          ["block","if",[["get","model.isPublished"]],[],0,1],
-          ["inline","gh-input",[],["class","post-setting-slug","id","url","value",["subexpr","@mut",[["get","slugValue"]],[]],"name","post-setting-slug","focus-out","updateSlug","selectOnClick","true","stopEnterKeyDownPropagation","true"]],
-          ["inline","gh-url-preview",[],["slug",["subexpr","@mut",[["get","slugValue"]],[]],"tagName","p","classNames","description"]],
-          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","post-setting-date"],2,null],
-          ["inline","gh-selectize",[],["id","tag-input","multiple",true,"selection",["subexpr","@mut",[["get","model.tags"]],[]],"content",["subexpr","@mut",[["get","availableTags"]],[]],"optionValuePath","content.uuid","optionLabelPath","content.name","openOnFocus",false,"create-item","addTag","remove-item","removeTag"]],
-          ["block","unless",[["get","session.user.isAuthor"]],[],3,null],
-          ["block","gh-tab",[],["tagName","li","classNames","nav-list-item"],4,null],
-          ["element","action",["togglePage"],["bubbles","false"]],
-          ["inline","input",[],["type","checkbox","name","static-page","id","static-page","class","gh-input post-setting-static-page","checked",["subexpr","@mut",[["get","model.page"]],[]]]],
-          ["element","action",["toggleFeatured"],["bubbles","false"]],
-          ["inline","input",[],["type","checkbox","name","featured","id","featured","class","gh-input post-setting-featured","checked",["subexpr","@mut",[["get","model.featured"]],[]]]],
-          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview"],"settings-menu-pane-in","settings-menu-pane-out-right"],[]]," settings-menu settings-menu-pane"]]],
-          ["block","gh-tab-pane",[],[],5,null]
+          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview",["loc",[null,[3,21],[3,37]]]],"settings-menu-pane-out-left","settings-menu-pane-in"],[],["loc",[null,[3,16],[3,93]]]]," settings-menu settings-menu-pane"]]],
+          ["element","action",["closeMenus"],[],["loc",[null,[6,69],[6,92]]]],
+          ["inline","gh-uploader",[],["uploaded","setCoverImage","canceled","clearCoverImage","description","Add post image","image",["subexpr","@mut",[["get","model.image",["loc",[null,[9,113],[9,124]]]]],[],[]],"uploaderReference",["subexpr","@mut",[["get","uploaderReference",["loc",[null,[9,143],[9,160]]]]],[],[]],"tagName","section"],["loc",[null,[9,12],[9,180]]]],
+          ["block","if",[["get","model.isPublished",["loc",[null,[13,22],[13,39]]]]],[],0,1,["loc",[null,[13,16],[21,23]]]],
+          ["inline","gh-input",[],["class","post-setting-slug","id","url","value",["subexpr","@mut",[["get","slugValue",["loc",[null,[24,72],[24,81]]]]],[],[]],"name","post-setting-slug","focus-out","updateSlug","selectOnClick","true","stopEnterKeyDownPropagation","true"],["loc",[null,[24,20],[24,187]]]],
+          ["inline","gh-url-preview",[],["slug",["subexpr","@mut",[["get","slugValue",["loc",[null,[26,38],[26,47]]]]],[],[]],"tagName","p","classNames","description"],["loc",[null,[26,16],[26,86]]]],
+          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[29,36],[29,48]]]]],[],[]],"property","post-setting-date"],2,null,["loc",[null,[29,12],[35,30]]]],
+          ["inline","gh-selectize",[],["id","tag-input","multiple",true,"selection",["subexpr","@mut",[["get","model.tags",["loc",[null,[42,30],[42,40]]]]],[],[]],"content",["subexpr","@mut",[["get","availableTags",["loc",[null,[43,28],[43,41]]]]],[],[]],"optionValuePath","content.uuid","optionLabelPath","content.name","openOnFocus",false,"create-item","addTag","remove-item","removeTag","plugins","remove_button, drag_drop"],["loc",[null,[39,16],[49,56]]]],
+          ["block","unless",[["get","session.user.isAuthor",["loc",[null,[52,22],[52,43]]]]],[],3,null,["loc",[null,[52,12],[69,23]]]],
+          ["block","gh-tab",[],["tagName","li","classNames","nav-list-item"],4,null,["loc",[null,[72,16],[78,27]]]],
+          ["element","action",["togglePage"],["bubbles","false"],["loc",[null,[82,58],[82,97]]]],
+          ["inline","input",[],["type","checkbox","name","static-page","id","static-page","class","gh-input post-setting-static-page","checked",["subexpr","@mut",[["get","model.page",["loc",[null,[83,130],[83,140]]]]],[],[]]],["loc",[null,[83,20],[83,142]]]],
+          ["element","action",["toggleFeatured"],["bubbles","false"],["loc",[null,[88,55],[88,98]]]],
+          ["inline","input",[],["type","checkbox","name","featured","id","featured","class","gh-input post-setting-featured","checked",["subexpr","@mut",[["get","model.featured",["loc",[null,[89,121],[89,135]]]]],[],[]]],["loc",[null,[89,20],[89,137]]]],
+          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview",["loc",[null,[99,21],[99,37]]]],"settings-menu-pane-in","settings-menu-pane-out-right"],[],["loc",[null,[99,16],[99,94]]]]," settings-menu settings-menu-pane"]]],
+          ["block","gh-tab-pane",[],[],5,null,["loc",[null,[100,4],[135,20]]]]
         ],
         locals: [],
         templates: [child0, child1, child2, child3, child4, child5]
@@ -17954,7 +19993,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -17962,7 +20001,7 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 138,
+            "line": 139,
             "column": 0
           }
         },
@@ -17985,10 +20024,353 @@ define('ghost/templates/post-settings-menu', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-tabs-manager",[],["selected","showSubview","id","entry-controls","class","settings-menu-container"],0,null]
+        ["block","gh-tabs-manager",[],["selected","showSubview","id","entry-controls","class","settings-menu-container"],0,null,["loc",[null,[1,0],[138,20]]]]
       ],
       locals: [],
       templates: [child0]
+    };
+  }()));
+
+});
+define('ghost/templates/posts/index', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      var child0 = (function() {
+        return {
+          meta: {
+            "revision": "Ember@1.13.10",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 5,
+                "column": 12
+              },
+              "end": {
+                "line": 5,
+                "column": 130
+              }
+            },
+            "moduleName": "ghost/templates/posts/index.hbs"
+          },
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createElement("button");
+            dom.setAttribute(el1,"type","button");
+            dom.setAttribute(el1,"class","btn btn-green btn-lg");
+            dom.setAttribute(el1,"title","New Post");
+            var el2 = dom.createTextNode("Write a new Post");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() { return []; },
+          statements: [
+
+          ],
+          locals: [],
+          templates: []
+        };
+      }());
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 2,
+              "column": 4
+            },
+            "end": {
+              "line": 7,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/posts/index.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1,"class","no-posts");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("h3");
+          var el3 = dom.createTextNode("You Haven't Written Any Posts Yet!");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]),3,3);
+          return morphs;
+        },
+        statements: [
+          ["block","link-to",["editor.new"],[],0,null,["loc",[null,[5,12],[5,142]]]]
+        ],
+        locals: [],
+        templates: [child0]
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 9,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/posts/index.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1,"class","no-posts-box");
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]),1,1);
+        return morphs;
+      },
+      statements: [
+        ["block","if",[["get","noPosts",["loc",[null,[2,10],[2,17]]]]],[],0,null,["loc",[null,[2,4],[7,11]]]]
+      ],
+      locals: [],
+      templates: [child0]
+    };
+  }()));
+
+});
+define('ghost/templates/posts/post', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 2,
+              "column": 4
+            },
+            "end": {
+              "line": 2,
+              "column": 119
+            }
+          },
+          "moduleName": "ghost/templates/posts/post.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createElement("i");
+          dom.setAttribute(el1,"class","icon-edit");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() { return []; },
+        statements: [
+
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child1 = (function() {
+      var child0 = (function() {
+        return {
+          meta: {
+            "revision": "Ember@1.13.10",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 8,
+                "column": 12
+              },
+              "end": {
+                "line": 10,
+                "column": 12
+              }
+            },
+            "moduleName": "ghost/templates/posts/post.hbs"
+          },
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(fragment,1,1,contextualElement);
+            return morphs;
+          },
+          statements: [
+            ["content","model.title",["loc",[null,[9,16],[9,31]]]]
+          ],
+          locals: [],
+          templates: []
+        };
+      }());
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 5,
+              "column": 0
+            },
+            "end": {
+              "line": 14,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/posts/post.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1,"class","wrapper");
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("h1");
+          dom.setAttribute(el2,"class","content-preview-title");
+          var el3 = dom.createTextNode("\n");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createComment("");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("        ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n    ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [1]);
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(dom.childAt(element0, [1]),1,1);
+          morphs[1] = dom.createMorphAt(element0,3,3);
+          return morphs;
+        },
+        statements: [
+          ["block","link-to",["editor.edit",["get","model.id",["loc",[null,[8,37],[8,45]]]]],[],0,null,["loc",[null,[8,12],[10,24]]]],
+          ["inline","gh-format-html",[["get","model.html",["loc",[null,[12,25],[12,35]]]]],[],["loc",[null,[12,8],[12,37]]]]
+        ],
+        locals: [],
+        templates: [child0]
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 15,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/posts/post.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1,"class","post-controls");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(2);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]),1,1);
+        morphs[1] = dom.createMorphAt(fragment,2,2,contextualElement);
+        dom.insertBoundary(fragment, null);
+        return morphs;
+      },
+      statements: [
+        ["block","link-to",["editor.edit",["get","model.id",["loc",[null,[2,29],[2,37]]]]],["class","btn btn-minor post-edit","title","Edit this post"],0,null,["loc",[null,[2,4],[2,131]]]],
+        ["block","gh-content-preview-content",[],["tagName","section","content",["subexpr","@mut",[["get","model",["loc",[null,[5,56],[5,61]]]]],[],[]]],1,null,["loc",[null,[5,0],[14,31]]]]
+      ],
+      locals: [],
+      templates: [child0, child1]
     };
   }()));
 
@@ -18002,7 +20384,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -18038,7 +20420,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -18077,7 +20459,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                 var child0 = (function() {
                   return {
                     meta: {
-                      "revision": "Ember@1.13.2",
+                      "revision": "Ember@1.13.10",
                       "loc": {
                         "source": null,
                         "start": {
@@ -18118,7 +20500,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                 var child1 = (function() {
                   return {
                     meta: {
-                      "revision": "Ember@1.13.2",
+                      "revision": "Ember@1.13.10",
                       "loc": {
                         "source": null,
                         "start": {
@@ -18160,8 +20542,8 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                       return morphs;
                     },
                     statements: [
-                      ["attribute","datetime",["concat",[["get","post.published_at"]]]],
-                      ["inline","gh-format-timeago",[["get","post.published_at"]],[]]
+                      ["attribute","datetime",["concat",[["get","post.published_at",["loc",[null,[27,62],[27,79]]]]]]],
+                      ["inline","gh-format-timeago",[["get","post.published_at",["loc",[null,[28,78],[28,95]]]]],[],["loc",[null,[28,58],[28,97]]]]
                     ],
                     locals: [],
                     templates: []
@@ -18169,7 +20551,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                 }());
                 return {
                   meta: {
-                    "revision": "Ember@1.13.2",
+                    "revision": "Ember@1.13.10",
                     "loc": {
                       "source": null,
                       "start": {
@@ -18200,7 +20582,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                     return morphs;
                   },
                   statements: [
-                    ["block","if",[["get","post.page"]],[],0,1]
+                    ["block","if",[["get","post.page",["loc",[null,[24,46],[24,55]]]]],[],0,1,["loc",[null,[24,40],[30,47]]]]
                   ],
                   locals: [],
                   templates: [child0, child1]
@@ -18209,7 +20591,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
               var child1 = (function() {
                 return {
                   meta: {
-                    "revision": "Ember@1.13.2",
+                    "revision": "Ember@1.13.10",
                     "loc": {
                       "source": null,
                       "start": {
@@ -18249,7 +20631,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
               }());
               return {
                 meta: {
-                  "revision": "Ember@1.13.2",
+                  "revision": "Ember@1.13.10",
                   "loc": {
                     "source": null,
                     "start": {
@@ -18329,12 +20711,12 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                   return morphs;
                 },
                 statements: [
-                  ["content","post.title"],
-                  ["attribute","style",["get","component.authorAvatarBackground"]],
-                  ["attribute","src",["concat",[["get","component.authorAvatar"]]]],
-                  ["attribute","title",["concat",[["get","component.authorName"]]]],
-                  ["content","component.authorName"],
-                  ["block","if",[["get","component.isPublished"]],[],0,1]
+                  ["content","post.title",["loc",[null,[16,52],[16,66]]]],
+                  ["attribute","style",["get","component.authorAvatarBackground",["loc",[null,[18,61],[18,93]]]]],
+                  ["attribute","src",["concat",[["get","component.authorAvatar",["loc",[null,[19,48],[19,70]]]]]]],
+                  ["attribute","title",["concat",[["get","component.authorName",["loc",[null,[19,83],[19,103]]]]]]],
+                  ["content","component.authorName",["loc",[null,[21,53],[21,77]]]],
+                  ["block","if",[["get","component.isPublished",["loc",[null,[23,42],[23,63]]]]],[],0,1,["loc",[null,[23,36],[33,43]]]]
                 ],
                 locals: [],
                 templates: [child0, child1]
@@ -18342,7 +20724,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
             }());
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18373,7 +20755,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
                 return morphs;
               },
               statements: [
-                ["block","link-to",[["get","component.viewOrEdit"],["get","post.id"]],["class","permalink","title","Edit this post"],0,null]
+                ["block","link-to",[["get","component.viewOrEdit",["loc",[null,[15,35],[15,55]]]],["get","post.id",["loc",[null,[15,56],[15,63]]]]],["class","permalink","title","Edit this post"],0,null,["loc",[null,[15,24],[36,36]]]]
               ],
               locals: ["component"],
               templates: [child0]
@@ -18381,7 +20763,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
           }());
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -18412,7 +20794,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["block","gh-posts-list-item",[],["post",["subexpr","@mut",[["get","post"]],[]],"active",["subexpr","is-equal",[["get","post"],["get","currentPost"]],[]],"onDoubleClick","openEditor","previewIsHidden",["subexpr","@mut",[["get","container.previewIsHidden"]],[]]],0,null]
+              ["block","gh-posts-list-item",[],["post",["subexpr","@mut",[["get","post",["loc",[null,[14,47],[14,51]]]]],[],[]],"active",["subexpr","is-equal",[["get","post",["loc",[null,[14,69],[14,73]]]],["get","currentPost",["loc",[null,[14,74],[14,85]]]]],[],["loc",[null,[14,59],[14,86]]]],"onDoubleClick","openEditor","previewIsHidden",["subexpr","@mut",[["get","container.previewIsHidden",["loc",[null,[14,130],[14,155]]]]],[],[]]],0,null,["loc",[null,[14,20],[37,43]]]]
             ],
             locals: ["post"],
             templates: [child0]
@@ -18420,7 +20802,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -18460,7 +20842,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","each",[["get","sortedPosts"]],["key","id"],0,null]
+            ["block","each",[["get","sortedPosts",["loc",[null,[13,24],[13,35]]]]],["key","id"],0,null,["loc",[null,[13,16],[38,25]]]]
           ],
           locals: [],
           templates: [child0]
@@ -18468,7 +20850,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -18553,12 +20935,12 @@ define('ghost/templates/posts', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-          ["block","link-to",["editor.new"],["class","btn btn-green","title","New Post"],1,null],
-          ["attribute","class",["concat",["content-list js-content-list ",["subexpr","if",[["get","postListFocused"],"keyboard-focused"],[]]]]],
-          ["block","gh-infinite-scroll-box",[],["tagName","section","classNames","content-list-content js-content-scrollbox","fetch","loadNextPage"],2,null],
-          ["attribute","class",["concat",["content-preview js-content-preview ",["subexpr","if",[["get","postContentFocused"],"keyboard-focused"],[]]]]],
-          ["content","outlet"]
+          ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,4],[3,92]]]],
+          ["block","link-to",["editor.new"],["class","btn btn-green","title","New Post"],1,null,["loc",[null,[5,8],[5,92]]]],
+          ["attribute","class",["concat",["content-list js-content-list ",["subexpr","if",[["get","postListFocused",["loc",[null,[10,54],[10,69]]]],"keyboard-focused"],[],["loc",[null,[10,49],[10,90]]]]]]],
+          ["block","gh-infinite-scroll-box",[],["tagName","section","classNames","content-list-content js-content-scrollbox","fetch","loadNextPage"],2,null,["loc",[null,[11,8],[40,35]]]],
+          ["attribute","class",["concat",["content-preview js-content-preview ",["subexpr","if",[["get","postContentFocused",["loc",[null,[42,60],[42,78]]]],"keyboard-focused"],[],["loc",[null,[42,55],[42,99]]]]]]],
+          ["content","outlet",["loc",[null,[43,8],[43,18]]]]
         ],
         locals: ["container"],
         templates: [child0, child1, child2]
@@ -18566,7 +20948,7 @@ define('ghost/templates/posts', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -18597,353 +20979,10 @@ define('ghost/templates/posts', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-content-view-container",[],[],0,null]
+        ["block","gh-content-view-container",[],[],0,null,["loc",[null,[1,0],[46,30]]]]
       ],
       locals: [],
       templates: [child0]
-    };
-  }()));
-
-});
-define('ghost/templates/posts/index', ['exports'], function (exports) {
-
-  'use strict';
-
-  exports['default'] = Ember.HTMLBars.template((function() {
-    var child0 = (function() {
-      var child0 = (function() {
-        return {
-          meta: {
-            "revision": "Ember@1.13.2",
-            "loc": {
-              "source": null,
-              "start": {
-                "line": 5,
-                "column": 12
-              },
-              "end": {
-                "line": 5,
-                "column": 130
-              }
-            },
-            "moduleName": "ghost/templates/posts/index.hbs"
-          },
-          arity: 0,
-          cachedFragment: null,
-          hasRendered: false,
-          buildFragment: function buildFragment(dom) {
-            var el0 = dom.createDocumentFragment();
-            var el1 = dom.createElement("button");
-            dom.setAttribute(el1,"type","button");
-            dom.setAttribute(el1,"class","btn btn-green btn-lg");
-            dom.setAttribute(el1,"title","New Post");
-            var el2 = dom.createTextNode("Write a new Post");
-            dom.appendChild(el1, el2);
-            dom.appendChild(el0, el1);
-            return el0;
-          },
-          buildRenderNodes: function buildRenderNodes() { return []; },
-          statements: [
-
-          ],
-          locals: [],
-          templates: []
-        };
-      }());
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 2,
-              "column": 4
-            },
-            "end": {
-              "line": 7,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/posts/index.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("div");
-          dom.setAttribute(el1,"class","no-posts");
-          var el2 = dom.createTextNode("\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createElement("h3");
-          var el3 = dom.createTextNode("You Haven't Written Any Posts Yet!");
-          dom.appendChild(el2, el3);
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(1);
-          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]),3,3);
-          return morphs;
-        },
-        statements: [
-          ["block","link-to",["editor.new"],[],0,null]
-        ],
-        locals: [],
-        templates: [child0]
-      };
-    }());
-    return {
-      meta: {
-        "revision": "Ember@1.13.2",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 9,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/posts/index.hbs"
-      },
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("div");
-        dom.setAttribute(el1,"class","no-posts-box");
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var morphs = new Array(1);
-        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]),1,1);
-        return morphs;
-      },
-      statements: [
-        ["block","if",[["get","noPosts"]],[],0,null]
-      ],
-      locals: [],
-      templates: [child0]
-    };
-  }()));
-
-});
-define('ghost/templates/posts/post', ['exports'], function (exports) {
-
-  'use strict';
-
-  exports['default'] = Ember.HTMLBars.template((function() {
-    var child0 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 2,
-              "column": 4
-            },
-            "end": {
-              "line": 2,
-              "column": 96
-            }
-          },
-          "moduleName": "ghost/templates/posts/post.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createElement("i");
-          dom.setAttribute(el1,"class","icon-edit");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes() { return []; },
-        statements: [
-
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    var child1 = (function() {
-      var child0 = (function() {
-        return {
-          meta: {
-            "revision": "Ember@1.13.2",
-            "loc": {
-              "source": null,
-              "start": {
-                "line": 8,
-                "column": 12
-              },
-              "end": {
-                "line": 10,
-                "column": 12
-              }
-            },
-            "moduleName": "ghost/templates/posts/post.hbs"
-          },
-          arity: 0,
-          cachedFragment: null,
-          hasRendered: false,
-          buildFragment: function buildFragment(dom) {
-            var el0 = dom.createDocumentFragment();
-            var el1 = dom.createTextNode("                ");
-            dom.appendChild(el0, el1);
-            var el1 = dom.createComment("");
-            dom.appendChild(el0, el1);
-            var el1 = dom.createTextNode("\n");
-            dom.appendChild(el0, el1);
-            return el0;
-          },
-          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-            var morphs = new Array(1);
-            morphs[0] = dom.createMorphAt(fragment,1,1,contextualElement);
-            return morphs;
-          },
-          statements: [
-            ["content","model.title"]
-          ],
-          locals: [],
-          templates: []
-        };
-      }());
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 5,
-              "column": 0
-            },
-            "end": {
-              "line": 14,
-              "column": 0
-            }
-          },
-          "moduleName": "ghost/templates/posts/post.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("    ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("div");
-          dom.setAttribute(el1,"class","wrapper");
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createElement("h1");
-          dom.setAttribute(el2,"class","content-preview-title");
-          var el3 = dom.createTextNode("\n");
-          dom.appendChild(el2, el3);
-          var el3 = dom.createComment("");
-          dom.appendChild(el2, el3);
-          var el3 = dom.createTextNode("        ");
-          dom.appendChild(el2, el3);
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n    ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element0 = dom.childAt(fragment, [1]);
-          var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(dom.childAt(element0, [1]),1,1);
-          morphs[1] = dom.createMorphAt(element0,3,3);
-          return morphs;
-        },
-        statements: [
-          ["block","link-to",["editor.edit",["get","model.id"]],[],0,null],
-          ["inline","gh-format-html",[["get","model.html"]],[]]
-        ],
-        locals: [],
-        templates: [child0]
-      };
-    }());
-    return {
-      meta: {
-        "revision": "Ember@1.13.2",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 15,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/posts/post.hbs"
-      },
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("section");
-        dom.setAttribute(el1,"class","post-controls");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createComment("");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var morphs = new Array(2);
-        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]),1,1);
-        morphs[1] = dom.createMorphAt(fragment,2,2,contextualElement);
-        dom.insertBoundary(fragment, null);
-        return morphs;
-      },
-      statements: [
-        ["block","link-to",["editor.edit",["get","model.id"]],["class","btn btn-minor post-edit"],0,null],
-        ["block","gh-content-preview-content",[],["tagName","section","content",["subexpr","@mut",[["get","model"]],[]]],1,null]
-      ],
-      locals: [],
-      templates: [child0, child1]
     };
   }()));
 
@@ -18956,7 +20995,7 @@ define('ghost/templates/reset', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -18989,7 +21028,7 @@ define('ghost/templates/reset', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["type","password","name","newpassword","placeholder","Password","class","password","autocorrect","off","autofocus","autofocus","value",["subexpr","@mut",[["get","newPassword"]],[]]]]
+          ["inline","gh-input",[],["type","password","name","newpassword","placeholder","Password","class","password","autocorrect","off","autofocus","autofocus","value",["subexpr","@mut",[["get","newPassword",["loc",[null,[6,153],[6,164]]]]],[],[]]],["loc",[null,[6,20],[6,166]]]]
         ],
         locals: [],
         templates: []
@@ -18998,7 +21037,7 @@ define('ghost/templates/reset', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19031,7 +21070,7 @@ define('ghost/templates/reset', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["type","password","name","ne2password","placeholder","Confirm Password","class","password","autocorrect","off","autofocus","autofocus","value",["subexpr","@mut",[["get","ne2Password"]],[]]]]
+          ["inline","gh-input",[],["type","password","name","ne2password","placeholder","Confirm Password","class","password","autocorrect","off","autofocus","autofocus","value",["subexpr","@mut",[["get","ne2Password",["loc",[null,[9,160],[9,171]]]]],[],[]]],["loc",[null,[9,20],[9,173]]]]
         ],
         locals: [],
         templates: []
@@ -19040,7 +21079,7 @@ define('ghost/templates/reset', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19073,7 +21112,7 @@ define('ghost/templates/reset', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -19154,11 +21193,11 @@ define('ghost/templates/reset', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["element","action",["submit"],["on","submit"]],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","newPassword"],0,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","ne2Password"],1,null],
-        ["block","gh-spin-button",[],["class","btn btn-blue btn-block","type","submit","submitting",["subexpr","@mut",[["get","submitting"]],[]],"autoWidth","false"],2,null],
-        ["content","flowErrors"]
+        ["element","action",["submit"],["on","submit"],["loc",[null,[4,85],[4,116]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[5,40],[5,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[5,60],[5,72]]]]],[],[]],"property","newPassword"],0,null,["loc",[null,[5,16],[7,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[8,40],[8,46]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[8,60],[8,72]]]]],[],[]],"property","ne2Password"],1,null,["loc",[null,[8,16],[10,34]]]],
+        ["block","gh-spin-button",[],["class","btn btn-blue btn-block","type","submit","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[12,90],[12,100]]]]],[],[]],"autoWidth","false"],2,null,["loc",[null,[12,16],[12,153]]]],
+        ["content","flowErrors",["loc",[null,[15,34],[15,50]]]]
       ],
       locals: [],
       templates: [child0, child1, child2]
@@ -19174,7 +21213,7 @@ define('ghost/templates/settings/code-injection', ['exports'], function (exports
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19210,7 +21249,7 @@ define('ghost/templates/settings/code-injection', ['exports'], function (exports
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19243,7 +21282,7 @@ define('ghost/templates/settings/code-injection', ['exports'], function (exports
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -19392,10 +21431,10 @@ define('ghost/templates/settings/code-injection', ['exports'], function (exports
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting"]],[]]],1,null],
-        ["inline","gh-cm-editor",[],["id","ghost-head","class","gh-input settings-code-editor","name","codeInjection[ghost_head]","type","text","value",["subexpr","@mut",[["get","model.ghost_head"]],[]]]],
-        ["inline","gh-cm-editor",[],["id","ghost-foot","class","gh-input settings-code-editor","name","codeInjection[ghost_foot]","type","text","value",["subexpr","@mut",[["get","model.ghost_foot"]],[]]]]
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,103]]]],
+        ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[5,76],[5,86]]]]],[],[]]],1,null,["loc",[null,[5,12],[5,111]]]],
+        ["inline","gh-cm-editor",[],["id","ghost-head","class","gh-input settings-code-editor","name","codeInjection[ghost_head]","type","text","value",["subexpr","@mut",[["get","model.ghost_head",["loc",[null,[19,140],[19,156]]]]],[],[]]],["loc",[null,[19,20],[19,158]]]],
+        ["inline","gh-cm-editor",[],["id","ghost-foot","class","gh-input settings-code-editor","name","codeInjection[ghost_foot]","type","text","value",["subexpr","@mut",[["get","model.ghost_foot",["loc",[null,[25,140],[25,156]]]]],[],[]]],["loc",[null,[25,20],[25,158]]]]
       ],
       locals: [],
       templates: [child0, child1]
@@ -19411,7 +21450,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19447,7 +21486,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19481,7 +21520,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19532,8 +21571,8 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["id","blog-title","class","gh-input","name","general[title]","type","text","value",["subexpr","@mut",[["get","model.title"]],[]],"focusOut",["subexpr","action",["validate","title"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","title"]]
+          ["inline","gh-input",[],["id","blog-title","class","gh-input","name","general[title]","type","text","value",["subexpr","@mut",[["get","model.title",["loc",[null,[15,104],[15,115]]]]],[],[]],"focusOut",["subexpr","action",["validate","title"],[],["loc",[null,[15,125],[15,152]]]]],["loc",[null,[15,20],[15,154]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[16,46],[16,58]]]]],[],[]],"property","title"],["loc",[null,[16,20],[16,77]]]]
         ],
         locals: [],
         templates: []
@@ -19542,7 +21581,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child3 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19598,9 +21637,9 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-textarea",[],["id","blog-description","class","gh-input","name","general[description]","value",["subexpr","@mut",[["get","model.description"]],[]],"focusOut",["subexpr","action",["validate","description"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","description"]],
-          ["inline","gh-count-characters",[["get","model.description"]],[]]
+          ["inline","gh-textarea",[],["id","blog-description","class","gh-input","name","general[description]","value",["subexpr","@mut",[["get","model.description",["loc",[null,[22,107],[22,124]]]]],[],[]],"focusOut",["subexpr","action",["validate","description"],[],["loc",[null,[22,134],[22,167]]]]],["loc",[null,[22,20],[22,169]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[23,46],[23,58]]]]],[],[]],"property","description"],["loc",[null,[23,20],[23,83]]]],
+          ["inline","gh-count-characters",[["get","model.description",["loc",[null,[26,46],[26,63]]]]],[],["loc",[null,[26,24],[26,65]]]]
         ],
         locals: [],
         templates: []
@@ -19609,7 +21648,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child4 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19647,8 +21686,8 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["attribute","src",["concat",[["get","model.logo"]]]],
-          ["element","action",["openModal","upload",["get","this"],"logo"],[]]
+          ["attribute","src",["concat",[["get","model.logo",["loc",[null,[34,50],[34,60]]]]]]],
+          ["element","action",["openModal","upload",["get","this",["loc",[null,[34,119],[34,123]]]],"logo"],[],["loc",[null,[34,89],[34,132]]]]
         ],
         locals: [],
         templates: []
@@ -19657,7 +21696,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child5 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19695,7 +21734,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["element","action",["openModal","upload",["get","this"],"logo"],[]]
+          ["element","action",["openModal","upload",["get","this",["loc",[null,[36,108],[36,112]]]],"logo"],[],["loc",[null,[36,78],[36,121]]]]
         ],
         locals: [],
         templates: []
@@ -19704,7 +21743,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child6 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19742,8 +21781,8 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["attribute","src",["concat",[["get","model.cover"]]]],
-          ["element","action",["openModal","upload",["get","this"],"cover"],[]]
+          ["attribute","src",["concat",[["get","model.cover",["loc",[null,[44,51],[44,62]]]]]]],
+          ["element","action",["openModal","upload",["get","this",["loc",[null,[44,128],[44,132]]]],"cover"],[],["loc",[null,[44,98],[44,142]]]]
         ],
         locals: [],
         templates: []
@@ -19752,7 +21791,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     var child7 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19790,7 +21829,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["element","action",["openModal","upload",["get","this"],"cover"],[]]
+          ["element","action",["openModal","upload",["get","this",["loc",[null,[46,109],[46,113]]]],"cover"],[],["loc",[null,[46,79],[46,123]]]]
         ],
         locals: [],
         templates: []
@@ -19800,7 +21839,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -19844,8 +21883,8 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-input",[],["name","general[password]","type","text","value",["subexpr","@mut",[["get","model.password"]],[]],"focusOut",["subexpr","action",["validate","password"],[]]]],
-            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","password"]]
+            ["inline","gh-input",[],["name","general[password]","type","text","value",["subexpr","@mut",[["get","model.password",["loc",[null,[97,74],[97,88]]]]],[],[]],"focusOut",["subexpr","action",["validate","password"],[],["loc",[null,[97,98],[97,128]]]]],["loc",[null,[97,20],[97,130]]]],
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[98,46],[98,58]]]]],[],[]],"property","password"],["loc",[null,[98,20],[98,80]]]]
           ],
           locals: [],
           templates: []
@@ -19853,7 +21892,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -19884,7 +21923,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","model.hasValidated"]],[]],"property","password"],0,null]
+          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[96,40],[96,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","model.hasValidated",["loc",[null,[96,66],[96,84]]]]],[],[]],"property","password"],0,null,["loc",[null,[96,16],[100,34]]]]
         ],
         locals: [],
         templates: [child0]
@@ -19892,7 +21931,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -20018,7 +22057,9 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
         var el7 = dom.createTextNode("Posts per page");
         dom.appendChild(el6, el7);
         dom.appendChild(el5, el6);
-        var el6 = dom.createTextNode("\n                    ");
+        var el6 = dom.createTextNode("\n");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("                    ");
         dom.appendChild(el5, el6);
         var el6 = dom.createComment("");
         dom.appendChild(el5, el6);
@@ -20171,7 +22212,7 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
         morphs[3] = dom.createMorphAt(element7,3,3);
         morphs[4] = dom.createMorphAt(dom.childAt(element6, [3]),3,3);
         morphs[5] = dom.createMorphAt(dom.childAt(element6, [5]),3,3);
-        morphs[6] = dom.createMorphAt(dom.childAt(element8, [1]),3,3);
+        morphs[6] = dom.createMorphAt(dom.childAt(element8, [1]),4,4);
         morphs[7] = dom.createMorphAt(dom.childAt(element8, [3, 3]),1,1);
         morphs[8] = dom.createAttrMorph(element9, 'data-select-text');
         morphs[9] = dom.createMorphAt(element9,1,1);
@@ -20180,18 +22221,18 @@ define('ghost/templates/settings/general', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting"]],[]]],1,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","model.hasValidated"]],[]],"property","title"],2,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","model.hasValidated"]],[]],"property","description","class","description-container"],3,null],
-        ["block","if",[["get","model.logo"]],[],4,5],
-        ["block","if",[["get","model.cover"]],[],6,7],
-        ["inline","gh-input",[],["id","postsPerPage","class","gh-input","name","general[postsPerPage]","focus-out","checkPostsPerPage","value",["subexpr","@mut",[["get","model.postsPerPage"]],[]],"min","1","max","1000","type","number","pattern","[0-9]*"]],
-        ["inline","input",[],["id","permalinks","class","gh-input","name","general[permalinks]","type","checkbox","checked",["subexpr","@mut",[["get","isDatedPermalinks"]],[]]]],
-        ["attribute","data-select-text",["concat",[["get","selectedTheme.label"]]]],
-        ["inline","gh-select-native",[],["id","activeTheme","name","general[activeTheme]","content",["subexpr","@mut",[["get","themes"]],[]],"optionValuePath","name","optionLabelPath","label","selection",["subexpr","@mut",[["get","selectedTheme"]],[]],"action","setTheme"]],
-        ["inline","input",[],["id","isPrivate","name","general[isPrivate]","type","checkbox","checked",["subexpr","@mut",[["get","model.isPrivate"]],[]]]],
-        ["block","if",[["get","model.isPrivate"]],[],8,null]
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,96]]]],
+        ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[5,76],[5,86]]]]],[],[]]],1,null,["loc",[null,[5,12],[5,111]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[13,40],[13,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","model.hasValidated",["loc",[null,[13,66],[13,84]]]]],[],[]],"property","title"],2,null,["loc",[null,[13,16],[18,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[20,40],[20,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","model.hasValidated",["loc",[null,[20,66],[20,84]]]]],[],[]],"property","description","class","description-container"],3,null,["loc",[null,[20,16],[28,34]]]],
+        ["block","if",[["get","model.logo",["loc",[null,[33,22],[33,32]]]]],[],4,5,["loc",[null,[33,16],[37,23]]]],
+        ["block","if",[["get","model.cover",["loc",[null,[43,22],[43,33]]]]],[],6,7,["loc",[null,[43,16],[47,23]]]],
+        ["inline","gh-input",[],["id","postsPerPage","class","gh-input","name","general[postsPerPage]","focus-out","checkPostsPerPage","value",["subexpr","@mut",[["get","model.postsPerPage",["loc",[null,[56,131],[56,149]]]]],[],[]],"min","1","max","1000","type","number","pattern","[0-9]*"],["loc",[null,[56,20],[56,201]]]],
+        ["inline","input",[],["id","permalinks","class","gh-input","name","general[permalinks]","type","checkbox","checked",["subexpr","@mut",[["get","isDatedPermalinks",["loc",[null,[63,116],[63,133]]]]],[],[]]],["loc",[null,[63,24],[63,135]]]],
+        ["attribute","data-select-text",["concat",[["get","selectedTheme.label",["loc",[null,[71,64],[71,83]]]]]]],
+        ["inline","gh-select-native",[],["id","activeTheme","name","general[activeTheme]","content",["subexpr","@mut",[["get","themes",["loc",[null,[75,36],[75,42]]]]],[],[]],"optionValuePath","name","optionLabelPath","label","selection",["subexpr","@mut",[["get","selectedTheme",["loc",[null,[78,38],[78,51]]]]],[],[]],"action","setTheme"],["loc",[null,[72,24],[80,26]]]],
+        ["inline","input",[],["id","isPrivate","name","general[isPrivate]","type","checkbox","checked",["subexpr","@mut",[["get","model.isPrivate",["loc",[null,[89,32],[89,47]]]]],[],[]]],["loc",[null,[88,24],[89,49]]]],
+        ["block","if",[["get","model.isPrivate",["loc",[null,[95,22],[95,37]]]]],[],8,null,["loc",[null,[95,16],[101,23]]]]
       ],
       locals: [],
       templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8]
@@ -20207,7 +22248,7 @@ define('ghost/templates/settings/labs', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -20243,7 +22284,7 @@ define('ghost/templates/settings/labs', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -20276,7 +22317,7 @@ define('ghost/templates/settings/labs', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -20284,7 +22325,7 @@ define('ghost/templates/settings/labs', ['exports'], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 47,
+            "line": 60,
             "column": 0
           }
         },
@@ -20479,6 +22520,65 @@ define('ghost/templates/settings/labs', ['exports'], function (exports) {
         var el4 = dom.createTextNode("\n        ");
         dom.appendChild(el3, el4);
         dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("hr");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("form");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("fieldset");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("div");
+        dom.setAttribute(el5,"class","form-group for-checkbox");
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("h3");
+        var el7 = dom.createTextNode("Enable Beta Features");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("label");
+        dom.setAttribute(el6,"class","checkbox");
+        dom.setAttribute(el6,"for","labs-publicAPI");
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createComment("");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("span");
+        dom.setAttribute(el7,"class","input-toggle-component");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("p");
+        var el8 = dom.createTextNode("Public API - For full instructions, read the ");
+        dom.appendChild(el7, el8);
+        var el8 = dom.createElement("a");
+        dom.setAttribute(el8,"href","http://support.ghost.org/public-api-beta/");
+        var el9 = dom.createTextNode("developer guide");
+        dom.appendChild(el8, el9);
+        dom.appendChild(el7, el8);
+        var el8 = dom.createTextNode(".");
+        dom.appendChild(el7, el8);
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                    ");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                ");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
         dom.appendChild(el1, el2);
@@ -20495,22 +22595,24 @@ define('ghost/templates/settings/labs', ['exports'], function (exports) {
         var element2 = dom.childAt(element1, [3, 1, 1, 3]);
         var element3 = dom.childAt(element1, [5, 1, 1]);
         var element4 = dom.childAt(element1, [7, 1, 1, 3]);
-        var morphs = new Array(6);
+        var morphs = new Array(7);
         morphs[0] = dom.createMorphAt(dom.childAt(element0, [1]),1,1);
         morphs[1] = dom.createElementMorph(element2);
         morphs[2] = dom.createMorphAt(element3,3,3);
         morphs[3] = dom.createMorphAt(element3,5,5);
         morphs[4] = dom.createElementMorph(element4);
         morphs[5] = dom.createMorphAt(dom.childAt(element1, [9, 1, 1]),3,3);
+        morphs[6] = dom.createMorphAt(dom.childAt(element1, [13, 1, 1, 3]),1,1);
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["element","action",["exportData"],[]],
-        ["inline","partial",["import-errors"],[]],
-        ["inline","gh-file-upload",[],["id","importfile","classNames","flex","uploadButtonText",["subexpr","@mut",[["get","uploadButtonText"]],[]],"onUpload","onUpload"]],
-        ["element","action",["openModal","deleteAll"],[]],
-        ["block","gh-spin-button",[],["id","sendtestemail","class","btn btn-blue","action","sendTestEmail","submitting",["subexpr","@mut",[["get","submitting"]],[]]],1,null]
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,93]]]],
+        ["element","action",["exportData"],[],["loc",[null,[12,63],[12,86]]]],
+        ["inline","partial",["import-errors"],[],["loc",[null,[21,20],[21,47]]]],
+        ["inline","gh-file-upload",[],["id","importfile","classNames","flex","uploadButtonText",["subexpr","@mut",[["get","uploadButtonText",["loc",[null,[22,88],[22,104]]]]],[],[]],"onUpload","onUpload"],["loc",[null,[22,20],[22,126]]]],
+        ["element","action",["openModal","deleteAll"],[],["loc",[null,[31,72],[31,106]]]],
+        ["block","gh-spin-button",[],["id","sendtestemail","class","btn btn-blue","action","sendTestEmail","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[40,112],[40,122]]]]],[],[]]],1,null,["loc",[null,[40,20],[40,147]]]],
+        ["inline","input",[],["id","labs-publicAPI","name","labs[publicAPI]","type","checkbox","checked",["subexpr","@mut",[["get","usePublicAPI",["loc",[null,[51,99],[51,111]]]]],[],[]]],["loc",[null,[51,24],[51,113]]]]
       ],
       locals: [],
       templates: [child0, child1]
@@ -20527,7 +22629,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -20563,7 +22665,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -20597,7 +22699,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
       var child2 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -20630,7 +22732,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-navitem",[],["navItem",["subexpr","@mut",[["get","navItem"]],[]],"baseUrl",["subexpr","@mut",[["get","blogUrl"]],[]],"addItem","addItem","deleteItem","deleteItem","updateUrl","updateUrl"]]
+            ["inline","gh-navitem",[],["navItem",["subexpr","@mut",[["get","navItem",["loc",[null,[12,37],[12,44]]]]],[],[]],"baseUrl",["subexpr","@mut",[["get","blogUrl",["loc",[null,[12,53],[12,60]]]]],[],[]],"addItem","addItem","deleteItem","deleteItem","updateUrl","updateUrl"],["loc",[null,[12,16],[12,126]]]]
           ],
           locals: ["navItem"],
           templates: []
@@ -20638,7 +22740,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -20712,9 +22814,9 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-          ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting"]],[]]],1,null],
-          ["block","each",[["get","navigationItems"]],[],2,null]
+          ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,99]]]],
+          ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[5,76],[5,86]]]]],[],[]]],1,null,["loc",[null,[5,12],[5,111]]]],
+          ["block","each",[["get","navigationItems",["loc",[null,[11,20],[11,35]]]]],[],2,null,["loc",[null,[11,12],[13,21]]]]
         ],
         locals: [],
         templates: [child0, child1, child2]
@@ -20722,7 +22824,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -20753,7 +22855,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-navigation",[],["moveItem","moveItem"],0,null]
+        ["block","gh-navigation",[],["moveItem","moveItem"],0,null,["loc",[null,[1,0],[16,18]]]]
       ],
       locals: [],
       templates: [child0]
@@ -20761,7 +22863,7 @@ define('ghost/templates/settings/navigation', ['exports'], function (exports) {
   }()));
 
 });
-define('ghost/templates/settings/tags', ['exports'], function (exports) {
+define('ghost/templates/settings/tags/index', ['exports'], function (exports) {
 
   'use strict';
 
@@ -20769,27 +22871,30 @@ define('ghost/templates/settings/tags', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
-              "line": 3,
+              "line": 4,
               "column": 8
             },
             "end": {
-              "line": 3,
-              "column": 75
+              "line": 4,
+              "column": 125
             }
           },
-          "moduleName": "ghost/templates/settings/tags.hbs"
+          "moduleName": "ghost/templates/settings/tags/index.hbs"
         },
         arity: 0,
         cachedFragment: null,
         hasRendered: false,
         buildFragment: function buildFragment(dom) {
           var el0 = dom.createDocumentFragment();
-          var el1 = dom.createElement("span");
-          var el2 = dom.createTextNode("Tags");
+          var el1 = dom.createElement("button");
+          dom.setAttribute(el1,"type","button");
+          dom.setAttribute(el1,"class","btn btn-green btn-lg");
+          dom.setAttribute(el1,"title","New Tag");
+          var el2 = dom.createTextNode("Add a Tag");
           dom.appendChild(el1, el2);
           dom.appendChild(el0, el1);
           return el0;
@@ -20802,140 +22907,9 @@ define('ghost/templates/settings/tags', ['exports'], function (exports) {
         templates: []
       };
     }());
-    var child1 = (function() {
-      var child0 = (function() {
-        return {
-          meta: {
-            "revision": "Ember@1.13.2",
-            "loc": {
-              "source": null,
-              "start": {
-                "line": 15,
-                "column": 8
-              },
-              "end": {
-                "line": 24,
-                "column": 8
-              }
-            },
-            "moduleName": "ghost/templates/settings/tags.hbs"
-          },
-          arity: 1,
-          cachedFragment: null,
-          hasRendered: false,
-          buildFragment: function buildFragment(dom) {
-            var el0 = dom.createDocumentFragment();
-            var el1 = dom.createTextNode("            ");
-            dom.appendChild(el0, el1);
-            var el1 = dom.createElement("div");
-            dom.setAttribute(el1,"class","settings-tag");
-            var el2 = dom.createTextNode("\n                ");
-            dom.appendChild(el1, el2);
-            var el2 = dom.createElement("button");
-            dom.setAttribute(el2,"class","tag-edit-button");
-            var el3 = dom.createTextNode("\n                    ");
-            dom.appendChild(el2, el3);
-            var el3 = dom.createElement("span");
-            dom.setAttribute(el3,"class","tag-title");
-            var el4 = dom.createComment("");
-            dom.appendChild(el3, el4);
-            dom.appendChild(el2, el3);
-            var el3 = dom.createTextNode("\n                    ");
-            dom.appendChild(el2, el3);
-            var el3 = dom.createElement("span");
-            dom.setAttribute(el3,"class","label label-default");
-            var el4 = dom.createTextNode("/");
-            dom.appendChild(el3, el4);
-            var el4 = dom.createComment("");
-            dom.appendChild(el3, el4);
-            dom.appendChild(el2, el3);
-            var el3 = dom.createTextNode("\n                    ");
-            dom.appendChild(el2, el3);
-            var el3 = dom.createElement("p");
-            dom.setAttribute(el3,"class","tag-description");
-            var el4 = dom.createComment("");
-            dom.appendChild(el3, el4);
-            dom.appendChild(el2, el3);
-            var el3 = dom.createTextNode("\n                    ");
-            dom.appendChild(el2, el3);
-            var el3 = dom.createElement("span");
-            dom.setAttribute(el3,"class","tags-count");
-            var el4 = dom.createComment("");
-            dom.appendChild(el3, el4);
-            dom.appendChild(el2, el3);
-            var el3 = dom.createTextNode("\n                ");
-            dom.appendChild(el2, el3);
-            dom.appendChild(el1, el2);
-            var el2 = dom.createTextNode("\n            ");
-            dom.appendChild(el1, el2);
-            dom.appendChild(el0, el1);
-            var el1 = dom.createTextNode("\n");
-            dom.appendChild(el0, el1);
-            return el0;
-          },
-          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-            var element0 = dom.childAt(fragment, [1, 1]);
-            var morphs = new Array(5);
-            morphs[0] = dom.createElementMorph(element0);
-            morphs[1] = dom.createMorphAt(dom.childAt(element0, [1]),0,0);
-            morphs[2] = dom.createMorphAt(dom.childAt(element0, [3]),1,1);
-            morphs[3] = dom.createMorphAt(dom.childAt(element0, [5]),0,0);
-            morphs[4] = dom.createMorphAt(dom.childAt(element0, [7]),0,0);
-            return morphs;
-          },
-          statements: [
-            ["element","action",["editTag",["get","tag"]],[]],
-            ["content","tag.name"],
-            ["content","tag.slug"],
-            ["content","tag.description"],
-            ["content","tag.post_count"]
-          ],
-          locals: ["tag"],
-          templates: []
-        };
-      }());
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 9,
-              "column": 4
-            },
-            "end": {
-              "line": 25,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/settings/tags.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(1);
-          morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
-          dom.insertBoundary(fragment, 0);
-          dom.insertBoundary(fragment, null);
-          return morphs;
-        },
-        statements: [
-          ["block","each",[["get","tags"]],[],0,null]
-        ],
-        locals: [],
-        templates: [child0]
-      };
-    }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -20943,48 +22917,37 @@ define('ghost/templates/settings/tags', ['exports'], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 27,
+            "line": 7,
             "column": 0
           }
         },
-        "moduleName": "ghost/templates/settings/tags.hbs"
+        "moduleName": "ghost/templates/settings/tags/index.hbs"
       },
       arity: 0,
       cachedFragment: null,
       hasRendered: false,
       buildFragment: function buildFragment(dom) {
         var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("section");
-        dom.setAttribute(el1,"class","gh-view");
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1,"class","no-posts-box");
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
-        var el2 = dom.createElement("header");
-        dom.setAttribute(el2,"class","view-header");
+        var el2 = dom.createElement("div");
+        dom.setAttribute(el2,"class","no-posts");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("h3");
+        var el4 = dom.createTextNode("You haven't added any Tags yet!");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createComment("");
         dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("section");
-        dom.setAttribute(el3,"class","view-actions");
-        var el4 = dom.createTextNode("\n            ");
-        dom.appendChild(el3, el4);
-        var el4 = dom.createElement("button");
-        dom.setAttribute(el4,"type","button");
-        dom.setAttribute(el4,"class","btn btn-green");
-        var el5 = dom.createTextNode("New Tag");
-        dom.appendChild(el4, el5);
-        dom.appendChild(el3, el4);
-        var el4 = dom.createTextNode("\n        ");
-        dom.appendChild(el3, el4);
-        dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
         dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n\n");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
+        var el2 = dom.createTextNode("\n");
         dom.appendChild(el1, el2);
         dom.appendChild(el0, el1);
         var el1 = dom.createTextNode("\n");
@@ -20992,22 +22955,15 @@ define('ghost/templates/settings/tags', ['exports'], function (exports) {
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element1 = dom.childAt(fragment, [0]);
-        var element2 = dom.childAt(element1, [1]);
-        var element3 = dom.childAt(element2, [3, 1]);
-        var morphs = new Array(3);
-        morphs[0] = dom.createMorphAt(element2,1,1);
-        morphs[1] = dom.createElementMorph(element3);
-        morphs[2] = dom.createMorphAt(element1,3,3);
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0, 1]),3,3);
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["element","action",["newTag"],[]],
-        ["block","gh-infinite-scroll",[],["fetch","loadNextPage","isLoading",["subexpr","@mut",[["get","isLoading"]],[]],"tagName","section","classNames","view-container settings-tags"],1,null]
+        ["block","link-to",["settings.tags.new"],[],0,null,["loc",[null,[4,8],[4,137]]]]
       ],
       locals: [],
-      templates: [child0, child1]
+      templates: [child0]
     };
   }()));
 
@@ -21021,7 +22977,7 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -21066,8 +23022,8 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
             return morphs;
           },
           statements: [
-            ["inline","gh-input",[],["id","tag-name","name","name","type","text","value",["subexpr","@mut",[["get","activeTagNameScratch"]],[]],"focus-out","saveActiveTagName"]],
-            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors"]],[]],"property","name"]]
+            ["inline","gh-input",[],["id","tag-name","name","name","type","text","value",["subexpr","@mut",[["get","activeTagNameScratch",["loc",[null,[15,79],[15,99]]]]],[],[]],"focus-out","saveActiveTagName"],["loc",[null,[15,24],[15,131]]]],
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[16,50],[16,66]]]]],[],[]],"property","name"],["loc",[null,[16,24],[16,84]]]]
           ],
           locals: [],
           templates: []
@@ -21076,15 +23032,141 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
-                "line": 31,
+                "line": 19,
+                "column": 20
+              },
+              "end": {
+                "line": 24,
+                "column": 20
+              }
+            },
+            "moduleName": "ghost/templates/settings/tags/settings-menu.hbs"
+          },
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("label");
+            dom.setAttribute(el1,"for","tag-url");
+            var el2 = dom.createTextNode("URL");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(3);
+            morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+            morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+            morphs[2] = dom.createMorphAt(fragment,7,7,contextualElement);
+            return morphs;
+          },
+          statements: [
+            ["inline","gh-input",[],["id","tag-url","name","url","type","text","value",["subexpr","@mut",[["get","activeTagSlugScratch",["loc",[null,[21,77],[21,97]]]]],[],[]],"focus-out","saveActiveTagSlug"],["loc",[null,[21,24],[21,129]]]],
+            ["inline","gh-url-preview",[],["prefix","tag","slug",["subexpr","@mut",[["get","activeTagSlugScratch",["loc",[null,[22,59],[22,79]]]]],[],[]],"tagName","p","classNames","description"],["loc",[null,[22,24],[22,118]]]],
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[23,50],[23,66]]]]],[],[]],"property","slug"],["loc",[null,[23,24],[23,84]]]]
+          ],
+          locals: [],
+          templates: []
+        };
+      }());
+      var child2 = (function() {
+        return {
+          meta: {
+            "revision": "Ember@1.13.10",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 26,
+                "column": 20
+              },
+              "end": {
+                "line": 30,
+                "column": 20
+              }
+            },
+            "moduleName": "ghost/templates/settings/tags/settings-menu.hbs"
+          },
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("label");
+            dom.setAttribute(el1,"for","tag-description");
+            var el2 = dom.createTextNode("Description");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n                        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("p");
+            var el2 = dom.createTextNode("Maximum: ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("b");
+            var el3 = dom.createTextNode("200");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode(" characters. You’ve used ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(2);
+            morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+            morphs[1] = dom.createMorphAt(dom.childAt(fragment, [5]),3,3);
+            return morphs;
+          },
+          statements: [
+            ["inline","gh-textarea",[],["id","tag-description","name","description","value",["subexpr","@mut",[["get","activeTagDescriptionScratch",["loc",[null,[28,84],[28,111]]]]],[],[]],"focus-out","saveActiveTagDescription"],["loc",[null,[28,24],[28,150]]]],
+            ["inline","gh-count-down-characters",[["get","activeTagDescriptionScratch",["loc",[null,[29,98],[29,125]]]],200],[],["loc",[null,[29,71],[29,131]]]]
+          ],
+          locals: [],
+          templates: []
+        };
+      }());
+      var child3 = (function() {
+        return {
+          meta: {
+            "revision": "Ember@1.13.10",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 33,
                 "column": 24
               },
               "end": {
-                "line": 37,
+                "line": 39,
                 "column": 24
               }
             },
@@ -21132,18 +23214,18 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
           templates: []
         };
       }());
-      var child2 = (function() {
+      var child4 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
-                "line": 40,
+                "line": 42,
                 "column": 20
               },
               "end": {
-                "line": 42,
+                "line": 44,
                 "column": 20
               }
             },
@@ -21176,26 +23258,26 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
             return morphs;
           },
           statements: [
-            ["element","action",["openModal","delete-tag",["get","activeTag"]],[]]
+            ["element","action",["openModal","delete-tag",["get","activeTag",["loc",[null,[43,126],[43,135]]]]],[],["loc",[null,[43,92],[43,137]]]]
           ],
           locals: [],
           templates: []
         };
       }());
-      var child3 = (function() {
+      var child5 = (function() {
         var child0 = (function() {
           var child0 = (function() {
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 58,
+                    "line": 60,
                     "column": 20
                   },
                   "end": {
-                    "line": 63,
+                    "line": 65,
                     "column": 20
                   }
                 },
@@ -21247,9 +23329,9 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
                 return morphs;
               },
               statements: [
-                ["inline","gh-input",[],["id","meta-title","name","meta_title","type","text","value",["subexpr","@mut",[["get","activeTagMetaTitleScratch"]],[]],"focus-out","saveActiveTagMetaTitle"]],
-                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors"]],[]],"property","meta_title"]],
-                ["inline","gh-count-down-characters",[["get","activeTagMetaTitleScratch"],70],[]]
+                ["inline","gh-input",[],["id","meta-title","name","meta_title","type","text","value",["subexpr","@mut",[["get","activeTagMetaTitleScratch",["loc",[null,[62,87],[62,112]]]]],[],[]],"focus-out","saveActiveTagMetaTitle"],["loc",[null,[62,24],[62,149]]]],
+                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[63,50],[63,66]]]]],[],[]],"property","meta_title"],["loc",[null,[63,24],[63,90]]]],
+                ["inline","gh-count-down-characters",[["get","activeTagMetaTitleScratch",["loc",[null,[64,101],[64,126]]]],70],[],["loc",[null,[64,74],[64,131]]]]
               ],
               locals: [],
               templates: []
@@ -21258,15 +23340,15 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
           var child1 = (function() {
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 65,
+                    "line": 67,
                     "column": 20
                   },
                   "end": {
-                    "line": 70,
+                    "line": 72,
                     "column": 20
                   }
                 },
@@ -21318,9 +23400,9 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
                 return morphs;
               },
               statements: [
-                ["inline","gh-textarea",[],["id","meta-description","name","meta_description","value",["subexpr","@mut",[["get","activeTagMetaDescriptionScratch"]],[]],"focus-out","saveActiveTagMetaDescription"]],
-                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors"]],[]],"property","meta_description"]],
-                ["inline","gh-count-down-characters",[["get","activeTagMetaDescriptionScratch"],156],[]]
+                ["inline","gh-textarea",[],["id","meta-description","name","meta_description","value",["subexpr","@mut",[["get","activeTagMetaDescriptionScratch",["loc",[null,[69,90],[69,121]]]]],[],[]],"focus-out","saveActiveTagMetaDescription"],["loc",[null,[69,24],[69,164]]]],
+                ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[70,50],[70,66]]]]],[],[]],"property","meta_description"],["loc",[null,[70,24],[70,96]]]],
+                ["inline","gh-count-down-characters",[["get","activeTagMetaDescriptionScratch",["loc",[null,[71,102],[71,133]]]],156],[],["loc",[null,[71,75],[71,139]]]]
               ],
               locals: [],
               templates: []
@@ -21328,15 +23410,15 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
           }());
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
-                  "line": 49,
+                  "line": 51,
                   "column": 16
                 },
                 "end": {
-                  "line": 82,
+                  "line": 84,
                   "column": 16
                 }
               },
@@ -21455,12 +23537,12 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
               return morphs;
             },
             statements: [
-              ["element","action",["closeSubview"],[]],
-              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated"]],[]],"property","meta_title"],0,null],
-              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated"]],[]],"property","meta_description"],1,null],
-              ["content","seoTitle"],
-              ["content","seoURL"],
-              ["content","seoDescription"]
+              ["element","action",["closeSubview"],[],["loc",[null,[53,28],[53,53]]]],
+              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[60,44],[60,60]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated",["loc",[null,[60,74],[60,96]]]]],[],[]],"property","meta_title"],0,null,["loc",[null,[60,20],[65,38]]]],
+              ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[67,44],[67,60]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated",["loc",[null,[67,74],[67,96]]]]],[],[]],"property","meta_description"],1,null,["loc",[null,[67,20],[72,38]]]],
+              ["content","seoTitle",["loc",[null,[77,59],[77,71]]]],
+              ["content","seoURL",["loc",[null,[78,58],[78,68]]]],
+              ["content","seoDescription",["loc",[null,[79,65],[79,83]]]]
             ],
             locals: [],
             templates: [child0, child1]
@@ -21468,15 +23550,15 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
-                "line": 48,
+                "line": 50,
                 "column": 12
               },
               "end": {
-                "line": 83,
+                "line": 85,
                 "column": 12
               }
             },
@@ -21499,7 +23581,7 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
             return morphs;
           },
           statements: [
-            ["block","if",[["get","isViewingSubview"]],[],0,null]
+            ["block","if",[["get","isViewingSubview",["loc",[null,[51,22],[51,38]]]]],[],0,null,["loc",[null,[51,16],[84,23]]]]
           ],
           locals: [],
           templates: [child0]
@@ -21507,7 +23589,7 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -21515,7 +23597,7 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
               "column": 4
             },
             "end": {
-              "line": 85,
+              "line": 87,
               "column": 4
             }
           },
@@ -21571,47 +23653,15 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
           dom.appendChild(el3, el4);
           var el4 = dom.createComment("");
           dom.appendChild(el3, el4);
+          var el4 = dom.createTextNode("\n");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createComment("");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createTextNode("\n");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createComment("");
+          dom.appendChild(el3, el4);
           var el4 = dom.createTextNode("\n                    ");
-          dom.appendChild(el3, el4);
-          var el4 = dom.createElement("div");
-          dom.setAttribute(el4,"class","form-group");
-          var el5 = dom.createTextNode("\n                        ");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createElement("label");
-          dom.setAttribute(el5,"for","tag-url");
-          var el6 = dom.createTextNode("URL");
-          dom.appendChild(el5, el6);
-          dom.appendChild(el4, el5);
-          var el5 = dom.createTextNode("\n                        ");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createComment("");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createTextNode("\n                        ");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createComment("");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createTextNode("\n                    ");
-          dom.appendChild(el4, el5);
-          dom.appendChild(el3, el4);
-          var el4 = dom.createTextNode("\n\n                    ");
-          dom.appendChild(el3, el4);
-          var el4 = dom.createElement("div");
-          dom.setAttribute(el4,"class","form-group");
-          var el5 = dom.createTextNode("\n                        ");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createElement("label");
-          dom.setAttribute(el5,"for","tag-description");
-          var el6 = dom.createTextNode("Description");
-          dom.appendChild(el5, el6);
-          dom.appendChild(el4, el5);
-          var el5 = dom.createTextNode("\n                        ");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createComment("");
-          dom.appendChild(el4, el5);
-          var el5 = dom.createTextNode("\n                    ");
-          dom.appendChild(el4, el5);
-          dom.appendChild(el3, el4);
-          var el4 = dom.createTextNode("\n\n                    ");
           dom.appendChild(el3, el4);
           var el4 = dom.createElement("ul");
           dom.setAttribute(el4,"class","nav-list nav-list-block");
@@ -21654,42 +23704,39 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
           var element5 = dom.childAt(element4, [1, 3]);
           var element6 = dom.childAt(element4, [3]);
           var element7 = dom.childAt(element6, [3]);
-          var element8 = dom.childAt(element7, [3]);
-          var element9 = dom.childAt(fragment, [3]);
-          var morphs = new Array(11);
+          var element8 = dom.childAt(fragment, [3]);
+          var morphs = new Array(10);
           morphs[0] = dom.createAttrMorph(element4, 'class');
           morphs[1] = dom.createElementMorph(element5);
           morphs[2] = dom.createMorphAt(element6,1,1);
           morphs[3] = dom.createMorphAt(element7,1,1);
-          morphs[4] = dom.createMorphAt(element8,3,3);
-          morphs[5] = dom.createMorphAt(element8,5,5);
-          morphs[6] = dom.createMorphAt(dom.childAt(element7, [5]),3,3);
-          morphs[7] = dom.createMorphAt(dom.childAt(element7, [7]),1,1);
-          morphs[8] = dom.createMorphAt(element7,9,9);
-          morphs[9] = dom.createAttrMorph(element9, 'class');
-          morphs[10] = dom.createMorphAt(element9,1,1);
+          morphs[4] = dom.createMorphAt(element7,3,3);
+          morphs[5] = dom.createMorphAt(element7,5,5);
+          morphs[6] = dom.createMorphAt(dom.childAt(element7, [7]),1,1);
+          morphs[7] = dom.createMorphAt(element7,9,9);
+          morphs[8] = dom.createAttrMorph(element8, 'class');
+          morphs[9] = dom.createMorphAt(element8,1,1);
           return morphs;
         },
         statements: [
-          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview"],"settings-menu-pane-out-left","settings-menu-pane-in"],[]]," settings-menu settings-menu-pane tag-settings-pane"]]],
-          ["element","action",["closeMenus"],[]],
-          ["inline","gh-uploader",[],["uploaded","setCoverImage","canceled","clearCoverImage","description","Add tag image","image",["subexpr","@mut",[["get","activeTag.image"]],[]],"initUploader","setUploaderReference","tagName","section"]],
-          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated"]],[]],"property","name"],0,null],
-          ["inline","gh-input",[],["id","tag-url","name","url","type","text","value",["subexpr","@mut",[["get","activeTagSlugScratch"]],[]],"focus-out","saveActiveTagSlug"]],
-          ["inline","gh-url-preview",[],["prefix","tag","slug",["subexpr","@mut",[["get","activeTagSlugScratch"]],[]],"tagName","p","classNames","description"]],
-          ["inline","gh-textarea",[],["id","tag-description","name","description","value",["subexpr","@mut",[["get","activeTagDescriptionScratch"]],[]],"focus-out","saveActiveTagDescription"]],
-          ["block","gh-tab",[],["tagName","li","classNames","nav-list-item"],1,null],
-          ["block","unless",[["get","activeTag.isNew"]],[],2,null],
-          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview"],"settings-menu-pane-in","settings-menu-pane-out-right"],[]]," settings-menu settings-menu-pane tag-meta-settings-pane"]]],
-          ["block","gh-tab-pane",[],[],3,null]
+          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview",["loc",[null,[3,25],[3,41]]]],"settings-menu-pane-out-left","settings-menu-pane-in"],[],["loc",[null,[3,20],[3,97]]]]," settings-menu settings-menu-pane tag-settings-pane"]]],
+          ["element","action",["closeMenus"],[],["loc",[null,[6,73],[6,96]]]],
+          ["inline","gh-uploader",[],["uploaded","setCoverImage","canceled","clearCoverImage","description","Add tag image","image",["subexpr","@mut",[["get","activeTag.image",["loc",[null,[11,116],[11,131]]]]],[],[]],"initUploader","setUploaderReference","tagName","section"],["loc",[null,[11,16],[11,187]]]],
+          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[13,44],[13,60]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated",["loc",[null,[13,74],[13,96]]]]],[],[]],"property","name"],0,null,["loc",[null,[13,20],[17,38]]]],
+          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[19,44],[19,60]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated",["loc",[null,[19,74],[19,96]]]]],[],[]],"property","slug"],1,null,["loc",[null,[19,20],[24,38]]]],
+          ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","activeTag.errors",["loc",[null,[26,44],[26,60]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","activeTag.hasValidated",["loc",[null,[26,74],[26,96]]]]],[],[]],"property","description"],2,null,["loc",[null,[26,20],[30,38]]]],
+          ["block","gh-tab",[],["tagName","li","classNames","nav-list-item"],3,null,["loc",[null,[33,24],[39,35]]]],
+          ["block","unless",[["get","activeTag.isNew",["loc",[null,[42,30],[42,45]]]]],[],4,null,["loc",[null,[42,20],[44,31]]]],
+          ["attribute","class",["concat",[["subexpr","if",[["get","isViewingSubview",["loc",[null,[49,25],[49,41]]]],"settings-menu-pane-in","settings-menu-pane-out-right"],[],["loc",[null,[49,20],[49,98]]]]," settings-menu settings-menu-pane tag-meta-settings-pane"]]],
+          ["block","gh-tab-pane",[],[],5,null,["loc",[null,[50,12],[85,28]]]]
         ],
         locals: [],
-        templates: [child0, child1, child2, child3]
+        templates: [child0, child1, child2, child3, child4, child5]
       };
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -21697,7 +23744,7 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
             "column": 0
           },
           "end": {
-            "line": 87,
+            "line": 89,
             "column": 0
           }
         },
@@ -21724,10 +23771,1157 @@ define('ghost/templates/settings/tags/settings-menu', ['exports'], function (exp
         return morphs;
       },
       statements: [
-        ["block","gh-tabs-manager",[],["selected","showSubview","class","settings-menu-container"],0,null]
+        ["block","gh-tabs-manager",[],["selected","showSubview","class","settings-menu-container"],0,null,["loc",[null,[2,4],[87,24]]]]
       ],
       locals: [],
       templates: [child0]
+    };
+  }()));
+
+});
+define('ghost/templates/settings/tags/tag', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 2,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/settings/tags/tag.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
+        dom.insertBoundary(fragment, 0);
+        return morphs;
+      },
+      statements: [
+        ["inline","gh-tag-settings-form",[],["tag",["subexpr","@mut",[["get","tag",["loc",[null,[1,27],[1,30]]]]],[],[]],"setProperty",["subexpr","action",["setProperty"],[],["loc",[null,[1,43],[1,65]]]],"openModal","openModal","isMobile",["subexpr","@mut",[["get","isMobile",["loc",[null,[1,97],[1,105]]]]],[],[]]],["loc",[null,[1,0],[1,107]]]]
+      ],
+      locals: [],
+      templates: []
+    };
+  }()));
+
+});
+define('ghost/templates/settings/tags', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 3,
+              "column": 8
+            },
+            "end": {
+              "line": 3,
+              "column": 75
+            }
+          },
+          "moduleName": "ghost/templates/settings/tags.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createElement("span");
+          var el2 = dom.createTextNode("Tags");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() { return []; },
+        statements: [
+
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child1 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 5,
+              "column": 12
+            },
+            "end": {
+              "line": 5,
+              "column": 89
+            }
+          },
+          "moduleName": "ghost/templates/settings/tags.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("New Tag");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() { return []; },
+        statements: [
+
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child2 = (function() {
+      var child0 = (function() {
+        var child0 = (function() {
+          var child0 = (function() {
+            return {
+              meta: {
+                "revision": "Ember@1.13.10",
+                "loc": {
+                  "source": null,
+                  "start": {
+                    "line": 19,
+                    "column": 24
+                  },
+                  "end": {
+                    "line": 24,
+                    "column": 24
+                  }
+                },
+                "moduleName": "ghost/templates/settings/tags.hbs"
+              },
+              arity: 0,
+              cachedFragment: null,
+              hasRendered: false,
+              buildFragment: function buildFragment(dom) {
+                var el0 = dom.createDocumentFragment();
+                var el1 = dom.createTextNode("                            ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createElement("span");
+                dom.setAttribute(el1,"class","tag-title");
+                var el2 = dom.createComment("");
+                dom.appendChild(el1, el2);
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n                            ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createElement("span");
+                dom.setAttribute(el1,"class","label label-default");
+                var el2 = dom.createTextNode("/");
+                dom.appendChild(el1, el2);
+                var el2 = dom.createComment("");
+                dom.appendChild(el1, el2);
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n                            ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createElement("p");
+                dom.setAttribute(el1,"class","tag-description");
+                var el2 = dom.createComment("");
+                dom.appendChild(el1, el2);
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n                            ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createElement("span");
+                dom.setAttribute(el1,"class","tags-count");
+                var el2 = dom.createComment("");
+                dom.appendChild(el1, el2);
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n");
+                dom.appendChild(el0, el1);
+                return el0;
+              },
+              buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                var morphs = new Array(4);
+                morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]),0,0);
+                morphs[1] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
+                morphs[2] = dom.createMorphAt(dom.childAt(fragment, [5]),0,0);
+                morphs[3] = dom.createMorphAt(dom.childAt(fragment, [7]),0,0);
+                return morphs;
+              },
+              statements: [
+                ["content","tag.name",["loc",[null,[20,52],[20,64]]]],
+                ["content","tag.slug",["loc",[null,[21,63],[21,75]]]],
+                ["content","tag.description",["loc",[null,[22,55],[22,74]]]],
+                ["content","tag.count.posts",["loc",[null,[23,53],[23,72]]]]
+              ],
+              locals: [],
+              templates: []
+            };
+          }());
+          return {
+            meta: {
+              "revision": "Ember@1.13.10",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 17,
+                  "column": 16
+                },
+                "end": {
+                  "line": 26,
+                  "column": 16
+                }
+              },
+              "moduleName": "ghost/templates/settings/tags.hbs"
+            },
+            arity: 1,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("                    ");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createElement("div");
+              dom.setAttribute(el1,"class","settings-tag");
+              var el2 = dom.createTextNode("\n");
+              dom.appendChild(el1, el2);
+              var el2 = dom.createComment("");
+              dom.appendChild(el1, el2);
+              var el2 = dom.createTextNode("                    ");
+              dom.appendChild(el1, el2);
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("\n");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var morphs = new Array(1);
+              morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]),1,1);
+              return morphs;
+            },
+            statements: [
+              ["block","link-to",["settings.tags.tag",["get","tag",["loc",[null,[19,55],[19,58]]]]],["class","tag-edit-button"],0,null,["loc",[null,[19,24],[24,36]]]]
+            ],
+            locals: ["tag"],
+            templates: [child0]
+          };
+        }());
+        return {
+          meta: {
+            "revision": "Ember@1.13.10",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 11,
+                "column": 8
+              },
+              "end": {
+                "line": 28,
+                "column": 8
+              }
+            },
+            "moduleName": "ghost/templates/settings/tags.hbs"
+          },
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("            ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("section");
+            var el2 = dom.createTextNode("\n");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("            ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element0 = dom.childAt(fragment, [1]);
+            var morphs = new Array(2);
+            morphs[0] = dom.createAttrMorph(element0, 'class');
+            morphs[1] = dom.createMorphAt(element0,1,1);
+            return morphs;
+          },
+          statements: [
+            ["attribute","class",["concat",["tag-list-content settings-tags ",["subexpr","if",[["get","tagListFocused",["loc",[null,[16,64],[16,78]]]],"keyboard-focused"],[],["loc",[null,[16,59],[16,99]]]]]]],
+            ["block","each",[["get","tags",["loc",[null,[17,24],[17,28]]]]],[],0,null,["loc",[null,[17,16],[26,25]]]]
+          ],
+          locals: [],
+          templates: [child0]
+        };
+      }());
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 10,
+              "column": 4
+            },
+            "end": {
+              "line": 32,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/settings/tags.hbs"
+        },
+        arity: 1,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("section");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element1 = dom.childAt(fragment, [2]);
+          var morphs = new Array(3);
+          morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
+          morphs[1] = dom.createAttrMorph(element1, 'class');
+          morphs[2] = dom.createMorphAt(element1,1,1);
+          dom.insertBoundary(fragment, 0);
+          return morphs;
+        },
+        statements: [
+          ["block","gh-infinite-scroll",[],["fetch","loadNextPage","isLoading",["subexpr","@mut",[["get","isLoading",["loc",[null,[13,22],[13,31]]]]],[],[]],"classNames","tag-list"],0,null,["loc",[null,[11,8],[28,31]]]],
+          ["attribute","class",["concat",["settings-menu-container tag-settings ",["subexpr","if",[["get","tagContentFocused",["loc",[null,[29,66],[29,83]]]],"keyboard-focused"],[],["loc",[null,[29,61],[29,104]]]]," ",["subexpr","if",[["get","container.displaySettingsPane",["loc",[null,[29,110],[29,139]]]],"tag-settings-in"],[],["loc",[null,[29,105],[29,159]]]]]]],
+          ["content","outlet",["loc",[null,[30,12],[30,22]]]]
+        ],
+        locals: ["container"],
+        templates: [child0]
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 34,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/settings/tags.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1,"class","gh-view");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("header");
+        dom.setAttribute(el2,"class","view-header");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("section");
+        dom.setAttribute(el3,"class","view-actions");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element2 = dom.childAt(fragment, [0]);
+        var element3 = dom.childAt(element2, [1]);
+        var morphs = new Array(3);
+        morphs[0] = dom.createMorphAt(element3,1,1);
+        morphs[1] = dom.createMorphAt(dom.childAt(element3, [3]),1,1);
+        morphs[2] = dom.createMorphAt(element2,3,3);
+        return morphs;
+      },
+      statements: [
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,93]]]],
+        ["block","link-to",["settings.tags.new"],["class","btn btn-green","title","New Tag"],1,null,["loc",[null,[5,12],[5,101]]]],
+        ["block","gh-tags-management-container",[],["mobileWidth",["subexpr","@mut",[["get","mobileWidth",["loc",[null,[10,48],[10,59]]]]],[],[]],"tags",["subexpr","@mut",[["get","tags",["loc",[null,[10,65],[10,69]]]]],[],[]],"selectedTag",["subexpr","@mut",[["get","selectedTag",["loc",[null,[10,82],[10,93]]]]],[],[]],"enteredMobile","enteredMobile","leftMobile","leftMobile"],2,null,["loc",[null,[10,4],[32,37]]]]
+      ],
+      locals: [],
+      templates: [child0, child1, child2]
+    };
+  }()));
+
+});
+define('ghost/templates/setup/one', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 10,
+              "column": 0
+            },
+            "end": {
+              "line": 12,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/setup/one.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    Create your account ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("i");
+          dom.setAttribute(el1,"class","icon-chevron");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() { return []; },
+        statements: [
+
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 13,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/setup/one.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("h1");
+        var el3 = dom.createTextNode("Welcome to ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("strong");
+        var el4 = dom.createTextNode("Ghost");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("!");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("p");
+        var el3 = dom.createTextNode("All over the world, people have started ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("em");
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode(" incredible blogs with Ghost. Today, we’re starting yours.");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("figure");
+        dom.setAttribute(el1,"class","gh-flow-screenshot");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("img");
+        dom.setAttribute(el2,"alt","Ghost screenshot");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [2, 1]);
+        var morphs = new Array(3);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0, 3, 1]),0,0);
+        morphs[1] = dom.createAttrMorph(element0, 'src');
+        morphs[2] = dom.createMorphAt(fragment,4,4,contextualElement);
+        dom.insertBoundary(fragment, null);
+        return morphs;
+      },
+      statements: [
+        ["content","model.count",["loc",[null,[3,51],[3,66]]]],
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","img/install-welcome.png"],[],["loc",[null,[7,14],[7,59]]]]]]],
+        ["block","link-to",["setup.two"],["classNames","btn btn-green btn-lg"],0,null,["loc",[null,[10,0],[12,12]]]]
+      ],
+      locals: [],
+      templates: [child0]
+    };
+  }()));
+
+});
+define('ghost/templates/setup/three', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 9,
+              "column": 4
+            },
+            "end": {
+              "line": 12,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/setup/three.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","users");
+          var el2 = dom.createTextNode("Enter one email address per line, we’ll handle the rest! ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("i");
+          dom.setAttribute(el2,"class","icon-mail");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-textarea",[],["name","users","value",["subexpr","@mut",[["get","users",["loc",[null,[11,41],[11,46]]]]],[],[]],"required","required","focusOut",["subexpr","action",["validate"],[],["loc",[null,[11,76],[11,95]]]]],["loc",[null,[11,8],[11,97]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child1 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 14,
+              "column": 4
+            },
+            "end": {
+              "line": 14,
+              "column": 176
+            }
+          },
+          "moduleName": "ghost/templates/setup/three.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [
+          ["content","buttonText",["loc",[null,[14,162],[14,176]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 20,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/setup/three.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("h1");
+        var el3 = dom.createTextNode("Invite your team");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("p");
+        var el3 = dom.createTextNode("Ghost works best when shared with others. Collaborate, get feedback on your posts & work together on ideas.");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("img");
+        dom.setAttribute(el1,"class","gh-flow-faces");
+        dom.setAttribute(el1,"alt","");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("form");
+        dom.setAttribute(el1,"class","gh-flow-invite");
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("button");
+        dom.setAttribute(el1,"class","gh-flow-skip");
+        var el2 = dom.createTextNode("\n    I'll do this later, take me to my blog!\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [2]);
+        var element1 = dom.childAt(fragment, [4]);
+        var element2 = dom.childAt(fragment, [6]);
+        var morphs = new Array(4);
+        morphs[0] = dom.createAttrMorph(element0, 'src');
+        morphs[1] = dom.createMorphAt(element1,1,1);
+        morphs[2] = dom.createMorphAt(element1,3,3);
+        morphs[3] = dom.createElementMorph(element2);
+        return morphs;
+      },
+      statements: [
+        ["attribute","src",["concat",[["subexpr","gh-path",["admin","img/users.png"],[],["loc",[null,[6,32],[6,67]]]]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[9,28],[9,34]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[9,48],[9,60]]]]],[],[]],"property","users"],0,null,["loc",[null,[9,4],[12,22]]]],
+        ["block","gh-spin-button",[],["type","submit","action","invite","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[14,132],[14,142]]]]],[],[]],"autoWidth","false","class",["subexpr","concat",["btn"," ","btn-default"," ","btn-lg"," ","btn-block"," ",["subexpr","if",[["get","buttonClass",[]],["subexpr","-normalize-class",["buttonClass",["get","buttonClass",[]]],[],[]]],[],[]]," "],[],[]]],1,null,["loc",[null,[14,4],[14,195]]]],
+        ["element","action",["skipInvite"],[],["loc",[null,[17,29],[17,52]]]]
+      ],
+      locals: [],
+      templates: [child0, child1]
+    };
+  }()));
+
+});
+define('ghost/templates/setup/two', ['exports'], function (exports) {
+
+  'use strict';
+
+  exports['default'] = Ember.HTMLBars.template((function() {
+    var child0 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 11,
+              "column": 4
+            },
+            "end": {
+              "line": 17,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/setup/two.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","email-address");
+          var el2 = dom.createTextNode("Email address");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1,"class","input-icon icon-mail");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-trim-focus-input",[],["tabindex","1","type","email","name","email","placeholder","Eg. john@example.com","autocorrect","off","value",["subexpr","@mut",[["get","email",["loc",[null,[14,132],[14,137]]]]],[],[]],"focusOut",["subexpr","action",["preValidate","email"],[],["loc",[null,[14,147],[14,177]]]]],["loc",[null,[14,12],[14,179]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[16,34],[16,40]]]]],[],[]],"property","email"],["loc",[null,[16,8],[16,59]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child1 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 18,
+              "column": 4
+            },
+            "end": {
+              "line": 24,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/setup/two.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","full-name");
+          var el2 = dom.createTextNode("Full name");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1,"class","input-icon icon-user");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-input",[],["tabindex","2","type","text","name","name","placeholder","Eg. John H. Watson","autocorrect","off","value",["subexpr","@mut",[["get","name",["loc",[null,[21,118],[21,122]]]]],[],[]],"focusOut",["subexpr","action",["preValidate","name"],[],["loc",[null,[21,132],[21,161]]]]],["loc",[null,[21,12],[21,163]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[23,34],[23,40]]]]],[],[]],"property","name"],["loc",[null,[23,8],[23,58]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child2 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 25,
+              "column": 4
+            },
+            "end": {
+              "line": 31,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/setup/two.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","password");
+          var el2 = dom.createTextNode("Password");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1,"class","input-icon icon-lock");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-input",[],["tabindex","3","type","password","name","password","placeholder","At least 8 characters","autocorrect","off","value",["subexpr","@mut",[["get","password",["loc",[null,[28,128],[28,136]]]]],[],[]],"focusOut",["subexpr","action",["preValidate","password"],[],["loc",[null,[28,146],[28,179]]]]],["loc",[null,[28,12],[28,181]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[30,34],[30,40]]]]],[],[]],"property","password"],["loc",[null,[30,8],[30,62]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child3 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 32,
+              "column": 4
+            },
+            "end": {
+              "line": 38,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/setup/two.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1,"for","blog-title");
+          var el2 = dom.createTextNode("Blog title");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1,"class","input-icon icon-content");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
+          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
+          return morphs;
+        },
+        statements: [
+          ["inline","gh-input",[],["tabindex","4","type","text","name","blog-title","placeholder","Eg. The Daily Awesome","autocorrect","off","value",["subexpr","@mut",[["get","blogTitle",["loc",[null,[35,126],[35,135]]]]],[],[]],"focusOut",["subexpr","action",["preValidate","blogTitle"],[],["loc",[null,[35,145],[35,179]]]]],["loc",[null,[35,12],[35,181]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[37,34],[37,40]]]]],[],[]],"property","blogTitle"],["loc",[null,[37,8],[37,63]]]]
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    var child4 = (function() {
+      return {
+        meta: {
+          "revision": "Ember@1.13.10",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 39,
+              "column": 4
+            },
+            "end": {
+              "line": 41,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/setup/two.hbs"
+        },
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        Last step: Invite your team ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("i");
+          dom.setAttribute(el1,"class","icon-chevron");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() { return []; },
+        statements: [
+
+        ],
+        locals: [],
+        templates: []
+      };
+    }());
+    return {
+      meta: {
+        "revision": "Ember@1.13.10",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 45,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/setup/two.hbs"
+      },
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("h1");
+        var el3 = dom.createTextNode("Create your account");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("form");
+        dom.setAttribute(el1,"id","setup");
+        dom.setAttribute(el1,"class","gh-flow-create");
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("input");
+        dom.setAttribute(el2,"style","display:none;");
+        dom.setAttribute(el2,"type","text");
+        dom.setAttribute(el2,"name","fakeusernameremembered");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("input");
+        dom.setAttribute(el2,"style","display:none;");
+        dom.setAttribute(el2,"type","password");
+        dom.setAttribute(el2,"name","fakepasswordremembered");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("p");
+        dom.setAttribute(el1,"class","main-error");
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [2]);
+        var morphs = new Array(7);
+        morphs[0] = dom.createMorphAt(element0,6,6);
+        morphs[1] = dom.createMorphAt(element0,8,8);
+        morphs[2] = dom.createMorphAt(element0,9,9);
+        morphs[3] = dom.createMorphAt(element0,10,10);
+        morphs[4] = dom.createMorphAt(element0,11,11);
+        morphs[5] = dom.createMorphAt(element0,12,12);
+        morphs[6] = dom.createUnsafeMorphAt(dom.childAt(fragment, [4]),0,0);
+        return morphs;
+      },
+      statements: [
+        ["inline","gh-profile-image",[],["fileStorage",["subexpr","@mut",[["get","config.fileStorage",["loc",[null,[10,35],[10,53]]]]],[],[]],"email",["subexpr","@mut",[["get","email",["loc",[null,[10,60],[10,65]]]]],[],[]],"setImage","setImage"],["loc",[null,[10,4],[10,87]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[11,28],[11,34]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[11,48],[11,60]]]]],[],[]],"property","email"],0,null,["loc",[null,[11,4],[17,22]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[18,28],[18,34]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[18,48],[18,60]]]]],[],[]],"property","name"],1,null,["loc",[null,[18,4],[24,22]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[25,28],[25,34]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[25,48],[25,60]]]]],[],[]],"property","password"],2,null,["loc",[null,[25,4],[31,22]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors",["loc",[null,[32,28],[32,34]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[32,48],[32,60]]]]],[],[]],"property","blogTitle"],3,null,["loc",[null,[32,4],[38,22]]]],
+        ["block","gh-spin-button",[],["type","submit","tabindex","5","class","btn btn-green btn-lg btn-block","action","setup","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[39,114],[39,124]]]]],[],[]],"autoWidth","false"],4,null,["loc",[null,[39,4],[41,23]]]],
+        ["content","flowErrors",["loc",[null,[44,22],[44,38]]]]
+      ],
+      locals: [],
+      templates: [child0, child1, child2, child3, child4]
     };
   }()));
 
@@ -21741,7 +24935,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -21777,7 +24971,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -21810,7 +25004,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","link-to",[["get","backRoute"]],["classNames","gh-flow-back"],0,null]
+          ["block","link-to",[["get","backRoute",["loc",[null,[5,27],[5,36]]]]],["classNames","gh-flow-back"],0,null,["loc",[null,[5,16],[5,112]]]]
         ],
         locals: [],
         templates: [child0]
@@ -21819,7 +25013,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -21863,7 +25057,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -21907,7 +25101,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
     var child3 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -21950,7 +25144,7 @@ define('ghost/templates/setup', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -22055,731 +25249,14 @@ define('ghost/templates/setup', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","if",[["get","showBackLink"]],[],0,null],
-        ["block","gh-activating-list-item",[],["route","setup.one","linkClasses","step"],1,null],
-        ["block","gh-activating-list-item",[],["route","setup.two","linkClasses","step"],2,null],
-        ["block","gh-activating-list-item",[],["route","setup.three","linkClasses","step"],3,null],
-        ["content","outlet"]
+        ["block","if",[["get","showBackLink",["loc",[null,[4,18],[4,30]]]]],[],0,null,["loc",[null,[4,12],[6,19]]]],
+        ["block","gh-activating-list-item",[],["route","setup.one","linkClasses","step"],1,null,["loc",[null,[8,16],[10,44]]]],
+        ["block","gh-activating-list-item",[],["route","setup.two","linkClasses","step"],2,null,["loc",[null,[12,16],[14,44]]]],
+        ["block","gh-activating-list-item",[],["route","setup.three","linkClasses","step"],3,null,["loc",[null,[16,16],[18,44]]]],
+        ["content","outlet",["loc",[null,[24,12],[24,22]]]]
       ],
       locals: [],
       templates: [child0, child1, child2, child3]
-    };
-  }()));
-
-});
-define('ghost/templates/setup/one', ['exports'], function (exports) {
-
-  'use strict';
-
-  exports['default'] = Ember.HTMLBars.template((function() {
-    var child0 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 10,
-              "column": 0
-            },
-            "end": {
-              "line": 12,
-              "column": 0
-            }
-          },
-          "moduleName": "ghost/templates/setup/one.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("    Create your account ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("i");
-          dom.setAttribute(el1,"class","icon-chevron");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes() { return []; },
-        statements: [
-
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    return {
-      meta: {
-        "revision": "Ember@1.13.2",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 13,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/setup/one.hbs"
-      },
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("header");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("h1");
-        var el3 = dom.createTextNode("Welcome to ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("strong");
-        var el4 = dom.createTextNode("Ghost");
-        dom.appendChild(el3, el4);
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("!");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("p");
-        var el3 = dom.createTextNode("All over the world, people have started ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("em");
-        var el4 = dom.createComment("");
-        dom.appendChild(el3, el4);
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode(" incredible blogs with Ghost. Today, we’re starting yours.");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("figure");
-        dom.setAttribute(el1,"class","gh-flow-screenshot");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("img");
-        dom.setAttribute(el2,"alt","Ghost screenshot");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createComment("");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element0 = dom.childAt(fragment, [2, 1]);
-        var morphs = new Array(3);
-        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0, 3, 1]),0,0);
-        morphs[1] = dom.createAttrMorph(element0, 'src');
-        morphs[2] = dom.createMorphAt(fragment,4,4,contextualElement);
-        dom.insertBoundary(fragment, null);
-        return morphs;
-      },
-      statements: [
-        ["content","model.count"],
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","img/install-welcome.png"],[]]]]],
-        ["block","link-to",["setup.two"],["classNames","btn btn-green btn-lg"],0,null]
-      ],
-      locals: [],
-      templates: [child0]
-    };
-  }()));
-
-});
-define('ghost/templates/setup/three', ['exports'], function (exports) {
-
-  'use strict';
-
-  exports['default'] = Ember.HTMLBars.template((function() {
-    var child0 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 9,
-              "column": 4
-            },
-            "end": {
-              "line": 12,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/setup/three.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("label");
-          dom.setAttribute(el1,"for","users");
-          var el2 = dom.createTextNode("Enter one email address per line, we’ll handle the rest! ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createElement("i");
-          dom.setAttribute(el2,"class","icon-mail");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(1);
-          morphs[0] = dom.createMorphAt(fragment,3,3,contextualElement);
-          return morphs;
-        },
-        statements: [
-          ["inline","gh-textarea",[],["name","users","value",["subexpr","@mut",[["get","users"]],[]],"required","required","focusOut",["subexpr","action",["validate"],[]]]]
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    var child1 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 14,
-              "column": 4
-            },
-            "end": {
-              "line": 14,
-              "column": 176
-            }
-          },
-          "moduleName": "ghost/templates/setup/three.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(1);
-          morphs[0] = dom.createMorphAt(fragment,0,0,contextualElement);
-          dom.insertBoundary(fragment, 0);
-          dom.insertBoundary(fragment, null);
-          return morphs;
-        },
-        statements: [
-          ["content","buttonText"]
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    return {
-      meta: {
-        "revision": "Ember@1.13.2",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 20,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/setup/three.hbs"
-      },
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("header");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("h1");
-        var el3 = dom.createTextNode("Invite your team");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("p");
-        var el3 = dom.createTextNode("Ghost works best when shared with others. Collaborate, get feedback on your posts & work together on ideas.");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("img");
-        dom.setAttribute(el1,"class","gh-flow-faces");
-        dom.setAttribute(el1,"alt","");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("form");
-        dom.setAttribute(el1,"class","gh-flow-invite");
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("button");
-        dom.setAttribute(el1,"class","gh-flow-skip");
-        var el2 = dom.createTextNode("\n    I'll do this later, take me to my blog!\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element0 = dom.childAt(fragment, [2]);
-        var element1 = dom.childAt(fragment, [4]);
-        var element2 = dom.childAt(fragment, [6]);
-        var morphs = new Array(4);
-        morphs[0] = dom.createAttrMorph(element0, 'src');
-        morphs[1] = dom.createMorphAt(element1,1,1);
-        morphs[2] = dom.createMorphAt(element1,3,3);
-        morphs[3] = dom.createElementMorph(element2);
-        return morphs;
-      },
-      statements: [
-        ["attribute","src",["concat",[["subexpr","gh-path",["admin","img/users.png"],[]]]]],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","users"],0,null],
-        ["block","gh-spin-button",[],["type","submit","action","invite","submitting",["subexpr","@mut",[["get","submitting"]],[]],"autoWidth","false","class",["subexpr","concat",["btn"," ","btn-default"," ","btn-lg"," ","btn-block"," ",["subexpr","if",[["get","buttonClass"],["subexpr","-normalize-class",["buttonClass",["get","buttonClass"]],[]]],[]]," "],[]]],1,null],
-        ["element","action",["skipInvite"],[]]
-      ],
-      locals: [],
-      templates: [child0, child1]
-    };
-  }()));
-
-});
-define('ghost/templates/setup/two', ['exports'], function (exports) {
-
-  'use strict';
-
-  exports['default'] = Ember.HTMLBars.template((function() {
-    var child0 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 11,
-              "column": 4
-            },
-            "end": {
-              "line": 17,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/setup/two.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("label");
-          dom.setAttribute(el1,"for","email-address");
-          var el2 = dom.createTextNode("Email address");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("span");
-          dom.setAttribute(el1,"class","input-icon icon-mail");
-          var el2 = dom.createTextNode("\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
-          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
-          return morphs;
-        },
-        statements: [
-          ["inline","gh-trim-focus-input",[],["tabindex","1","type","email","name","email","placeholder","Eg. john@example.com","autocorrect","off","value",["subexpr","@mut",[["get","email"]],[]],"focusOut",["subexpr","action",["preValidate","email"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"property","email"]]
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    var child1 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 18,
-              "column": 4
-            },
-            "end": {
-              "line": 24,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/setup/two.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("label");
-          dom.setAttribute(el1,"for","full-name");
-          var el2 = dom.createTextNode("Full name");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("span");
-          dom.setAttribute(el1,"class","input-icon icon-user");
-          var el2 = dom.createTextNode("\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
-          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
-          return morphs;
-        },
-        statements: [
-          ["inline","gh-input",[],["tabindex","2","type","text","name","name","placeholder","Eg. John H. Watson","autocorrect","off","value",["subexpr","@mut",[["get","name"]],[]],"focusOut",["subexpr","action",["preValidate","name"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"property","name"]]
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    var child2 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 25,
-              "column": 4
-            },
-            "end": {
-              "line": 31,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/setup/two.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("label");
-          dom.setAttribute(el1,"for","password");
-          var el2 = dom.createTextNode("Password");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("span");
-          dom.setAttribute(el1,"class","input-icon icon-lock");
-          var el2 = dom.createTextNode("\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
-          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
-          return morphs;
-        },
-        statements: [
-          ["inline","gh-input",[],["tabindex","3","type","password","name","password","placeholder","At least 8 characters","autocorrect","off","value",["subexpr","@mut",[["get","password"]],[]],"focusOut",["subexpr","action",["preValidate","password"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"property","password"]]
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    var child3 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 32,
-              "column": 4
-            },
-            "end": {
-              "line": 38,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/setup/two.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("label");
-          dom.setAttribute(el1,"for","blog-title");
-          var el2 = dom.createTextNode("Blog title");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("span");
-          dom.setAttribute(el1,"class","input-icon icon-content");
-          var el2 = dom.createTextNode("\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createComment("");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [3]),1,1);
-          morphs[1] = dom.createMorphAt(fragment,5,5,contextualElement);
-          return morphs;
-        },
-        statements: [
-          ["inline","gh-input",[],["tabindex","4","type","text","name","blog-title","placeholder","Eg. The Daily Awesome","autocorrect","off","value",["subexpr","@mut",[["get","blogTitle"]],[]],"focusOut",["subexpr","action",["preValidate","blogTitle"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"property","blogTitle"]]
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    var child4 = (function() {
-      return {
-        meta: {
-          "revision": "Ember@1.13.2",
-          "loc": {
-            "source": null,
-            "start": {
-              "line": 39,
-              "column": 4
-            },
-            "end": {
-              "line": 41,
-              "column": 4
-            }
-          },
-          "moduleName": "ghost/templates/setup/two.hbs"
-        },
-        arity: 0,
-        cachedFragment: null,
-        hasRendered: false,
-        buildFragment: function buildFragment(dom) {
-          var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        Last step: Invite your team ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("i");
-          dom.setAttribute(el1,"class","icon-chevron");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
-          dom.appendChild(el0, el1);
-          return el0;
-        },
-        buildRenderNodes: function buildRenderNodes() { return []; },
-        statements: [
-
-        ],
-        locals: [],
-        templates: []
-      };
-    }());
-    return {
-      meta: {
-        "revision": "Ember@1.13.2",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 45,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/setup/two.hbs"
-      },
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("header");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("h1");
-        var el3 = dom.createTextNode("Create your account");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("form");
-        dom.setAttribute(el1,"id","setup");
-        dom.setAttribute(el1,"class","gh-flow-create");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("input");
-        dom.setAttribute(el2,"style","display:none;");
-        dom.setAttribute(el2,"type","text");
-        dom.setAttribute(el2,"name","fakeusernameremembered");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("input");
-        dom.setAttribute(el2,"style","display:none;");
-        dom.setAttribute(el2,"type","password");
-        dom.setAttribute(el2,"name","fakepasswordremembered");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("p");
-        dom.setAttribute(el1,"class","main-error");
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element0 = dom.childAt(fragment, [2]);
-        var morphs = new Array(7);
-        morphs[0] = dom.createMorphAt(element0,5,5);
-        morphs[1] = dom.createMorphAt(element0,7,7);
-        morphs[2] = dom.createMorphAt(element0,8,8);
-        morphs[3] = dom.createMorphAt(element0,9,9);
-        morphs[4] = dom.createMorphAt(element0,10,10);
-        morphs[5] = dom.createMorphAt(element0,11,11);
-        morphs[6] = dom.createUnsafeMorphAt(dom.childAt(fragment, [4]),0,0);
-        return morphs;
-      },
-      statements: [
-        ["inline","gh-profile-image",[],["fileStorage",["subexpr","@mut",[["get","config.fileStorage"]],[]],"email",["subexpr","@mut",[["get","validEmail"]],[]],"setImage","setImage"]],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","email"],0,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","name"],1,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","password"],2,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","blogTitle"],3,null],
-        ["block","gh-spin-button",[],["type","submit","tabindex","5","class","btn btn-green btn-lg btn-block","action","setup","submitting",["subexpr","@mut",[["get","submitting"]],[]],"autoWidth","false"],4,null],
-        ["content","flowErrors"]
-      ],
-      locals: [],
-      templates: [child0, child1, child2, child3, child4]
     };
   }()));
 
@@ -22792,7 +25269,7 @@ define('ghost/templates/signin', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -22832,7 +25309,7 @@ define('ghost/templates/signin', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-trim-focus-input",[],["class","gh-input email","type","email","placeholder","Email Address","name","identification","autocapitalize","off","autocorrect","off","tabindex","1","focusOut",["subexpr","action",["validate","identification"],[]],"value",["subexpr","@mut",[["get","model.identification"]],[]]]]
+          ["inline","gh-trim-focus-input",[],["class","gh-input email","type","email","placeholder","Email Address","name","identification","autocapitalize","off","autocorrect","off","tabindex","1","focusOut",["subexpr","action",["validate","identification"],[],["loc",[null,[7,193],[7,229]]]],"value",["subexpr","@mut",[["get","model.identification",["loc",[null,[7,236],[7,256]]]]],[],[]]],["loc",[null,[7,24],[7,258]]]]
         ],
         locals: [],
         templates: []
@@ -22842,7 +25319,7 @@ define('ghost/templates/signin', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -22875,7 +25352,7 @@ define('ghost/templates/signin', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -22921,8 +25398,8 @@ define('ghost/templates/signin', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["class","password","type","password","placeholder","Password","name","password","tabindex","2","value",["subexpr","@mut",[["get","model.password"]],[]],"autocorrect","off"]],
-          ["block","gh-spin-button",[],["class","forgotten-link btn btn-link","type","button","action","forgotten","tabindex","4","submitting",["subexpr","@mut",[["get","submitting"]],[]],"autoWidth","true"],0,null]
+          ["inline","gh-input",[],["class","password","type","password","placeholder","Password","name","password","tabindex","2","value",["subexpr","@mut",[["get","model.password",["loc",[null,[12,126],[12,140]]]]],[],[]],"autocorrect","off"],["loc",[null,[12,24],[12,160]]]],
+          ["block","gh-spin-button",[],["class","forgotten-link btn btn-link","type","button","action","forgotten","tabindex","4","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[13,135],[13,145]]]]],[],[]],"autoWidth","true"],0,null,["loc",[null,[13,24],[13,190]]]]
         ],
         locals: [],
         templates: [child0]
@@ -22931,7 +25408,7 @@ define('ghost/templates/signin', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -22964,7 +25441,7 @@ define('ghost/templates/signin', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -23044,10 +25521,10 @@ define('ghost/templates/signin', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","identification"],0,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","password"],1,null],
-        ["block","gh-spin-button",[],["class","login btn btn-blue btn-block","type","submit","action","validateAndAuthenticate","tabindex","3","submitting",["subexpr","@mut",[["get","loggingIn"]],[]],"autoWidth","false"],2,null],
-        ["content","flowErrors"]
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[5,40],[5,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[5,66],[5,78]]]]],[],[]],"property","identification"],0,null,["loc",[null,[5,16],[9,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[10,40],[10,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[10,66],[10,78]]]]],[],[]],"property","password"],1,null,["loc",[null,[10,16],[15,34]]]],
+        ["block","gh-spin-button",[],["class","login btn btn-blue btn-block","type","submit","action","validateAndAuthenticate","tabindex","3","submitting",["subexpr","@mut",[["get","loggingIn",["loc",[null,[16,142],[16,151]]]]],[],[]],"autoWidth","false"],2,null,["loc",[null,[16,16],[16,197]]]],
+        ["content","flowErrors",["loc",[null,[19,34],[19,50]]]]
       ],
       locals: [],
       templates: [child0, child1, child2]
@@ -23063,7 +25540,7 @@ define('ghost/templates/signup', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -23115,8 +25592,8 @@ define('ghost/templates/signup', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["type","email","name","email","placeholder","Eg. john@example.com","enter",["subexpr","action",["signup"],[]],"disabled","disabled","autocorrect","off","value",["subexpr","@mut",[["get","model.email"]],[]],"focusOut",["subexpr","action",["handleEmail"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","email"]]
+          ["inline","gh-input",[],["type","email","name","email","placeholder","Eg. john@example.com","enter",["subexpr","action",["signup"],[],["loc",[null,[18,102],[18,119]]]],"disabled","disabled","autocorrect","off","value",["subexpr","@mut",[["get","model.email",["loc",[null,[18,164],[18,175]]]]],[],[]],"focusOut",["subexpr","action",["validate","email"],[],["loc",[null,[18,185],[18,212]]]]],["loc",[null,[18,24],[18,214]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[20,46],[20,58]]]]],[],[]],"property","email"],["loc",[null,[20,20],[20,77]]]]
         ],
         locals: [],
         templates: []
@@ -23125,7 +25602,7 @@ define('ghost/templates/signup', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -23177,8 +25654,8 @@ define('ghost/templates/signup', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-trim-focus-input",[],["tabindex","1","type","text","name","name","placeholder","Eg. John H. Watson","enter",["subexpr","action",["signup"],[]],"autocorrect","off","value",["subexpr","@mut",[["get","model.name"]],[]],"focusOut",["subexpr","action",["validate","name"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","name"]]
+          ["inline","gh-trim-focus-input",[],["tabindex","1","type","text","name","name","placeholder","Eg. John H. Watson","enter",["subexpr","action",["signup"],[],["loc",[null,[25,122],[25,139]]]],"autocorrect","off","value",["subexpr","@mut",[["get","model.name",["loc",[null,[25,164],[25,174]]]]],[],[]],"focusOut",["subexpr","action",["validate","name"],[],["loc",[null,[25,184],[25,210]]]]],["loc",[null,[25,24],[25,212]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[27,46],[27,58]]]]],[],[]],"property","name"],["loc",[null,[27,20],[27,76]]]]
         ],
         locals: [],
         templates: []
@@ -23187,7 +25664,7 @@ define('ghost/templates/signup', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -23239,8 +25716,8 @@ define('ghost/templates/signup', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["tabindex","2","type","password","name","password","enter",["subexpr","action",["signup"],[]],"autocorrect","off","value",["subexpr","@mut",[["get","model.password"]],[]],"focusOut",["subexpr","action",["validate","password"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"property","password"]]
+          ["inline","gh-input",[],["tabindex","2","type","password","name","password","enter",["subexpr","action",["signup"],[],["loc",[null,[32,86],[32,103]]]],"autocorrect","off","value",["subexpr","@mut",[["get","model.password",["loc",[null,[32,128],[32,142]]]]],[],[]],"focusOut",["subexpr","action",["validate","password"],[],["loc",[null,[32,152],[32,182]]]]],["loc",[null,[32,24],[32,184]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[34,46],[34,58]]]]],[],[]],"property","password"],["loc",[null,[34,20],[34,80]]]]
         ],
         locals: [],
         templates: []
@@ -23249,7 +25726,7 @@ define('ghost/templates/signup', ['exports'], function (exports) {
     var child3 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -23282,7 +25759,7 @@ define('ghost/templates/signup', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -23330,7 +25807,9 @@ define('ghost/templates/signup', ['exports'], function (exports) {
         dom.setAttribute(el4,"class","gh-flow-create");
         dom.setAttribute(el4,"method","post");
         dom.setAttribute(el4,"novalidate","novalidate");
-        var el5 = dom.createTextNode("\n                ");
+        var el5 = dom.createTextNode("\n");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("                ");
         dom.appendChild(el4, el5);
         var el5 = dom.createElement("input");
         dom.setAttribute(el5,"style","display:none;");
@@ -23387,21 +25866,21 @@ define('ghost/templates/signup', ['exports'], function (exports) {
         var element0 = dom.childAt(fragment, [0, 1, 1]);
         var element1 = dom.childAt(element0, [3]);
         var morphs = new Array(6);
-        morphs[0] = dom.createMorphAt(element1,5,5);
-        morphs[1] = dom.createMorphAt(element1,7,7);
-        morphs[2] = dom.createMorphAt(element1,8,8);
-        morphs[3] = dom.createMorphAt(element1,9,9);
+        morphs[0] = dom.createMorphAt(element1,6,6);
+        morphs[1] = dom.createMorphAt(element1,8,8);
+        morphs[2] = dom.createMorphAt(element1,9,9);
+        morphs[3] = dom.createMorphAt(element1,10,10);
         morphs[4] = dom.createMorphAt(element0,5,5);
         morphs[5] = dom.createUnsafeMorphAt(dom.childAt(element0, [7]),0,0);
         return morphs;
       },
       statements: [
-        ["inline","gh-profile-image",[],["fileStorage",["subexpr","@mut",[["get","config.fileStorage"]],[]],"email",["subexpr","@mut",[["get","validEmail"]],[]],"setImage","setImage"]],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","email"],0,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","name"],1,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated"]],[]],"property","password"],2,null],
-        ["block","gh-spin-button",[],["tabindex","3","type","submit","class","btn btn-green btn-lg btn-block","action","signup","submitting",["subexpr","@mut",[["get","submitting"]],[]],"autoWidth","false"],3,null],
-        ["content","flowErrors"]
+        ["inline","gh-profile-image",[],["fileStorage",["subexpr","@mut",[["get","config.fileStorage",["loc",[null,[14,47],[14,65]]]]],[],[]],"email",["subexpr","@mut",[["get","model.email",["loc",[null,[14,72],[14,83]]]]],[],[]],"setImage","setImage"],["loc",[null,[14,16],[14,105]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[15,40],[15,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[15,66],[15,78]]]]],[],[]],"property","email"],0,null,["loc",[null,[15,16],[21,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[22,40],[22,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[22,66],[22,78]]]]],[],[]],"property","name"],1,null,["loc",[null,[22,16],[28,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","model.errors",["loc",[null,[29,40],[29,52]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","hasValidated",["loc",[null,[29,66],[29,78]]]]],[],[]],"property","password"],2,null,["loc",[null,[29,16],[35,34]]]],
+        ["block","gh-spin-button",[],["tabindex","3","type","submit","class","btn btn-green btn-lg btn-block","action","signup","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[38,123],[38,133]]]]],[],[]],"autoWidth","false"],3,null,["loc",[null,[38,12],[38,186]]]],
+        ["content","flowErrors",["loc",[null,[39,34],[39,50]]]]
       ],
       locals: [],
       templates: [child0, child1, child2, child3]
@@ -23417,7 +25896,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -23453,7 +25932,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
     var child1 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -23497,7 +25976,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["element","action",["openModal","invite-new-user"],[]]
+          ["element","action",["openModal","invite-new-user"],[],["loc",[null,[7,46],[7,86]]]]
         ],
         locals: [],
         templates: []
@@ -23511,7 +25990,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               var child0 = (function() {
                 return {
                   meta: {
-                    "revision": "Ember@1.13.2",
+                    "revision": "Ember@1.13.10",
                     "loc": {
                       "source": null,
                       "start": {
@@ -23552,7 +26031,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               var child1 = (function() {
                 return {
                   meta: {
-                    "revision": "Ember@1.13.2",
+                    "revision": "Ember@1.13.10",
                     "loc": {
                       "source": null,
                       "start": {
@@ -23592,7 +26071,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                     return morphs;
                   },
                   statements: [
-                    ["content","component.createdAt"]
+                    ["content","component.createdAt",["loc",[null,[35,65],[35,88]]]]
                   ],
                   locals: [],
                   templates: []
@@ -23601,7 +26080,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               var child2 = (function() {
                 return {
                   meta: {
-                    "revision": "Ember@1.13.2",
+                    "revision": "Ember@1.13.10",
                     "loc": {
                       "source": null,
                       "start": {
@@ -23641,7 +26120,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               var child3 = (function() {
                 return {
                   meta: {
-                    "revision": "Ember@1.13.2",
+                    "revision": "Ember@1.13.10",
                     "loc": {
                       "source": null,
                       "start": {
@@ -23689,8 +26168,8 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                     return morphs;
                   },
                   statements: [
-                    ["element","action",["revoke"],["target",["get","component"]]],
-                    ["element","action",["resend"],["target",["get","component"]]]
+                    ["element","action",["revoke"],["target",["get","component",["loc",[null,[43,102],[43,111]]]]],["loc",[null,[43,77],[43,113]]]],
+                    ["element","action",["resend"],["target",["get","component",["loc",[null,[46,102],[46,111]]]]],["loc",[null,[46,77],[46,113]]]]
                   ],
                   locals: [],
                   templates: []
@@ -23698,7 +26177,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               }());
               return {
                 meta: {
-                  "revision": "Ember@1.13.2",
+                  "revision": "Ember@1.13.10",
                   "loc": {
                     "source": null,
                     "start": {
@@ -23776,9 +26255,9 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                   return morphs;
                 },
                 statements: [
-                  ["content","user.email"],
-                  ["block","if",[["get","user.pending"]],[],0,1],
-                  ["block","if",[["get","component.isSending"]],[],2,3]
+                  ["content","user.email",["loc",[null,[28,55],[28,69]]]],
+                  ["block","if",[["get","user.pending",["loc",[null,[29,46],[29,58]]]]],[],0,1,["loc",[null,[29,40],[37,47]]]],
+                  ["block","if",[["get","component.isSending",["loc",[null,[40,42],[40,61]]]]],[],2,3,["loc",[null,[40,36],[49,43]]]]
                 ],
                 locals: ["component"],
                 templates: [child0, child1, child2, child3]
@@ -23786,7 +26265,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
             }());
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
@@ -23817,7 +26296,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                 return morphs;
               },
               statements: [
-                ["block","gh-user-invited",[],["user",["subexpr","@mut",[["get","user"]],[]],"reload","reload"],0,null]
+                ["block","gh-user-invited",[],["user",["subexpr","@mut",[["get","user",["loc",[null,[24,48],[24,52]]]]],[],[]],"reload","reload"],0,null,["loc",[null,[24,24],[52,44]]]]
               ],
               locals: ["user"],
               templates: [child0]
@@ -23825,7 +26304,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
           }());
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -23872,7 +26351,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["block","each",[["get","invitedUsers"]],[],0,null]
+              ["block","each",[["get","invitedUsers",["loc",[null,[23,28],[23,40]]]]],[],0,null,["loc",[null,[23,20],[53,29]]]]
             ],
             locals: [],
             templates: [child0]
@@ -23880,7 +26359,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -23911,7 +26390,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","if",[["get","invitedUsers"]],[],0,null]
+            ["block","if",[["get","invitedUsers",["loc",[null,[20,18],[20,30]]]]],[],0,null,["loc",[null,[20,12],[55,19]]]]
           ],
           locals: [],
           templates: [child0]
@@ -23923,7 +26402,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
             var child0 = (function() {
               return {
                 meta: {
-                  "revision": "Ember@1.13.2",
+                  "revision": "Ember@1.13.10",
                   "loc": {
                     "source": null,
                     "start": {
@@ -23956,7 +26435,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                   return morphs;
                 },
                 statements: [
-                  ["inline","partial",["user-list-item"],[]]
+                  ["inline","partial",["user-list-item"],[],["loc",[null,[65,28],[65,56]]]]
                 ],
                 locals: [],
                 templates: []
@@ -23964,7 +26443,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
             }());
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
@@ -23995,7 +26474,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                 return morphs;
               },
               statements: [
-                ["block","link-to",["team.user",["get","user"]],["class","user-list-item"],0,null]
+                ["block","link-to",["team.user",["get","user",["loc",[null,[64,47],[64,51]]]]],["class","user-list-item"],0,null,["loc",[null,[64,24],[66,36]]]]
               ],
               locals: ["component"],
               templates: [child0]
@@ -24003,7 +26482,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
           }());
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -24034,7 +26513,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["block","gh-user-active",[],["user",["subexpr","@mut",[["get","user"]],[]]],0,null]
+              ["block","gh-user-active",[],["user",["subexpr","@mut",[["get","user",["loc",[null,[63,43],[63,47]]]]],[],[]]],0,null,["loc",[null,[63,20],[67,39]]]]
             ],
             locals: [],
             templates: [child0]
@@ -24044,7 +26523,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
           var child0 = (function() {
             return {
               meta: {
-                "revision": "Ember@1.13.2",
+                "revision": "Ember@1.13.10",
                 "loc": {
                   "source": null,
                   "start": {
@@ -24080,7 +26559,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
                 return morphs;
               },
               statements: [
-                ["inline","partial",["user-list-item"],[]]
+                ["inline","partial",["user-list-item"],[],["loc",[null,[70,69],[70,97]]]]
               ],
               locals: ["component"],
               templates: []
@@ -24088,7 +26567,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
           }());
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -24119,7 +26598,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["block","gh-user-active",[],["user",["subexpr","@mut",[["get","user"]],[]]],0,null]
+              ["block","gh-user-active",[],["user",["subexpr","@mut",[["get","user",["loc",[null,[69,43],[69,47]]]]],[],[]]],0,null,["loc",[null,[69,20],[71,39]]]]
             ],
             locals: [],
             templates: [child0]
@@ -24127,7 +26606,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24158,7 +26637,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","unless",[["get","session.user.isAuthor"]],[],0,1]
+            ["block","unless",[["get","session.user.isAuthor",["loc",[null,[62,26],[62,47]]]]],[],0,1,["loc",[null,[62,16],[72,27]]]]
           ],
           locals: ["user"],
           templates: [child0, child1]
@@ -24166,7 +26645,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24217,8 +26696,8 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","unless",[["get","session.user.isAuthor"]],[],0,null],
-          ["block","each",[["get","activeUsers"]],["key","id"],1,null]
+          ["block","unless",[["get","session.user.isAuthor",["loc",[null,[19,18],[19,39]]]]],[],0,null,["loc",[null,[19,8],[56,19]]]],
+          ["block","each",[["get","activeUsers",["loc",[null,[60,20],[60,31]]]]],["key","id"],1,null,["loc",[null,[60,12],[73,21]]]]
         ],
         locals: [],
         templates: [child0, child1]
@@ -24226,7 +26705,7 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -24281,9 +26760,9 @@ define('ghost/templates/team/index', ['exports'], function (exports) {
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["block","unless",[["get","session.user.isAuthor"]],[],1,null],
-        ["block","gh-infinite-scroll",[],["fetch","loadNextPage","isLoading",["subexpr","@mut",[["get","isLoading"]],[]],"tagName","section","classNames","view-content team"],2,null]
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[3,93]]]],
+        ["block","unless",[["get","session.user.isAuthor",["loc",[null,[5,18],[5,39]]]]],[],1,null,["loc",[null,[5,8],[9,19]]]],
+        ["block","gh-infinite-scroll",[],["fetch","loadNextPage","isLoading",["subexpr","@mut",[["get","isLoading",["loc",[null,[14,18],[14,27]]]]],[],[]],"tagName","section","classNames","view-content team"],2,null,["loc",[null,[12,4],[75,27]]]]
       ],
       locals: [],
       templates: [child0, child1, child2]
@@ -24299,7 +26778,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child0 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24344,8 +26823,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","link-to",["Team","team"],[]],
-          ["content","user.name"]
+          ["inline","link-to",["Team","team"],[],["loc",[null,[4,12],[4,37]]]],
+          ["content","user.name",["loc",[null,[5,51],[5,64]]]]
         ],
         locals: [],
         templates: []
@@ -24355,7 +26834,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24402,7 +26881,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
         var child0 = (function() {
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -24444,7 +26923,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["element","action",["openModal","transfer-owner",["get","this"]],[]]
+              ["element","action",["openModal","transfer-owner",["get","this",["loc",[null,[17,78],[17,82]]]]],[],["loc",[null,[17,40],[17,84]]]]
             ],
             locals: [],
             templates: []
@@ -24453,7 +26932,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
         var child1 = (function() {
           return {
             meta: {
-              "revision": "Ember@1.13.2",
+              "revision": "Ember@1.13.10",
               "loc": {
                 "source": null,
                 "start": {
@@ -24496,7 +26975,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
               return morphs;
             },
             statements: [
-              ["element","action",["openModal","delete-user",["get","this"]],[]]
+              ["element","action",["openModal","delete-user",["get","this",["loc",[null,[24,75],[24,79]]]]],[],["loc",[null,[24,40],[24,81]]]]
             ],
             locals: [],
             templates: []
@@ -24504,7 +26983,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
         }());
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24538,8 +27017,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["block","if",[["get","canMakeOwner"]],[],0,null],
-            ["block","if",[["get","deleteUserActionIsVisible"]],[],1,null]
+            ["block","if",[["get","canMakeOwner",["loc",[null,[15,30],[15,42]]]]],[],0,null,["loc",[null,[15,24],[21,31]]]],
+            ["block","if",[["get","deleteUserActionIsVisible",["loc",[null,[22,30],[22,55]]]]],[],1,null,["loc",[null,[22,24],[28,31]]]]
           ],
           locals: [],
           templates: [child0, child1]
@@ -24547,7 +27026,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24591,8 +27070,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","gh-dropdown-button",[],["dropdownName","user-actions-menu","classNames","btn btn-default only-has-icon user-actions-cog","title","User Actions"],0,null],
-          ["block","gh-dropdown",[],["name","user-actions-menu","tagName","ul","classNames","user-actions-menu dropdown-menu dropdown-triangle-top-right"],1,null]
+          ["block","gh-dropdown-button",[],["dropdownName","user-actions-menu","classNames","btn btn-default only-has-icon user-actions-cog","title","User Actions"],0,null,["loc",[null,[10,20],[13,43]]]],
+          ["block","gh-dropdown",[],["name","user-actions-menu","tagName","ul","classNames","user-actions-menu dropdown-menu dropdown-triangle-top-right"],1,null,["loc",[null,[14,20],[29,36]]]]
         ],
         locals: [],
         templates: [child0, child1]
@@ -24601,7 +27080,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child2 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24636,7 +27115,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24669,7 +27148,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"property","name"]]
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[60,50],[60,61]]]]],[],[]],"property","name"],["loc",[null,[60,24],[60,79]]]]
           ],
           locals: [],
           templates: []
@@ -24678,7 +27157,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24717,7 +27196,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24761,8 +27240,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","input",[],["value",["subexpr","@mut",[["get","user.name"]],[]],"id","user-name","class","gh-input user-name","placeholder","Full Name","autocorrect","off","focusOut",["subexpr","action",["validate","name"],[]]]],
-          ["block","if",[["get","user.errors.name"]],[],0,1]
+          ["inline","input",[],["value",["subexpr","@mut",[["get","user.name",["loc",[null,[58,34],[58,43]]]]],[],[]],"id","user-name","class","gh-input user-name","placeholder","Full Name","autocorrect","off","focusOut",["subexpr","action",["validate","name"],[],["loc",[null,[58,137],[58,163]]]]],["loc",[null,[58,20],[58,165]]]],
+          ["block","if",[["get","user.errors.name",["loc",[null,[59,26],[59,42]]]]],[],0,1,["loc",[null,[59,20],[63,27]]]]
         ],
         locals: [],
         templates: [child0, child1]
@@ -24771,7 +27250,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child4 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24829,10 +27308,10 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-input",[],["class","gh-input user-name","id","user-slug","value",["subexpr","@mut",[["get","slugValue"]],[]],"name","user","focus-out","updateSlug","placeholder","Slug","selectOnClick","true","autocorrect","off"]],
-          ["content","gh-blog-url"],
-          ["content","slugValue"],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"property","slug"]]
+          ["inline","gh-input",[],["class","gh-input user-name","id","user-slug","value",["subexpr","@mut",[["get","slugValue",["loc",[null,[72,79],[72,88]]]]],[],[]],"name","user","focus-out","updateSlug","placeholder","Slug","selectOnClick","true","autocorrect","off"],["loc",[null,[72,20],[72,183]]]],
+          ["content","gh-blog-url",["loc",[null,[73,23],[73,38]]]],
+          ["content","slugValue",["loc",[null,[73,46],[73,59]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[74,46],[74,57]]]]],[],[]],"property","slug"],["loc",[null,[74,20],[74,75]]]]
         ],
         locals: [],
         templates: []
@@ -24842,7 +27321,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24880,8 +27359,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","input",[],["type","email","value",["subexpr","@mut",[["get","user.email"]],[]],"id","user-email","name","email","class","gh-input","placeholder","Email Address","autocapitalize","off","autocorrect","off","autocomplete","off","focusOut",["subexpr","action",["validate","email"],[]]]],
-            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"property","email"]]
+            ["inline","input",[],["type","email","value",["subexpr","@mut",[["get","user.email",["loc",[null,[81,51],[81,61]]]]],[],[]],"id","user-email","name","email","class","gh-input","placeholder","Email Address","autocapitalize","off","autocorrect","off","autocomplete","off","focusOut",["subexpr","action",["validate","email"],[],["loc",[null,[81,203],[81,230]]]]],["loc",[null,[81,24],[81,232]]]],
+            ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[82,50],[82,61]]]]],[],[]],"property","email"],["loc",[null,[82,24],[82,80]]]]
           ],
           locals: [],
           templates: []
@@ -24890,7 +27369,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       var child1 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -24925,7 +27404,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["content","user.email"]
+            ["content","user.email",["loc",[null,[84,30],[84,44]]]]
           ],
           locals: [],
           templates: []
@@ -24933,7 +27412,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -24979,7 +27458,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","unless",[["get","isAdminUserOnOwnerProfile"]],[],0,1]
+          ["block","unless",[["get","isAdminUserOnOwnerProfile",["loc",[null,[80,30],[80,55]]]]],[],0,1,["loc",[null,[80,20],[85,31]]]]
         ],
         locals: [],
         templates: [child0, child1]
@@ -24988,7 +27467,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child6 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -25049,7 +27528,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","gh-select-native",[],["id","new-user-role","content",["subexpr","@mut",[["get","roles"]],[]],"optionValuePath","id","optionLabelPath","name","selection",["subexpr","@mut",[["get","model.role"]],[]],"action","changeRole"]]
+          ["inline","gh-select-native",[],["id","new-user-role","content",["subexpr","@mut",[["get","roles",["loc",[null,[94,40],[94,45]]]]],[],[]],"optionValuePath","id","optionLabelPath","name","selection",["subexpr","@mut",[["get","model.role",["loc",[null,[97,42],[97,52]]]]],[],[]],"action","changeRole"],["loc",[null,[93,28],[99,30]]]]
         ],
         locals: [],
         templates: []
@@ -25058,7 +27537,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child7 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -25109,8 +27588,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","input",[],["type","text","value",["subexpr","@mut",[["get","user.location"]],[]],"id","user-location","class","gh-input","focusOut",["subexpr","action",["validate","location"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"property","location"]]
+          ["inline","input",[],["type","text","value",["subexpr","@mut",[["get","user.location",["loc",[null,[107,46],[107,59]]]]],[],[]],"id","user-location","class","gh-input","focusOut",["subexpr","action",["validate","location"],[],["loc",[null,[107,105],[107,135]]]]],["loc",[null,[107,20],[107,137]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[108,46],[108,57]]]]],[],[]],"property","location"],["loc",[null,[108,20],[108,79]]]]
         ],
         locals: [],
         templates: []
@@ -25119,7 +27598,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child8 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -25170,8 +27649,8 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","input",[],["type","url","value",["subexpr","@mut",[["get","user.website"]],[]],"id","user-website","class","gh-input","autocapitalize","off","autocorrect","off","autocomplete","off","focusOut",["subexpr","action",["validate","website"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"property","website"]]
+          ["inline","input",[],["type","url","value",["subexpr","@mut",[["get","user.website",["loc",[null,[114,45],[114,57]]]]],[],[]],"id","user-website","class","gh-input","autocapitalize","off","autocorrect","off","autocomplete","off","focusOut",["subexpr","action",["validate","website"],[],["loc",[null,[114,160],[114,189]]]]],["loc",[null,[114,20],[114,191]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[115,46],[115,57]]]]],[],[]],"property","website"],["loc",[null,[115,20],[115,78]]]]
         ],
         locals: [],
         templates: []
@@ -25180,7 +27659,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     var child9 = (function() {
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -25236,9 +27715,9 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["inline","textarea",[],["id","user-bio","class","gh-input","value",["subexpr","@mut",[["get","user.bio"]],[]],"focusOut",["subexpr","action",["validate","bio"],[]]]],
-          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"property","bio"]],
-          ["inline","gh-count-characters",[["get","user.bio"]],[]]
+          ["inline","textarea",[],["id","user-bio","class","gh-input","value",["subexpr","@mut",[["get","user.bio",["loc",[null,[121,68],[121,76]]]]],[],[]],"focusOut",["subexpr","action",["validate","bio"],[],["loc",[null,[121,86],[121,111]]]]],["loc",[null,[121,20],[121,113]]]],
+          ["inline","gh-error-message",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[122,46],[122,57]]]]],[],[]],"property","bio"],["loc",[null,[122,20],[122,74]]]],
+          ["inline","gh-count-characters",[["get","user.bio",["loc",[null,[125,46],[125,54]]]]],[],["loc",[null,[125,24],[125,56]]]]
         ],
         locals: [],
         templates: []
@@ -25248,7 +27727,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       var child0 = (function() {
         return {
           meta: {
-            "revision": "Ember@1.13.2",
+            "revision": "Ember@1.13.10",
             "loc": {
               "source": null,
               "start": {
@@ -25295,7 +27774,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
             return morphs;
           },
           statements: [
-            ["inline","input",[],["value",["subexpr","@mut",[["get","user.password"]],[]],"type","password","id","user-password-old","class","gh-input"]]
+            ["inline","input",[],["value",["subexpr","@mut",[["get","user.password",["loc",[null,[138,38],[138,51]]]]],[],[]],"type","password","id","user-password-old","class","gh-input"],["loc",[null,[138,24],[138,109]]]]
           ],
           locals: [],
           templates: []
@@ -25303,7 +27782,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
       }());
       return {
         meta: {
-          "revision": "Ember@1.13.2",
+          "revision": "Ember@1.13.10",
           "loc": {
             "source": null,
             "start": {
@@ -25398,10 +27877,10 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
           return morphs;
         },
         statements: [
-          ["block","unless",[["get","isNotOwnProfile"]],[],0,null],
-          ["inline","input",[],["value",["subexpr","@mut",[["get","user.newPassword"]],[]],"type","password","id","user-password-new","class","gh-input"]],
-          ["inline","input",[],["value",["subexpr","@mut",[["get","user.ne2Password"]],[]],"type","password","id","user-new-password-verification","class","gh-input"]],
-          ["element","action",["password"],[]]
+          ["block","unless",[["get","isNotOwnProfile",["loc",[null,[135,30],[135,45]]]]],[],0,null,["loc",[null,[135,20],[140,31]]]],
+          ["inline","input",[],["value",["subexpr","@mut",[["get","user.newPassword",["loc",[null,[144,38],[144,54]]]]],[],[]],"type","password","id","user-password-new","class","gh-input"],["loc",[null,[144,24],[144,112]]]],
+          ["inline","input",[],["value",["subexpr","@mut",[["get","user.ne2Password",["loc",[null,[149,38],[149,54]]]]],[],[]],"type","password","id","user-new-password-verification","class","gh-input"],["loc",[null,[149,24],[149,125]]]],
+          ["element","action",["password"],[],["loc",[null,[152,89],[152,110]]]]
         ],
         locals: [],
         templates: [child0]
@@ -25409,7 +27888,7 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
     }());
     return {
       meta: {
-        "revision": "Ember@1.13.2",
+        "revision": "Ember@1.13.10",
         "loc": {
           "source": null,
           "start": {
@@ -25480,7 +27959,9 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
         dom.setAttribute(el3,"class","user-profile");
         dom.setAttribute(el3,"novalidate","novalidate");
         dom.setAttribute(el3,"autocomplete","off");
-        var el4 = dom.createTextNode("\n\n            ");
+        var el4 = dom.createTextNode("\n\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("            ");
         dom.appendChild(el3, el4);
         var el4 = dom.createElement("input");
         dom.setAttribute(el4,"style","display:none;");
@@ -25593,11 +28074,11 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
         var element10 = dom.childAt(element9, [1]);
         var element11 = dom.childAt(element10, [1]);
         var element12 = dom.childAt(element9, [3]);
-        var element13 = dom.childAt(element12, [5]);
+        var element13 = dom.childAt(element12, [6]);
         var element14 = dom.childAt(element13, [1]);
         var element15 = dom.childAt(element14, [1]);
         var element16 = dom.childAt(element14, [3]);
-        var element17 = dom.childAt(element12, [7]);
+        var element17 = dom.childAt(element12, [8]);
         var morphs = new Array(16);
         morphs[0] = dom.createMorphAt(element7,1,1);
         morphs[1] = dom.createMorphAt(element8,1,1);
@@ -25614,31 +28095,733 @@ define('ghost/templates/team/user', ['exports'], function (exports) {
         morphs[12] = dom.createMorphAt(element17,7,7);
         morphs[13] = dom.createMorphAt(element17,9,9);
         morphs[14] = dom.createMorphAt(element17,11,11);
-        morphs[15] = dom.createMorphAt(element12,9,9);
+        morphs[15] = dom.createMorphAt(element12,10,10);
         return morphs;
       },
       statements: [
-        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null],
-        ["block","if",[["get","userActionsAreVisible"]],[],1,null],
-        ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting"]],[]]],2,null],
-        ["attribute","style",["concat",[["get","coverImageBackground"]]]],
-        ["element","action",["openModal","upload",["get","user"],"cover"],[]],
-        ["attribute","style",["concat",[["get","userImageBackground"]]]],
-        ["content","user.name"],
-        ["element","action",["openModal","upload",["get","user"],"image"],[]],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated"]],[]],"property","name","class","first-form-group"],3,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated"]],[]],"property","slug"],4,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated"]],[]],"property","email"],5,null],
-        ["block","if",[["get","rolesDropdownIsVisible"]],[],6,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated"]],[]],"property","location"],7,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated"]],[]],"property","website"],8,null],
-        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors"]],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated"]],[]],"property","bio","class","bio-container"],9,null],
-        ["block","unless",[["get","isAdminUserOnOwnerProfile"]],[],10,null]
+        ["block","gh-view-title",[],["openMobileMenu","openMobileMenu"],0,null,["loc",[null,[3,8],[6,26]]]],
+        ["block","if",[["get","userActionsAreVisible",["loc",[null,[8,18],[8,39]]]]],[],1,null,["loc",[null,[8,12],[31,19]]]],
+        ["block","gh-spin-button",[],["class","btn btn-blue","action","save","submitting",["subexpr","@mut",[["get","submitting",["loc",[null,[33,76],[33,86]]]]],[],[]]],2,null,["loc",[null,[33,12],[33,111]]]],
+        ["attribute","style",["get","coverImageBackground",["loc",[null,[39,43],[39,63]]]]],
+        ["element","action",["openModal","upload",["get","user",["loc",[null,[40,105],[40,109]]]],"cover"],[],["loc",[null,[40,75],[40,119]]]],
+        ["attribute","style",["get","userImageBackground",["loc",[null,[52,61],[52,80]]]]],
+        ["content","user.name",["loc",[null,[52,104],[52,117]]]],
+        ["element","action",["openModal","upload",["get","user",["loc",[null,[53,72],[53,76]]]],"image"],[],["loc",[null,[53,42],[53,86]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[56,40],[56,51]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated",["loc",[null,[56,65],[56,82]]]]],[],[]],"property","name","class","first-form-group"],3,null,["loc",[null,[56,16],[64,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[70,40],[70,51]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated",["loc",[null,[70,65],[70,82]]]]],[],[]],"property","slug"],4,null,["loc",[null,[70,16],[75,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[77,40],[77,51]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated",["loc",[null,[77,65],[77,82]]]]],[],[]],"property","email"],5,null,["loc",[null,[77,16],[87,34]]]],
+        ["block","if",[["get","rolesDropdownIsVisible",["loc",[null,[89,22],[89,44]]]]],[],6,null,["loc",[null,[89,16],[103,23]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[105,40],[105,51]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated",["loc",[null,[105,65],[105,82]]]]],[],[]],"property","location"],7,null,["loc",[null,[105,16],[110,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[112,40],[112,51]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated",["loc",[null,[112,65],[112,82]]]]],[],[]],"property","website"],8,null,["loc",[null,[112,16],[117,34]]]],
+        ["block","gh-form-group",[],["errors",["subexpr","@mut",[["get","user.errors",["loc",[null,[119,40],[119,51]]]]],[],[]],"hasValidated",["subexpr","@mut",[["get","user.hasValidated",["loc",[null,[119,65],[119,82]]]]],[],[]],"property","bio","class","bio-container"],9,null,["loc",[null,[119,16],[127,34]]]],
+        ["block","unless",[["get","isAdminUserOnOwnerProfile",["loc",[null,[133,22],[133,47]]]]],[],10,null,["loc",[null,[133,12],[156,23]]]]
       ],
       locals: [],
       templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10]
     };
   }()));
+
+});
+define('ghost/tests/acceptance/authentication-test', ['mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/ember-simple-auth', 'ember-cli-mirage', 'ghost/utils/window-proxy'], function (mocha, chai, Ember, startApp, ember_simple_auth, Mirage, windowProxy) {
+
+    'use strict';
+
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    mocha.describe('Acceptance: Authentication', function () {
+        var application = undefined,
+            originalReplaceLocation = undefined;
+
+        mocha.beforeEach(function () {
+            application = startApp['default']();
+        });
+
+        mocha.afterEach(function () {
+            run(application, 'destroy');
+        });
+
+        mocha.describe('general page', function () {
+            mocha.beforeEach(function () {
+                originalReplaceLocation = windowProxy['default'].replaceLocation;
+                windowProxy['default'].replaceLocation = function (url) {
+                    visit(url);
+                };
+
+                server.loadFixtures();
+                var role = server.create('role', { name: 'Administrator' }),
+                    user = server.create('user', { roles: [role], slug: 'test-user' });
+            });
+
+            mocha.afterEach(function () {
+                windowProxy['default'].replaceLocation = originalReplaceLocation;
+            });
+
+            mocha.it('invalidates session on 401 API response', function () {
+                var role = server.create('role', { name: 'Administrator' }),
+                    user = server.create('user', { roles: [role] });
+
+                // return a 401 when attempting to retrieve tags
+                server.get('/users/', function (db, request) {
+                    return new Mirage['default'].Response(401, {}, {
+                        errors: [{ message: 'Access denied.', errorType: 'UnauthorizedError' }]
+                    });
+                });
+
+                ember_simple_auth.authenticateSession(application);
+                visit('/team');
+
+                andThen(function () {
+                    chai.expect(currentURL(), 'url after 401').to.equal('/signin');
+                });
+            });
+        });
+
+        mocha.describe('editor', function () {
+            var origDebounce = Ember['default'].run.debounce;
+            var origThrottle = Ember['default'].run.throttle;
+
+            // we don't want the autosave interfering in this test
+            mocha.beforeEach(function () {
+                Ember['default'].run.debounce = function () {};
+                Ember['default'].run.throttle = function () {};
+            });
+
+            mocha.it('displays re-auth modal attempting to save with invalid session', function () {
+                var role = server.create('role', { name: 'Administrator' }),
+                    user = server.create('user', { roles: [role] });
+
+                // simulate an invalid session when saving the edited post
+                server.put('/posts/:id/', function (db, request) {
+                    var post = db.posts.find(request.params.id);
+
+                    var _JSON$parse$posts = _slicedToArray(JSON.parse(request.requestBody).posts, 1);
+
+                    var attrs = _JSON$parse$posts[0];
+
+                    if (attrs.markdown === 'Edited post body') {
+                        return new Mirage['default'].Response(401, {}, {
+                            errors: [{ message: 'Access denied.', errorType: 'UnauthorizedError' }]
+                        });
+                    } else {
+                        return {
+                            posts: [post]
+                        };
+                    }
+                });
+
+                server.loadFixtures();
+                ember_simple_auth.authenticateSession(application);
+
+                visit('/editor');
+
+                // create the post
+                fillIn('#entry-title', 'Test Post');
+                fillIn('textarea.markdown-editor', 'Test post body');
+                click('.js-publish-button');
+
+                andThen(function () {
+                    // we shouldn't have a modal at this point
+                    chai.expect(find('.modal-container #login').length, 'modal exists').to.equal(0);
+                    // we also shouldn't have any alerts
+                    chai.expect(find('.gh-alert').length, 'no of alerts').to.equal(0);
+                });
+
+                // update the post
+                fillIn('textarea.markdown-editor', 'Edited post body');
+                click('.js-publish-button');
+
+                andThen(function () {
+                    // we should see a re-auth modal
+                    chai.expect(find('.modal-container #login').length, 'modal exists').to.equal(1);
+                });
+            });
+
+            // don't clobber debounce/throttle for future tests
+            mocha.afterEach(function () {
+                Ember['default'].run.debounce = origDebounce;
+                Ember['default'].run.throttle = origThrottle;
+            });
+        });
+    });
+
+});
+define('ghost/tests/acceptance/settings/navigation-test', ['mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/ember-simple-auth'], function (mocha, chai, Ember, startApp, ember_simple_auth) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    mocha.describe('Acceptance: Settings - Navigation', function () {
+        var application = undefined;
+
+        mocha.beforeEach(function () {
+            application = startApp['default']();
+        });
+
+        mocha.afterEach(function () {
+            run(application, 'destroy');
+        });
+
+        mocha.it('redirects to signin when not authenticated', function () {
+            ember_simple_auth.invalidateSession(application);
+            visit('/settings/navigation');
+
+            andThen(function () {
+                chai.expect(currentURL(), 'currentURL').to.equal('/signin');
+            });
+        });
+
+        mocha.it('redirects to team page when authenticated as author', function () {
+            var role = server.create('role', { name: 'Author' }),
+                user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            ember_simple_auth.authenticateSession(application);
+            visit('/settings/navigation');
+
+            andThen(function () {
+                chai.expect(currentURL(), 'currentURL').to.equal('/team/test-user');
+            });
+        });
+
+        mocha.describe('when logged in', function () {
+            mocha.beforeEach(function () {
+                var role = server.create('role', { name: 'Administrator' }),
+                    user = server.create('user', { roles: [role] });
+
+                // load the settings fixtures
+                // TODO: this should always be run for acceptance tests
+                server.loadFixtures();
+
+                ember_simple_auth.authenticateSession(application);
+            });
+
+            mocha.it('can visit /settings/navigation', function () {
+                visit('/settings/navigation');
+
+                andThen(function () {
+                    chai.expect(currentPath()).to.equal('settings.navigation');
+                    // test has expected number of rows
+                    chai.expect($('.gh-blognav-item').length, 'navigation items count').to.equal(3);
+                });
+            });
+
+            mocha.it('saves settings', function () {
+                visit('/settings/navigation');
+                fillIn('.gh-blognav-label:first input', 'Test');
+                fillIn('.gh-blognav-url:first input', '/test');
+                triggerEvent('.gh-blognav-url:first input', 'blur');
+
+                click('.btn-blue');
+
+                andThen(function () {
+                    // TODO: Test for successful save here once we have a visual
+                    // indication. For now we know the save happened because
+                    // Pretender doesn't complain about an unknown URL
+
+                    // don't test against .error directly as it will pick up failed
+                    // tests "pre.error" elements
+                    chai.expect($('span.error').length, 'error fields count').to.equal(0);
+                    chai.expect($('.gh-alert').length, 'alerts count').to.equal(0);
+                });
+            });
+
+            mocha.it('clears unsaved settings when navigating away', function () {
+                visit('/settings/navigation');
+                fillIn('.gh-blognav-label:first input', 'Test');
+                triggerEvent('.gh-blognav-label:first input', 'blur');
+
+                andThen(function () {
+                    chai.expect($('.gh-blognav-label:first input').val()).to.equal('Test');
+                });
+
+                visit('/settings/code-injection');
+                visit('/settings/navigation');
+
+                andThen(function () {
+                    chai.expect($('.gh-blognav-label:first input').val()).to.equal('Home');
+                });
+            });
+        });
+    });
+
+});
+define('ghost/tests/acceptance/settings/tags-test', ['mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/ember-simple-auth'], function (mocha, chai, Ember, startApp, ember_simple_auth) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+    // Grabbed from keymaster's testing code because Ember's `keyEvent` helper
+    // is for some reason not triggering the events in a way that keymaster detects:
+    // https://github.com/madrobby/keymaster/blob/master/test/keymaster.html#L31
+    var modifierMap = {
+        16: 'shiftKey',
+        18: 'altKey',
+        17: 'ctrlKey',
+        91: 'metaKey'
+    };
+    var keydown = function keydown(code, modifiers, el) {
+        var event = document.createEvent('Event');
+        event.initEvent('keydown', true, true);
+        event.keyCode = code;
+        if (modifiers && modifiers.length > 0) {
+            for (var i in modifiers) {
+                event[modifierMap[modifiers[i]]] = true;
+            }
+        }
+        (el || document).dispatchEvent(event);
+    };
+    var keyup = function keyup(code, el) {
+        var event = document.createEvent('Event');
+        event.initEvent('keyup', true, true);
+        event.keyCode = code;
+        (el || document).dispatchEvent(event);
+    };
+
+    mocha.describe('Acceptance: Settings - Tags', function () {
+        var application = undefined;
+
+        mocha.beforeEach(function () {
+            application = startApp['default']();
+        });
+
+        mocha.afterEach(function () {
+            run(application, 'destroy');
+        });
+
+        mocha.it('redirects to signin when not authenticated', function () {
+            ember_simple_auth.invalidateSession(application);
+            visit('/settings/tags');
+
+            andThen(function () {
+                chai.expect(currentURL()).to.equal('/signin');
+            });
+        });
+
+        mocha.it('redirects to team page when authenticated as author', function () {
+            var role = server.create('role', { name: 'Author' }),
+                user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            ember_simple_auth.authenticateSession(application);
+            visit('/settings/navigation');
+
+            andThen(function () {
+                chai.expect(currentURL(), 'currentURL').to.equal('/team/test-user');
+            });
+        });
+
+        mocha.describe('when logged in', function () {
+            mocha.beforeEach(function () {
+                var role = server.create('role', { name: 'Administrator' }),
+                    user = server.create('user', { roles: [role] });
+
+                // load the settings fixtures
+                // TODO: this should always be run for acceptance tests
+                server.loadFixtures();
+
+                return ember_simple_auth.authenticateSession(application);
+            });
+
+            mocha.it('it renders, can be navigated, can edit, create & delete tags', function () {
+                var tag1 = server.create('tag'),
+                    tag2 = server.create('tag');
+
+                visit('/settings/tags');
+
+                andThen(function () {
+                    // it redirects to first tag
+                    chai.expect(currentURL(), 'currentURL').to.equal('/settings/tags/' + tag1.slug);
+
+                    // it has correct page title
+                    chai.expect(document.title, 'page title').to.equal('Settings - Tags - Test Blog');
+
+                    // it highlights nav menu
+                    chai.expect($('.gh-nav-settings-tags').hasClass('active'), 'highlights nav menu item').to.be['true'];
+
+                    // it lists all tags
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count').to.equal(2);
+                    chai.expect(find('.settings-tags .settings-tag:first .tag-title').text(), 'tag list item title').to.equal(tag1.name);
+
+                    // it highlights selected tag
+                    chai.expect(find('a[href="/settings/tags/' + tag1.slug + '"]').hasClass('active'), 'highlights selected tag').to.be['true'];
+
+                    // it shows selected tag form
+                    chai.expect(find('.tag-settings-pane h4').text(), 'settings pane title').to.equal('Tag Settings');
+                    chai.expect(find('.tag-settings-pane input[name="name"]').val(), 'loads correct tag into form').to.equal(tag1.name);
+                });
+
+                // click the second tag in the list
+                click('.tag-edit-button:last');
+
+                andThen(function () {
+                    // it navigates to selected tag
+                    chai.expect(currentURL(), 'url after clicking tag').to.equal('/settings/tags/' + tag2.slug);
+
+                    // it highlights selected tag
+                    chai.expect(find('a[href="/settings/tags/' + tag2.slug + '"]').hasClass('active'), 'highlights selected tag').to.be['true'];
+
+                    // it shows selected tag form
+                    chai.expect(find('.tag-settings-pane input[name="name"]').val(), 'loads correct tag into form').to.equal(tag2.name);
+                });
+
+                andThen(function () {
+                    // simulate up arrow press
+                    run(function () {
+                        keydown(38);
+                        keyup(38);
+                    });
+                });
+
+                andThen(function () {
+                    // it navigates to previous tag
+                    chai.expect(currentURL(), 'url after keyboard up arrow').to.equal('/settings/tags/' + tag1.slug);
+
+                    // it highlights selected tag
+                    chai.expect(find('a[href="/settings/tags/' + tag1.slug + '"]').hasClass('active'), 'selects previous tag').to.be['true'];
+                });
+
+                andThen(function () {
+                    // simulate down arrow press
+                    run(function () {
+                        keydown(40);
+                        keyup(40);
+                    });
+                });
+
+                andThen(function () {
+                    // it navigates to previous tag
+                    chai.expect(currentURL(), 'url after keyboard down arrow').to.equal('/settings/tags/' + tag2.slug);
+
+                    // it highlights selected tag
+                    chai.expect(find('a[href="/settings/tags/' + tag2.slug + '"]').hasClass('active'), 'selects next tag').to.be['true'];
+                });
+
+                // trigger save
+                fillIn('.tag-settings-pane input[name="name"]', 'New Name');
+                triggerEvent('.tag-settings-pane input[name="name"]', 'blur');
+
+                andThen(function () {
+                    // check we update with the data returned from the server
+                    chai.expect(find('.settings-tags .settings-tag:last .tag-title').text(), 'tag list updates on save').to.equal('New Name');
+                    chai.expect(find('.tag-settings-pane input[name="name"]').val(), 'settings form updates on save').to.equal('New Name');
+                });
+
+                // start new tag
+                click('.view-actions .btn-green');
+
+                andThen(function () {
+                    // it navigates to the new tag route
+                    chai.expect(currentURL(), 'new tag URL').to.equal('/settings/tags/new');
+
+                    // it displays the new tag form
+                    chai.expect(find('.tag-settings-pane h4').text(), 'settings pane title').to.equal('New Tag');
+
+                    // all fields start blank
+                    find('.tag-settings-pane input, .tag-settings-pane textarea').each(function () {
+                        chai.expect($(this).val(), 'input field for ' + $(this).attr('name')).to.be.blank;
+                    });
+                });
+
+                // save new tag
+                fillIn('.tag-settings-pane input[name="name"]', 'New Tag');
+                triggerEvent('.tag-settings-pane input[name="name"]', 'blur');
+
+                andThen(function () {
+                    // it redirects to the new tag's URL
+                    chai.expect(currentURL(), 'URL after tag creation').to.equal('/settings/tags/new-tag');
+
+                    // it adds the tag to the list and selects
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count after creation').to.equal(3);
+                    chai.expect(find('.settings-tags .settings-tag:last .tag-title').text(), 'new tag list item title').to.equal('New Tag');
+                    chai.expect(find('a[href="/settings/tags/new-tag"]').hasClass('active'), 'highlights new tag').to.be['true'];
+                });
+
+                // delete tag
+                click('.tag-delete-button');
+                click('.modal-container .btn-red');
+
+                andThen(function () {
+                    // it redirects to the first tag
+                    chai.expect(currentURL(), 'URL after tag deletion').to.equal('/settings/tags/' + tag1.slug);
+
+                    // it removes the tag from the list
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count after deletion').to.equal(2);
+                });
+            });
+
+            mocha.it('loads tag via slug when accessed directly', function () {
+                server.createList('tag', 2);
+
+                visit('/settings/tags/tag-1');
+
+                andThen(function () {
+                    chai.expect(currentURL(), 'URL after direct load').to.equal('/settings/tags/tag-1');
+
+                    // it loads all other tags
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count after direct load').to.equal(2);
+
+                    // selects tag in list
+                    chai.expect(find('a[href="/settings/tags/tag-1"]').hasClass('active'), 'highlights requested tag').to.be['true'];
+
+                    // shows requested tag in settings pane
+                    chai.expect(find('.tag-settings-pane input[name="name"]').val(), 'loads correct tag into form').to.equal('Tag 1');
+                });
+            });
+
+            mocha.it('has infinite scroll pagination of tags list', function () {
+                server.createList('tag', 32);
+
+                visit('settings/tags/tag-0');
+
+                andThen(function () {
+                    // it loads first page
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count on first load').to.equal(15);
+
+                    find('.tag-list').scrollTop(find('.tag-list-content').height());
+                });
+
+                wait().then(function () {
+                    // it loads the second page
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count on second load').to.equal(30);
+
+                    find('.tag-list').scrollTop(find('.tag-list-content').height());
+                });
+
+                wait().then(function () {
+                    // it loads the final page
+                    chai.expect(find('.settings-tags .settings-tag').length, 'tag list count on third load').to.equal(32);
+                });
+            });
+        });
+    });
+
+});
+define('ghost/tests/acceptance/setup-test', ['mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/ember-simple-auth', 'ember-cli-mirage'], function (mocha, chai, Ember, startApp, ember_simple_auth, Mirage) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    mocha.describe('Acceptance: Setup', function () {
+        var application = undefined;
+
+        mocha.beforeEach(function () {
+            application = startApp['default']();
+        });
+
+        mocha.afterEach(function () {
+            run(application, 'destroy');
+        });
+
+        mocha.it('redirects if already authenticated', function () {
+            var role = server.create('role', { name: 'Author' }),
+                user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            ember_simple_auth.authenticateSession(application);
+
+            visit('/setup/one');
+            andThen(function () {
+                chai.expect(currentURL()).to.equal('/');
+            });
+
+            visit('/setup/two');
+            andThen(function () {
+                chai.expect(currentURL()).to.equal('/');
+            });
+
+            visit('/setup/three');
+            andThen(function () {
+                chai.expect(currentURL()).to.equal('/');
+            });
+        });
+
+        mocha.it('redirects to signin if already set up', function () {
+            // mimick an already setup blog
+            server.get('/authentication/setup/', function () {
+                return {
+                    setup: [{ status: true }]
+                };
+            });
+
+            ember_simple_auth.invalidateSession(application);
+
+            visit('/setup');
+            andThen(function () {
+                chai.expect(currentURL()).to.equal('/signin');
+            });
+        });
+
+        mocha.describe('with a new blog', function () {
+            mocha.beforeEach(function () {
+                // mimick a new blog
+                server.get('/authentication/setup/', function () {
+                    return {
+                        setup: [{ status: false }]
+                    };
+                });
+            });
+
+            mocha.it('has a successful happy path', function () {
+                ember_simple_auth.invalidateSession(application);
+                server.loadFixtures('roles');
+
+                visit('/setup');
+
+                andThen(function () {
+                    // it redirects to step one
+                    chai.expect(currentURL(), 'url after accessing /setup').to.equal('/setup/one');
+
+                    // it highlights first step
+                    chai.expect(find('.gh-flow-nav .step:first-of-type').hasClass('active')).to.be['true'];
+                    chai.expect(find('.gh-flow-nav .step:nth-of-type(2)').hasClass('active')).to.be['false'];
+                    chai.expect(find('.gh-flow-nav .step:nth-of-type(3)').hasClass('active')).to.be['false'];
+
+                    // it displays download count (count increments for each ajax call
+                    // and polling is disabled in testing so our count should be "2" -
+                    // 1 for first load and 1 for first poll)
+                    chai.expect(find('.gh-flow-content em').text()).to.equal('2');
+                });
+
+                click('.btn-green');
+
+                andThen(function () {
+                    // it transitions to step two
+                    chai.expect(currentURL(), 'url after clicking "Create your account"').to.equal('/setup/two');
+
+                    // email field is focused by default
+                    // NOTE: $('x').is(':focus') doesn't work in phantomjs CLI runner
+                    // https://github.com/ariya/phantomjs/issues/10427
+                    chai.expect(find('[name="email"]').get(0) === document.activeElement, 'email field has focus').to.be['true'];
+                });
+
+                click('.btn-green');
+
+                andThen(function () {
+                    // it marks fields as invalid
+                    chai.expect(find('.form-group.error').length, 'number of invalid fields').to.equal(4);
+
+                    // it displays error messages
+                    chai.expect(find('.error .response').length, 'number of in-line validation messages').to.equal(4);
+
+                    // it displays main error
+                    chai.expect(find('.main-error').length, 'main error is displayed').to.equal(1);
+                });
+
+                // enter valid details and submit
+                fillIn('[name="email"]', 'test@example.com');
+                fillIn('[name="name"]', 'Test User');
+                fillIn('[name="password"]', 'password');
+                fillIn('[name="blog-title"]', 'Blog Title');
+                click('.btn-green');
+
+                andThen(function () {
+                    // it transitions to step 3
+                    chai.expect(currentURL(), 'url after submitting step two').to.equal('/setup/three');
+
+                    // submit button is "disabled"
+                    chai.expect(find('button[type="submit"]').hasClass('btn-green'), 'invite button with no emails is white').to.be['false'];
+                });
+
+                // fill in a valid email
+                fillIn('[name="users"]', 'new-user@example.com');
+
+                andThen(function () {
+                    // submit button is "enabled"
+                    chai.expect(find('button[type="submit"]').hasClass('btn-green'), 'invite button is green with valid email address').to.be['true'];
+                });
+
+                // submit the invite form
+                click('button[type="submit"]');
+
+                andThen(function () {
+                    // it redirects to the home / "content" screen
+                    chai.expect(currentURL(), 'url after submitting invites').to.equal('/');
+                });
+            });
+
+            mocha.it('handles server validation errors in step 2');
+            mocha.it('handles server validation errors in step 3');
+
+            mocha.it('handles invalid origin error on step 2', function () {
+                // mimick the API response for an invalid origin
+                server.post('/authentication/token', function () {
+                    return new Mirage['default'].Response(401, {}, {
+                        errors: [{
+                            errorType: 'UnauthorizedError',
+                            message: 'Access Denied from url: unknown.com. Please use the url configured in config.js.'
+                        }]
+                    });
+                });
+
+                ember_simple_auth.invalidateSession(application);
+                server.loadFixtures('roles');
+
+                visit('/setup/two');
+                fillIn('[name="email"]', 'test@example.com');
+                fillIn('[name="name"]', 'Test User');
+                fillIn('[name="password"]', 'password');
+                fillIn('[name="blog-title"]', 'Blog Title');
+                click('.btn-green');
+
+                andThen(function () {
+                    // button should not be spinning
+                    chai.expect(find('.btn-green .spinner').length, 'button has spinner').to.equal(0);
+                    // we should show an error message
+                    chai.expect(find('.main-error').text(), 'error text').to.equal('Access Denied from url: unknown.com. Please use the url configured in config.js.');
+                });
+            });
+        });
+    });
+
+});
+define('ghost/tests/helpers/ember-simple-auth', ['exports', 'ember-simple-auth/authenticators/test'], function (exports, Test) {
+
+  'use strict';
+
+  exports.authenticateSession = authenticateSession;
+  exports.currentSession = currentSession;
+  exports.invalidateSession = invalidateSession;
+
+  var TEST_CONTAINER_KEY = 'authenticator:test';
+
+  function ensureAuthenticator(app, container) {
+    var authenticator = container.lookup(TEST_CONTAINER_KEY);
+    if (!authenticator) {
+      app.register(TEST_CONTAINER_KEY, Test['default']);
+    }
+  }
+
+  function authenticateSession(app, sessionData) {
+    var container = app.__container__;
+
+    var session = container.lookup('service:session');
+    ensureAuthenticator(app, container);
+    session.authenticate(TEST_CONTAINER_KEY, sessionData);
+    return wait();
+  }
+
+  ;
+
+  function currentSession(app) {
+    return app.__container__.lookup('service:session');
+  }
+
+  ;
+
+  function invalidateSession(app) {
+    var session = app.__container__.lookup('service:session');
+    if (session.get('isAuthenticated')) {
+      session.invalidate();
+    }
+    return wait();
+  }
+
+  ;
 
 });
 define('ghost/tests/helpers/resolver', ['exports', 'ember/resolver', 'ghost/config/environment'], function (exports, Resolver, config) {
@@ -25678,6 +28861,316 @@ define('ghost/tests/helpers/start-app', ['exports', 'ember', 'ghost/app', 'ghost
     }
 
 });
+define('ghost/tests/integration/components/gh-alert-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    ember_mocha.describeComponent('gh-alert', 'Integration: Component: gh-alert', {
+        integration: true
+    }, function () {
+        ember_mocha.it('renders', function () {
+            this.set('message', { message: 'Test message', type: 'success' });
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 28
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-alert', [], ['message', ['subexpr', '@mut', [['get', 'message', ['loc', [null, [1, 19], [1, 26]]]]], [], []]], ['loc', [null, [1, 0], [1, 28]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$('article.gh-alert')).to.have.length(1);
+            var $alert = this.$('.gh-alert');
+
+            chai.expect($alert.text()).to.match(/Test message/);
+        });
+
+        ember_mocha.it('maps message types to CSS classes', function () {
+            this.set('message', { message: 'Test message', type: 'success' });
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 28
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-alert', [], ['message', ['subexpr', '@mut', [['get', 'message', ['loc', [null, [1, 19], [1, 26]]]]], [], []]], ['loc', [null, [1, 0], [1, 28]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $alert = this.$('.gh-alert');
+
+            this.set('message.type', 'success');
+            chai.expect($alert.hasClass('gh-alert-green'), 'success class isn\'t green').to.be['true'];
+
+            this.set('message.type', 'error');
+            chai.expect($alert.hasClass('gh-alert-red'), 'success class isn\'t red').to.be['true'];
+
+            this.set('message.type', 'warn');
+            chai.expect($alert.hasClass('gh-alert-yellow'), 'success class isn\'t yellow').to.be['true'];
+
+            this.set('message.type', 'info');
+            chai.expect($alert.hasClass('gh-alert-blue'), 'success class isn\'t blue').to.be['true'];
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-alerts-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+    var notificationsStub = Ember['default'].Service.extend({
+        alerts: Ember['default'].A()
+    });
+
+    ember_mocha.describeComponent('gh-alerts', 'Integration: Component: gh-alerts', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            this.register('service:notifications', notificationsStub);
+            this.inject.service('notifications', { as: 'notifications' });
+
+            this.set('notifications.alerts', [{ message: 'First', type: 'error' }, { message: 'Second', type: 'warn' }]);
+        });
+
+        ember_mocha.it('renders', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 13
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'gh-alerts', ['loc', [null, [1, 0], [1, 13]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$('.gh-alerts').length).to.equal(1);
+            chai.expect(this.$('.gh-alerts').children().length).to.equal(2);
+
+            this.set('notifications.alerts', Ember['default'].A());
+            chai.expect(this.$('.gh-alerts').children().length).to.equal(0);
+        });
+
+        ember_mocha.it('triggers "notify" action when message count changes', function () {
+            var expectedCount = 0;
+
+            // test double for notify action
+            this.set('notify', function (count) {
+                return chai.expect(count).to.equal(expectedCount);
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 36
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-alerts', [], ['notify', ['subexpr', 'action', [['get', 'notify', ['loc', [null, [1, 27], [1, 33]]]]], [], ['loc', [null, [1, 19], [1, 34]]]]], ['loc', [null, [1, 0], [1, 36]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            expectedCount = 3;
+            this.get('notifications.alerts').pushObject({ message: 'Third', type: 'success' });
+
+            expectedCount = 0;
+            this.set('notifications.alerts', Ember['default'].A());
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-cm-editor-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    ember_mocha.describeComponent('gh-cm-editor', 'Integration: Component: gh-cm-editor', {
+        integration: true
+    }, function () {
+        ember_mocha.it('handles editor events', function () {
+            this.set('text', '');
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 44
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-cm-editor', [], ['class', 'gh-input', 'value', ['subexpr', '@mut', [['get', 'text', ['loc', [null, [1, 38], [1, 42]]]]], [], []]], ['loc', [null, [1, 0], [1, 44]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var input = this.$('.gh-input');
+
+            chai.expect(input.hasClass('focused'), 'has focused class on first render').to.be['false'];
+
+            run(function () {
+                input.find('textarea').trigger('focus');
+            });
+
+            chai.expect(input.hasClass('focused'), 'has focused class after focus').to.be['true'];
+
+            run(function () {
+                input.find('textarea').trigger('blur');
+            });
+
+            chai.expect(input.hasClass('focused'), 'loses focused class on blur').to.be['false'];
+
+            run(function () {
+                // access CodeMirror directly as it doesn't pick up changes
+                // to the textarea
+                var cm = input.find('.CodeMirror').get(0).CodeMirror;
+                cm.setValue('Testing');
+            });
+
+            chai.expect(this.get('text'), 'text value after CM editor change').to.equal('Testing');
+        });
+    });
+
+});
 define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (chai, ember_mocha, Ember, navigation) {
 
     'use strict';
@@ -25685,7 +29178,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
     /* jshint expr:true */
     var run = Ember['default'].run;
 
-    ember_mocha.describeComponent('gh-navigation', 'Integration : Component : gh-navigation', {
+    ember_mocha.describeComponent('gh-navigation', 'Integration: Component: gh-navigation', {
         integration: true
     }, function () {
         ember_mocha.it('renders', function () {
@@ -25693,7 +29186,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
                 var child0 = (function () {
                     return {
                         meta: {
-                            'revision': 'Ember@1.13.2',
+                            'revision': 'Ember@1.13.10',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -25730,7 +29223,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
 
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -25759,7 +29252,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['block', 'gh-navigation', [], [], 0, null]],
+                    statements: [['block', 'gh-navigation', [], [], 0, null, ['loc', [null, [1, 0], [1, 104]]]]],
                     locals: [],
                     templates: [child0]
                 };
@@ -25793,7 +29286,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
                         var child0 = (function () {
                             return {
                                 meta: {
-                                    'revision': 'Ember@1.13.2',
+                                    'revision': 'Ember@1.13.10',
                                     'loc': {
                                         'source': null,
                                         'start': {
@@ -25824,7 +29317,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
                                     morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                                     return morphs;
                                 },
-                                statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'blogUrl']], []], 'addItem', 'addItem', 'deleteItem', 'deleteItem', 'updateUrl', 'updateUrl']]],
+                                statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [5, 49], [5, 56]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'blogUrl', ['loc', [null, [5, 65], [5, 72]]]]], [], []], 'addItem', 'addItem', 'deleteItem', 'deleteItem', 'updateUrl', 'updateUrl'], ['loc', [null, [5, 28], [5, 138]]]]],
                                 locals: ['navItem'],
                                 templates: []
                             };
@@ -25832,7 +29325,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
 
                         return {
                             meta: {
-                                'revision': 'Ember@1.13.2',
+                                'revision': 'Ember@1.13.10',
                                 'loc': {
                                     'source': null,
                                     'start': {
@@ -25872,7 +29365,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
                                 morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
                                 return morphs;
                             },
-                            statements: [['block', 'each', [['get', 'navigationItems']], [], 0, null]],
+                            statements: [['block', 'each', [['get', 'navigationItems', ['loc', [null, [4, 32], [4, 47]]]]], [], 0, null, ['loc', [null, [4, 24], [6, 33]]]]],
                             locals: [],
                             templates: [child0]
                         };
@@ -25880,7 +29373,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
 
                     return {
                         meta: {
-                            'revision': 'Ember@1.13.2',
+                            'revision': 'Ember@1.13.10',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -25910,7 +29403,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
                             dom.insertBoundary(fragment, null);
                             return morphs;
                         },
-                        statements: [['block', 'gh-navigation', [], ['moveItem', 'moveItem'], 0, null]],
+                        statements: [['block', 'gh-navigation', [], ['moveItem', 'moveItem'], 0, null, ['loc', [null, [2, 16], [8, 34]]]]],
                         locals: [],
                         templates: [child0]
                     };
@@ -25923,17 +29416,21 @@ define('ghost/tests/integration/components/gh-navigation-test', ['chai', 'ember-
             // move second item up one
             expectedOldIndex = 1;
             expectedNewIndex = 0;
-            Ember['default'].$(this.$('.gh-blognav-item')[1]).simulateDragSortable({
-                move: -1,
-                handle: '.gh-blognav-grab'
+            run(function () {
+                Ember['default'].$(_this.$('.gh-blognav-item')[1]).simulateDragSortable({
+                    move: -1,
+                    handle: '.gh-blognav-grab'
+                });
             });
 
             // move second item down one
             expectedOldIndex = 1;
             expectedNewIndex = 2;
-            Ember['default'].$(this.$('.gh-blognav-item')[1]).simulateDragSortable({
-                move: 1,
-                handle: '.gh-blognav-grab'
+            run(function () {
+                Ember['default'].$(_this.$('.gh-blognav-item')[1]).simulateDragSortable({
+                    move: 1,
+                    handle: '.gh-blognav-grab'
+                });
             });
         });
     });
@@ -25946,7 +29443,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
     /* jshint expr:true */
     var run = Ember['default'].run;
 
-    ember_mocha.describeComponent('gh-navitem', 'Integration : Component : gh-navitem', {
+    ember_mocha.describeComponent('gh-navitem', 'Integration: Component: gh-navitem', {
         integration: true
     }, function () {
         beforeEach(function () {
@@ -25959,7 +29456,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -25988,7 +29485,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []]], ['loc', [null, [1, 0], [1, 46]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26012,7 +29509,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26041,7 +29538,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []]], ['loc', [null, [1, 0], [1, 46]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26057,7 +29554,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26086,7 +29583,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []]], ['loc', [null, [1, 0], [1, 46]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26111,7 +29608,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26140,7 +29637,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'deleteItem', 'deleteItem']]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []], 'deleteItem', 'deleteItem'], ['loc', [null, [1, 0], [1, 70]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26161,7 +29658,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26190,7 +29687,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'addItem', 'add']]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []], 'addItem', 'add'], ['loc', [null, [1, 0], [1, 60]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26211,7 +29708,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26240,7 +29737,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'updateUrl', 'update']]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []], 'updateUrl', 'update'], ['loc', [null, [1, 0], [1, 65]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26257,7 +29754,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26286,7 +29783,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['chai', 'ember-moc
                         dom.insertBoundary(fragment, null);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem']], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []]]]],
+                    statements: [['inline', 'gh-navitem', [], ['navItem', ['subexpr', '@mut', [['get', 'navItem', ['loc', [null, [1, 21], [1, 28]]]]], [], []], 'baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [1, 37], [1, 44]]]]], [], []]], ['loc', [null, [1, 0], [1, 46]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26312,7 +29809,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
     // handled as expected (browser auto-sets the domain when using a.href)
     var currentUrl = window.location.protocol + '//' + window.location.host + '/';
 
-    ember_mocha.describeComponent('gh-navitem-url-input', 'Integration : Component : gh-navitem-url-input', {
+    ember_mocha.describeComponent('gh-navitem-url-input', 'Integration: Component: gh-navitem-url-input', {
         integration: true
     }, function () {
         beforeEach(function () {
@@ -26326,7 +29823,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26357,7 +29854,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26374,7 +29871,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26405,7 +29902,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26423,7 +29920,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26454,7 +29951,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26480,7 +29977,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26511,7 +30008,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26532,7 +30029,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26563,7 +30060,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26587,7 +30084,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26618,7 +30115,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26635,14 +30132,14 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             chai.expect($input.val()).to.equal(currentUrl + 'about');
         });
 
-        ember_mocha.it('adds "mailto:" to e-mail addresses on blur', function () {
+        ember_mocha.it('adds "mailto:" to email addresses on blur', function () {
             this.on('updateUrl', function () {
                 return null;
             });
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26673,7 +30170,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26703,7 +30200,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26734,7 +30231,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26761,7 +30258,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26792,7 +30289,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26811,7 +30308,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26842,7 +30339,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26866,7 +30363,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26897,7 +30394,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26918,7 +30415,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -26949,7 +30446,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -26975,7 +30472,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -27006,7 +30503,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -27034,7 +30531,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -27065,7 +30562,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -27103,7 +30600,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -27134,7 +30631,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -27168,7 +30665,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -27199,7 +30696,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -27233,7 +30730,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
             this.render(Ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
-                        'revision': 'Ember@1.13.2',
+                        'revision': 'Ember@1.13.10',
                         'loc': {
                             'source': null,
                             'start': {
@@ -27264,7 +30761,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl']], []], 'url', ['subexpr', '@mut', [['get', 'url']], []], 'last', ['subexpr', '@mut', [['get', 'isLast']], []], 'change', 'updateUrl']]],
+                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'last', ['subexpr', '@mut', [['get', 'isLast', ['loc', [null, [2, 68], [2, 74]]]]], [], []], 'change', 'updateUrl'], ['loc', [null, [2, 16], [2, 95]]]]],
                     locals: [],
                     templates: []
                 };
@@ -27280,11 +30777,1708 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['chai', 
     });
 
 });
+define('ghost/tests/integration/components/gh-notification-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    ember_mocha.describeComponent('gh-notification', 'Integration: Component: gh-notification', {
+        integration: true
+    }, function () {
+        ember_mocha.it('renders', function () {
+            this.set('message', { message: 'Test message', type: 'success' });
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 35
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-notification', [], ['message', ['subexpr', '@mut', [['get', 'message', ['loc', [null, [1, 26], [1, 33]]]]], [], []]], ['loc', [null, [1, 0], [1, 35]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$('article.gh-notification')).to.have.length(1);
+            var $notification = this.$('.gh-notification');
+
+            chai.expect($notification.hasClass('gh-notification-passive')).to.be['true'];
+            chai.expect($notification.text()).to.match(/Test message/);
+        });
+
+        ember_mocha.it('maps message types to CSS classes', function () {
+            this.set('message', { message: 'Test message', type: 'success' });
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 35
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-notification', [], ['message', ['subexpr', '@mut', [['get', 'message', ['loc', [null, [1, 26], [1, 33]]]]], [], []]], ['loc', [null, [1, 0], [1, 35]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            var $notification = this.$('.gh-notification');
+
+            this.set('message.type', 'success');
+            chai.expect($notification.hasClass('gh-notification-green'), 'success class isn\'t green').to.be['true'];
+
+            this.set('message.type', 'error');
+            chai.expect($notification.hasClass('gh-notification-red'), 'success class isn\'t red').to.be['true'];
+
+            this.set('message.type', 'warn');
+            chai.expect($notification.hasClass('gh-notification-yellow'), 'success class isn\'t yellow').to.be['true'];
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-notifications-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+    var notificationsStub = Ember['default'].Service.extend({
+        notifications: Ember['default'].A()
+    });
+
+    ember_mocha.describeComponent('gh-notifications', 'Integration: Component: gh-notifications', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            this.register('service:notifications', notificationsStub);
+            this.inject.service('notifications', { as: 'notifications' });
+
+            this.set('notifications.notifications', [{ message: 'First', type: 'error' }, { message: 'Second', type: 'warn' }]);
+        });
+
+        ember_mocha.it('renders', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 20
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'gh-notifications', ['loc', [null, [1, 0], [1, 20]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$('.gh-notifications').length).to.equal(1);
+
+            chai.expect(this.$('.gh-notifications').children().length).to.equal(2);
+
+            this.set('notifications.notifications', Ember['default'].A());
+            chai.expect(this.$('.gh-notifications').children().length).to.equal(0);
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-profile-image-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    /* global md5 */
+    var run = Ember['default'].run;
+    var pathsStub = Ember['default'].Service.extend({
+        url: {
+            api: function api() {
+                return '';
+            },
+            asset: function asset(src) {
+                return src;
+            }
+        }
+    });
+
+    ember_mocha.describeComponent('gh-profile-image', 'Integration: Component: gh-profile-image', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            this.register('service:ghost-paths', pathsStub);
+            this.inject.service('ghost-paths', { as: 'ghost-paths' });
+        });
+
+        ember_mocha.it('renders', function () {
+            this.set('email', '');
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-profile-image', [], ['email', ['subexpr', '@mut', [['get', 'email', ['loc', [null, [2, 41], [2, 46]]]]], [], []]], ['loc', [null, [2, 16], [2, 48]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$()).to.have.length(1);
+        });
+
+        ember_mocha.it('immediately renders the gravatar if valid email supplied', function () {
+            var email = 'test@example.com',
+                expectedUrl = 'http://www.gravatar.com/avatar/' + md5(email) + '?s=100&d=blank';
+
+            this.set('email', email);
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-profile-image', [], ['email', ['subexpr', '@mut', [['get', 'email', ['loc', [null, [2, 41], [2, 46]]]]], [], []], 'size', 100, 'debounce', 300], ['loc', [null, [2, 16], [2, 70]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$('.gravatar-img').attr('style'), 'gravatar image style').to.equal('background-image: url(' + expectedUrl + ')');
+        });
+
+        ember_mocha.it('throttles gravatar loading as email is changed', function (done) {
+            var _this = this;
+
+            var email = 'test@example.com',
+                expectedUrl = 'http://www.gravatar.com/avatar/' + md5(email) + '?s=100&d=blank';
+
+            this.set('email', 'test');
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-profile-image', [], ['email', ['subexpr', '@mut', [['get', 'email', ['loc', [null, [2, 41], [2, 46]]]]], [], []], 'size', 100, 'debounce', 300], ['loc', [null, [2, 16], [2, 70]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$('.gravatar-img').length, '.gravatar-img not shown for invalid email').to.equal(0);
+
+            run(function () {
+                _this.set('email', email);
+            });
+
+            chai.expect(this.$('.gravatar-img').length, '.gravatar-img not immediately changed on email change').to.equal(0);
+
+            Ember['default'].run.later(this, function () {
+                chai.expect(this.$('.gravatar-img').length, '.gravatar-img still not shown before throttle timeout').to.equal(0);
+            }, 250);
+
+            Ember['default'].run.later(this, function () {
+                chai.expect(this.$('.gravatar-img').attr('style'), '.gravatar-img style after timeout').to.equal('background-image: url(' + expectedUrl + ')');
+                done();
+            }, 400);
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-tag-settings-form-test', ['chai', 'ember-mocha', 'ember', 'ember-data'], function (chai, ember_mocha, Ember, DS) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+    var configStub = Ember['default'].Service.extend({
+        blogUrl: 'http://localhost:2368'
+    });
+
+    ember_mocha.describeComponent('gh-tag-settings-form', 'Integration: Component: gh-tag-settings-form', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            var tag = Ember['default'].Object.create({
+                id: 1,
+                name: 'Test',
+                slug: 'test',
+                description: 'Description.',
+                meta_title: 'Meta Title',
+                meta_description: 'Meta description',
+                errors: DS['default'].Errors.create(),
+                hasValidated: []
+            });
+
+            this.set('tag', tag);
+            this.set('actions.setProperty', function (property, value) {
+                // this should be overridden if a call is expected
+                console.error('setProperty called \'' + property + ': ' + value + '\'');
+            });
+
+            this.register('service:config', configStub);
+            this.inject.service('config', { as: 'config' });
+        });
+
+        ember_mocha.it('renders', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$()).to.have.length(1);
+        });
+
+        ember_mocha.it('has the correct title', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$('.tag-settings-pane h4').text(), 'existing tag title').to.equal('Tag Settings');
+
+            this.set('tag.isNew', true);
+            chai.expect(this.$('.tag-settings-pane h4').text(), 'new tag title').to.equal('New Tag');
+        });
+
+        ember_mocha.it('renders main settings', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$('.image-uploader').length, 'displays image uploader').to.equal(1);
+            chai.expect(this.$('input[name="name"]').val(), 'name field value').to.equal('Test');
+            chai.expect(this.$('input[name="slug"]').val(), 'slug field value').to.equal('test');
+            chai.expect(this.$('textarea[name="description"]').val(), 'description field value').to.equal('Description.');
+            chai.expect(this.$('input[name="meta_title"]').val(), 'meta_title field value').to.equal('Meta Title');
+            chai.expect(this.$('textarea[name="meta_description"]').val(), 'meta_description field value').to.equal('Meta description');
+        });
+
+        ember_mocha.it('can switch between main/meta settings', function () {
+            var _this = this;
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            chai.expect(this.$('.tag-settings-pane').hasClass('settings-menu-pane-in'), 'main settings are displayed by default').to.be['true'];
+            chai.expect(this.$('.tag-meta-settings-pane').hasClass('settings-menu-pane-out-right'), 'meta settings are hidden by default').to.be['true'];
+
+            run(function () {
+                _this.$('.meta-data-button').click();
+            });
+
+            chai.expect(this.$('.tag-settings-pane').hasClass('settings-menu-pane-out-left'), 'main settings are hidden after clicking Meta Data button').to.be['true'];
+            chai.expect(this.$('.tag-meta-settings-pane').hasClass('settings-menu-pane-in'), 'meta settings are displayed after clicking Meta Data button').to.be['true'];
+
+            run(function () {
+                _this.$('.back').click();
+            });
+
+            chai.expect(this.$('.tag-settings-pane').hasClass('settings-menu-pane-in'), 'main settings are displayed after clicking "back"').to.be['true'];
+            chai.expect(this.$('.tag-meta-settings-pane').hasClass('settings-menu-pane-out-right'), 'meta settings are hidden after clicking "back"').to.be['true'];
+        });
+
+        ember_mocha.it('has one-way binding for properties', function () {
+            var _this2 = this;
+
+            this.set('actions.setProperty', function () {
+                // noop
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            run(function () {
+                _this2.$('input[name="name"]').val('New name');
+                _this2.$('input[name="slug"]').val('new-slug');
+                _this2.$('textarea[name="description"]').val('New description');
+                _this2.$('input[name="meta_title"]').val('New meta_title');
+                _this2.$('textarea[name="meta_description"]').val('New meta_description');
+            });
+
+            chai.expect(this.get('tag.name'), 'tag name').to.equal('Test');
+            chai.expect(this.get('tag.slug'), 'tag slug').to.equal('test');
+            chai.expect(this.get('tag.description'), 'tag description').to.equal('Description.');
+            chai.expect(this.get('tag.meta_title'), 'tag meta_title').to.equal('Meta Title');
+            chai.expect(this.get('tag.meta_description'), 'tag meta_description').to.equal('Meta description');
+        });
+
+        ember_mocha.it('triggers setProperty action on blur of all fields', function () {
+            var _this3 = this;
+
+            var expectedProperty = '',
+                expectedValue = '';
+
+            this.set('actions.setProperty', function (property, value) {
+                chai.expect(property, 'property').to.equal(expectedProperty);
+                chai.expect(value, 'value').to.equal(expectedValue);
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            expectedProperty = 'name';
+            expectedValue = 'new-slug';
+            run(function () {
+                _this3.$('input[name="name"]').val('New name');
+            });
+
+            expectedProperty = 'url';
+            expectedValue = 'new-slug';
+            run(function () {
+                _this3.$('input[name="slug"]').val('new-slug');
+            });
+
+            expectedProperty = 'description';
+            expectedValue = 'New description';
+            run(function () {
+                _this3.$('textarea[name="description"]').val('New description');
+            });
+
+            expectedProperty = 'meta_title';
+            expectedValue = 'New meta_title';
+            run(function () {
+                _this3.$('input[name="meta_title"]').val('New meta_title');
+            });
+
+            expectedProperty = 'meta_description';
+            expectedValue = 'New meta_description';
+            run(function () {
+                _this3.$('textarea[name="meta_description"]').val('New meta_description');
+            });
+        });
+
+        ember_mocha.it('displays error messages for validated fields', function () {
+            var errors = this.get('tag.errors'),
+                hasValidated = this.get('tag.hasValidated');
+
+            errors.add('name', 'must be present');
+            hasValidated.push('name');
+
+            errors.add('slug', 'must be present');
+            hasValidated.push('slug');
+
+            errors.add('description', 'is too long');
+            hasValidated.push('description');
+
+            errors.add('meta_title', 'is too long');
+            hasValidated.push('meta_title');
+
+            errors.add('meta_description', 'is too long');
+            hasValidated.push('meta_description');
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            var nameFormGroup = this.$('input[name="name"]').closest('.form-group');
+            chai.expect(nameFormGroup.hasClass('error'), 'name form group has error state').to.be['true'];
+            chai.expect(nameFormGroup.find('.response').length, 'name form group has error message').to.equal(1);
+
+            var slugFormGroup = this.$('input[name="slug"]').closest('.form-group');
+            chai.expect(slugFormGroup.hasClass('error'), 'slug form group has error state').to.be['true'];
+            chai.expect(slugFormGroup.find('.response').length, 'slug form group has error message').to.equal(1);
+
+            var descriptionFormGroup = this.$('textarea[name="description"]').closest('.form-group');
+            chai.expect(descriptionFormGroup.hasClass('error'), 'description form group has error state').to.be['true'];
+
+            var metaTitleFormGroup = this.$('input[name="meta_title"]').closest('.form-group');
+            chai.expect(metaTitleFormGroup.hasClass('error'), 'meta_title form group has error state').to.be['true'];
+            chai.expect(metaTitleFormGroup.find('.response').length, 'meta_title form group has error message').to.equal(1);
+
+            var metaDescriptionFormGroup = this.$('textarea[name="meta_description"]').closest('.form-group');
+            chai.expect(metaDescriptionFormGroup.hasClass('error'), 'meta_description form group has error state').to.be['true'];
+            chai.expect(metaDescriptionFormGroup.find('.response').length, 'meta_description form group has error message').to.equal(1);
+        });
+
+        ember_mocha.it('displays char count for text fields', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            var descriptionFormGroup = this.$('textarea[name="description"]').closest('.form-group');
+            chai.expect(descriptionFormGroup.find('.word-count').text(), 'description char count').to.equal('12');
+
+            var metaDescriptionFormGroup = this.$('textarea[name="meta_description"]').closest('.form-group');
+            chai.expect(metaDescriptionFormGroup.find('.word-count').text(), 'description char count').to.equal('16');
+        });
+
+        ember_mocha.it('renders SEO title preview', function () {
+            var _this4 = this;
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$('.seo-preview-title').text(), 'displays meta title if present').to.equal('Meta Title');
+
+            run(function () {
+                _this4.set('tag.meta_title', '');
+            });
+            chai.expect(this.$('.seo-preview-title').text(), 'falls back to tag name without meta_title').to.equal('Test');
+
+            run(function () {
+                _this4.set('tag.name', new Array(151).join('x'));
+            });
+            var expectedLength = 70 + '…'.length;
+            chai.expect(this.$('.seo-preview-title').text().length, 'cuts title to max 70 chars').to.equal(expectedLength);
+        });
+
+        ember_mocha.it('renders SEO URL preview', function () {
+            var _this5 = this;
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$('.seo-preview-link').text(), 'adds url and tag prefix').to.equal('http://localhost:2368/tag/test/');
+
+            run(function () {
+                _this5.set('tag.slug', new Array(151).join('x'));
+            });
+            var expectedLength = 70 + '…'.length;
+            chai.expect(this.$('.seo-preview-link').text().length, 'cuts slug to max 70 chars').to.equal(expectedLength);
+        });
+
+        ember_mocha.it('renders SEO description preview', function () {
+            var _this6 = this;
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            chai.expect(this.$('.seo-preview-description').text(), 'displays meta description if present').to.equal('Meta description');
+
+            run(function () {
+                _this6.set('tag.meta_description', '');
+            });
+            chai.expect(this.$('.seo-preview-description').text(), 'falls back to tag description without meta_description').to.equal('Description.');
+
+            run(function () {
+                _this6.set('tag.description', new Array(200).join('x'));
+            });
+            var expectedLength = 156 + '…'.length;
+            chai.expect(this.$('.seo-preview-description').text().length, 'cuts description to max 156 chars').to.equal(expectedLength);
+        });
+
+        ember_mocha.it('resets if a new tag is received', function () {
+            var _this7 = this;
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            run(function () {
+                _this7.$('.meta-data-button').click();
+            });
+            chai.expect(this.$('.tag-meta-settings-pane').hasClass('settings-menu-pane-in'), 'meta data pane is shown').to.be['true'];
+
+            run(function () {
+                _this7.set('tag', Ember['default'].Object.create({ id: '2' }));
+            });
+            chai.expect(this.$('.tag-settings-pane').hasClass('settings-menu-pane-in'), 'resets to main settings').to.be['true'];
+        });
+
+        ember_mocha.it('triggers delete tag modal on delete click', function (done) {
+            var _this8 = this;
+
+            this.set('actions.openModal', function (modalName, model) {
+                chai.expect(modalName, 'passed modal name').to.equal('delete-tag');
+                chai.expect(model, 'passed model').to.equal(_this8.get('tag'));
+                done();
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            run(function () {
+                _this8.$('.tag-delete-button').click();
+            });
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-tags-management-container-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var resizeStub = Ember['default'].Service.extend(Ember['default'].Evented, {});
+
+    ember_mocha.describeComponent('gh-tags-management-container', 'Integration: Component: gh-tags-management-container', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            this.register('service:resize-service', resizeStub);
+            this.inject.service('resize-service', { as: 'resize-service' });
+        });
+
+        ember_mocha.it('renders', function () {
+            this.set('mobileWidth', 600);
+            this.set('tags', []);
+            this.set('selectedTag', null);
+            this.on('enteredMobile', function () {
+                // noop
+            });
+            this.on('leftMobile', function () {
+                // noop
+            });
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.10',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 2,
+                                    'column': 16
+                                },
+                                'end': {
+                                    'line': 2,
+                                    'column': 161
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-tags-management-container', [], ['mobileWidth', ['subexpr', '@mut', [['get', 'mobileWidth', ['loc', [null, [2, 60], [2, 71]]]]], [], []], 'tags', ['subexpr', '@mut', [['get', 'tags', ['loc', [null, [2, 77], [2, 81]]]]], [], []], 'selectedTag', ['subexpr', '@mut', [['get', 'selectedTag', ['loc', [null, [2, 94], [2, 105]]]]], [], []], 'enteredMobile', 'enteredMobile', 'leftMobile', 'leftMobile'], 0, null, ['loc', [null, [2, 16], [2, 194]]]]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            chai.expect(this.$()).to.have.length(1);
+        });
+    });
+
+});
+define('ghost/tests/integration/components/gh-validation-status-container-test', ['chai', 'ember-mocha', 'ember', 'ember-data'], function (chai, ember_mocha, Ember, DS) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    ember_mocha.describeComponent('gh-validation-status-container', 'Integration: Component: gh-validation-status-container', {
+        integration: true
+    }, function () {
+        beforeEach(function () {
+            var testObject = new Ember['default'].Object();
+            testObject.set('name', 'Test');
+            testObject.set('hasValidated', []);
+            testObject.set('errors', DS['default'].Errors.create());
+
+            this.set('testObject', testObject);
+        });
+
+        ember_mocha.it('has no success/error class by default', function () {
+            this.render(Ember['default'].HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.10',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 2,
+                                    'column': 16
+                                },
+                                'end': {
+                                    'line': 3,
+                                    'column': 16
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 4,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-validation-status-container', [], ['class', 'gh-test', 'property', 'name', 'errors', ['subexpr', '@mut', [['get', 'testObject.errors', ['loc', [null, [2, 89], [2, 106]]]]], [], []], 'hasValidated', ['subexpr', '@mut', [['get', 'testObject.hasValidated', ['loc', [null, [2, 120], [2, 143]]]]], [], []]], 0, null, ['loc', [null, [2, 16], [3, 51]]]]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            chai.expect(this.$('.gh-test')).to.have.length(1);
+            chai.expect(this.$('.gh-test').hasClass('success')).to.be['false'];
+            chai.expect(this.$('.gh-test').hasClass('error')).to.be['false'];
+        });
+
+        ember_mocha.it('has success class when valid', function () {
+            this.get('testObject.hasValidated').push('name');
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.10',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 2,
+                                    'column': 16
+                                },
+                                'end': {
+                                    'line': 3,
+                                    'column': 16
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 4,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-validation-status-container', [], ['class', 'gh-test', 'property', 'name', 'errors', ['subexpr', '@mut', [['get', 'testObject.errors', ['loc', [null, [2, 89], [2, 106]]]]], [], []], 'hasValidated', ['subexpr', '@mut', [['get', 'testObject.hasValidated', ['loc', [null, [2, 120], [2, 143]]]]], [], []]], 0, null, ['loc', [null, [2, 16], [3, 51]]]]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            chai.expect(this.$('.gh-test')).to.have.length(1);
+            chai.expect(this.$('.gh-test').hasClass('success')).to.be['true'];
+            chai.expect(this.$('.gh-test').hasClass('error')).to.be['false'];
+        });
+
+        ember_mocha.it('has error class when invalid', function () {
+            this.get('testObject.hasValidated').push('name');
+            this.get('testObject.errors').add('name', 'has error');
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.10',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 2,
+                                    'column': 16
+                                },
+                                'end': {
+                                    'line': 3,
+                                    'column': 16
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 4,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-validation-status-container', [], ['class', 'gh-test', 'property', 'name', 'errors', ['subexpr', '@mut', [['get', 'testObject.errors', ['loc', [null, [2, 89], [2, 106]]]]], [], []], 'hasValidated', ['subexpr', '@mut', [['get', 'testObject.hasValidated', ['loc', [null, [2, 120], [2, 143]]]]], [], []]], 0, null, ['loc', [null, [2, 16], [3, 51]]]]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            chai.expect(this.$('.gh-test')).to.have.length(1);
+            chai.expect(this.$('.gh-test').hasClass('success')).to.be['false'];
+            chai.expect(this.$('.gh-test').hasClass('error')).to.be['true'];
+        });
+
+        ember_mocha.it('still renders if hasValidated is undefined', function () {
+            this.set('testObject.hasValidated', undefined);
+
+            this.render(Ember['default'].HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'revision': 'Ember@1.13.10',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 2,
+                                    'column': 16
+                                },
+                                'end': {
+                                    'line': 3,
+                                    'column': 16
+                                }
+                            }
+                        },
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'revision': 'Ember@1.13.10',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 4,
+                                'column': 12
+                            }
+                        }
+                    },
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-validation-status-container', [], ['class', 'gh-test', 'property', 'name', 'errors', ['subexpr', '@mut', [['get', 'testObject.errors', ['loc', [null, [2, 89], [2, 106]]]]], [], []], 'hasValidated', ['subexpr', '@mut', [['get', 'testObject.hasValidated', ['loc', [null, [2, 120], [2, 143]]]]], [], []]], 0, null, ['loc', [null, [2, 16], [3, 51]]]]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            chai.expect(this.$('.gh-test')).to.have.length(1);
+        });
+    });
+
+});
 define('ghost/tests/test-helper', ['ghost/tests/helpers/resolver', 'ember-mocha'], function (resolver, ember_mocha) {
 
-	'use strict';
+    'use strict';
 
-	ember_mocha.setResolver(resolver['default']);
+    ember_mocha.setResolver(resolver['default']);
+
+    /* jshint ignore:start */
+    mocha.setup({
+        timeout: 15000,
+        slow: 500
+    });
+    /* jshint ignore:end */
+
+});
+define('ghost/tests/unit/adapters/tag-test', ['chai', 'ember-mocha', 'pretender'], function (chai, ember_mocha, Pretender) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    ember_mocha.describeModel('tag', 'Unit: Adapter: tag', {
+        needs: ['service:ghost-paths', 'service:session', 'adapter:tag', 'serializer:tag']
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new Pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        ember_mocha.it('loads tags from regular endpoint when all are fetched', function (done) {
+            server.get('/ghost/api/v0.1/tags/', function () {
+                return [200, { 'Content-Type': 'application/json' }, JSON.stringify({ tags: [{
+                        id: 1,
+                        name: 'Tag 1',
+                        slug: 'tag-1'
+                    }, {
+                        id: 2,
+                        name: 'Tag 2',
+                        slug: 'tag-2'
+                    }] })];
+            });
+
+            this.store().findAll('tag', { reload: true }).then(function (tags) {
+                chai.expect(tags).to.be.ok;
+                chai.expect(tags.objectAtContent(0).get('name')).to.equal('Tag 1');
+                done();
+            });
+        });
+
+        ember_mocha.it('loads tag from slug endpoint when single tag is queried and slug is passed in', function (done) {
+            server.get('/ghost/api/v0.1/tags/slug/tag-1/', function () {
+                return [200, { 'Content-Type': 'application/json' }, JSON.stringify({ tags: [{
+                        id: 1,
+                        slug: 'tag-1',
+                        name: 'Tag 1'
+                    }] })];
+            });
+
+            this.store().queryRecord('tag', { slug: 'tag-1' }).then(function (tag) {
+                chai.expect(tag).to.be.ok;
+                chai.expect(tag.get('name')).to.equal('Tag 1');
+                done();
+            });
+        });
+    });
+
+});
+define('ghost/tests/unit/adapters/user-test', ['chai', 'ember-mocha', 'pretender'], function (chai, ember_mocha, Pretender) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    ember_mocha.describeModel('user', 'Unit: Adapter: user', {
+        needs: ['service:ghost-paths', 'service:session', 'adapter:user', 'serializer:user']
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new Pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        ember_mocha.it('loads users from regular endpoint when all are fetched', function (done) {
+            server.get('/ghost/api/v0.1/users/', function () {
+                return [200, { 'Content-Type': 'application/json' }, JSON.stringify({ users: [{
+                        id: 1,
+                        name: 'User 1',
+                        slug: 'user-1'
+                    }, {
+                        id: 2,
+                        name: 'User 2',
+                        slug: 'user-2'
+                    }] })];
+            });
+
+            this.store().findAll('user', { reload: true }).then(function (users) {
+                chai.expect(users).to.be.ok;
+                chai.expect(users.objectAtContent(0).get('name')).to.equal('User 1');
+                done();
+            });
+        });
+
+        ember_mocha.it('loads user from slug endpoint when single user is queried and slug is passed in', function (done) {
+            server.get('/ghost/api/v0.1/users/slug/user-1/', function () {
+                return [200, { 'Content-Type': 'application/json' }, JSON.stringify({ users: [{
+                        id: 1,
+                        slug: 'user-1',
+                        name: 'User 1'
+                    }] })];
+            });
+
+            this.store().queryRecord('user', { slug: 'user-1' }).then(function (user) {
+                chai.expect(user).to.be.ok;
+                chai.expect(user.get('name')).to.equal('User 1');
+                done();
+            });
+        });
+    });
 
 });
 define('ghost/tests/unit/components/gh-alert-test', ['chai', 'ember-mocha', 'sinon'], function (chai, ember_mocha, sinon) {
@@ -27292,50 +32486,11 @@ define('ghost/tests/unit/components/gh-alert-test', ['chai', 'ember-mocha', 'sin
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-alert', 'GhAlertComponent', {
+    ember_mocha.describeComponent('gh-alert', 'Unit: Component: gh-alert', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
-        ember_mocha.it('renders', function () {
-            // creates the component instance
-            var component = this.subject();
-            chai.expect(component._state).to.equal('preRender');
-
-            component.set('message', { message: 'Test message', type: 'success' });
-
-            // renders the component on the page
-            this.render();
-            chai.expect(component._state).to.equal('inDOM');
-
-            chai.expect(this.$().prop('tagName')).to.equal('ARTICLE');
-            chai.expect(this.$().hasClass('gh-alert')).to.be['true'];
-            chai.expect(this.$().text()).to.match(/Test message/);
-        });
-
-        ember_mocha.it('maps success alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'success' });
-            chai.expect(this.$().hasClass('gh-alert-green')).to.be['true'];
-        });
-
-        ember_mocha.it('maps error alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'error' });
-            chai.expect(this.$().hasClass('gh-alert-red')).to.be['true'];
-        });
-
-        ember_mocha.it('maps warn alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'warn' });
-            chai.expect(this.$().hasClass('gh-alert-yellow')).to.be['true'];
-        });
-
-        ember_mocha.it('maps info alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'info' });
-            chai.expect(this.$().hasClass('gh-alert-blue')).to.be['true'];
-        });
-
         ember_mocha.it('closes notification through notifications service', function () {
             var component = this.subject(),
                 notifications = {},
@@ -27352,67 +32507,13 @@ define('ghost/tests/unit/components/gh-alert-test', ['chai', 'ember-mocha', 'sin
     });
 
 });
-define('ghost/tests/unit/components/gh-alerts-test', ['ember', 'chai', 'ember-mocha', 'sinon'], function (Ember, chai, ember_mocha, sinon) {
-
-    'use strict';
-
-    /* jshint expr:true */
-    ember_mocha.describeComponent('gh-alerts', 'GhAlertsComponent', {
-        // specify the other units that are required for this test
-        needs: ['component:gh-alert']
-    }, function () {
-        beforeEach(function () {
-            // Stub the notifications service
-            var notifications = Ember['default'].Object.create();
-            notifications.alerts = Ember['default'].A();
-            notifications.alerts.pushObject({ message: 'First', type: 'error' });
-            notifications.alerts.pushObject({ message: 'Second', type: 'warn' });
-
-            this.subject().set('notifications', notifications);
-        });
-
-        ember_mocha.it('renders', function () {
-            // creates the component instance
-            var component = this.subject();
-            chai.expect(component._state).to.equal('preRender');
-
-            // renders the component on the page
-            this.render();
-            chai.expect(component._state).to.equal('inDOM');
-
-            chai.expect(this.$().prop('tagName')).to.equal('ASIDE');
-            chai.expect(this.$().hasClass('gh-alerts')).to.be['true'];
-            chai.expect(this.$().children().length).to.equal(2);
-
-            Ember['default'].run(function () {
-                component.set('notifications.alerts', Ember['default'].A());
-            });
-
-            chai.expect(this.$().children().length).to.equal(0);
-        });
-
-        ember_mocha.it('triggers "notify" action when message count changes', function () {
-            var component = this.subject();
-
-            component.sendAction = sinon['default'].spy();
-
-            component.get('notifications.alerts').pushObject({ message: 'New alert', type: 'info' });
-
-            chai.expect(component.sendAction.calledWith('notify', 3)).to.be['true'];
-
-            component.set('notifications.alerts', Ember['default'].A());
-
-            chai.expect(component.sendAction.calledWith('notify', 0)).to.be['true'];
-        });
-    });
-
-});
 define('ghost/tests/unit/components/gh-app-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
 
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-app', 'GhAppComponent', {
+    ember_mocha.describeComponent('gh-app', 'Unit: Component: gh-app', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27434,7 +32535,8 @@ define('ghost/tests/unit/components/gh-content-preview-content-test', ['chai', '
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-content-preview-content', 'GhContentPreviewContentComponent', {
+    ember_mocha.describeComponent('gh-content-preview-content', 'Unit: Component: gh-content-preview-content', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27456,7 +32558,8 @@ define('ghost/tests/unit/components/gh-editor-save-button-test', ['chai', 'ember
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-editor-save-button', 'GhEditorSaveButtonComponent', {
+    ember_mocha.describeComponent('gh-editor-save-button', 'Unit: Component: gh-editor-save-button', {
+        unit: true,
         needs: ['component:gh-dropdown-button', 'component:gh-dropdown', 'component:gh-spin-button', 'service:dropdown']
     }, function () {
         ember_mocha.it('renders', function () {
@@ -27477,7 +32580,8 @@ define('ghost/tests/unit/components/gh-editor-test', ['chai', 'ember-mocha'], fu
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-editor', 'GhEditorComponent', {
+    ember_mocha.describeComponent('gh-editor', 'Unit: Component: gh-editor', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27499,7 +32603,8 @@ define('ghost/tests/unit/components/gh-infinite-scroll-box-test', ['chai', 'embe
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-infinite-scroll-box', 'GhInfiniteScrollBoxComponent', {
+    ember_mocha.describeComponent('gh-infinite-scroll-box', 'Unit: Component: gh-infinite-scroll-box', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27521,7 +32626,8 @@ define('ghost/tests/unit/components/gh-infinite-scroll-test', ['chai', 'ember-mo
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-infinite-scroll', 'GhInfiniteScrollComponent', {
+    ember_mocha.describeComponent('gh-infinite-scroll', 'Unit: Component: gh-infinite-scroll', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27543,9 +32649,12 @@ define('ghost/tests/unit/components/gh-navitem-url-input-test', ['ember', 'chai'
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-navitem-url-input', 'GhNavitemUrlInputComponent', {}, function () {
+    ember_mocha.describeComponent('gh-navitem-url-input', 'Unit: Component: gh-navitem-url-input', {
+        unit: true
+    }, function () {
         ember_mocha.it('identifies a URL as the base URL', function () {
             var component = this.subject({
+                url: '',
                 baseUrl: 'http://example.com/'
             });
 
@@ -27571,44 +32680,11 @@ define('ghost/tests/unit/components/gh-notification-test', ['chai', 'ember-mocha
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-notification', 'GhNotificationComponent', {
+    ember_mocha.describeComponent('gh-notification', 'Unit: Component: gh-notification', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
-        ember_mocha.it('renders', function () {
-            // creates the component instance
-            var component = this.subject();
-            chai.expect(component._state).to.equal('preRender');
-
-            component.set('message', { message: 'Test message', type: 'success' });
-
-            // renders the component on the page
-            this.render();
-            chai.expect(component._state).to.equal('inDOM');
-
-            chai.expect(this.$().prop('tagName')).to.equal('ARTICLE');
-            chai.expect(this.$().is('.gh-notification, .gh-notification-passive')).to.be['true'];
-            chai.expect(this.$().text()).to.match(/Test message/);
-        });
-
-        ember_mocha.it('maps success alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'success' });
-            chai.expect(this.$().hasClass('gh-notification-green')).to.be['true'];
-        });
-
-        ember_mocha.it('maps error alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'error' });
-            chai.expect(this.$().hasClass('gh-notification-red')).to.be['true'];
-        });
-
-        ember_mocha.it('maps warn alert type to correct class', function () {
-            var component = this.subject();
-            component.set('message', { message: 'Test message', type: 'warn' });
-            chai.expect(this.$().hasClass('gh-notification-yellow')).to.be['true'];
-        });
-
         ember_mocha.it('closes notification through notifications service', function () {
             var component = this.subject(),
                 notifications = {},
@@ -27642,53 +32718,13 @@ define('ghost/tests/unit/components/gh-notification-test', ['chai', 'ember-mocha
     });
 
 });
-define('ghost/tests/unit/components/gh-notifications-test', ['ember', 'chai', 'ember-mocha'], function (Ember, chai, ember_mocha) {
-
-    'use strict';
-
-    /* jshint expr:true */
-    ember_mocha.describeComponent('gh-notifications', 'GhNotificationsComponent', {
-        // specify the other units that are required for this test
-        needs: ['component:gh-notification']
-    }, function () {
-        beforeEach(function () {
-            // Stub the notifications service
-            var notifications = Ember['default'].Object.create();
-            notifications.notifications = Ember['default'].A();
-            notifications.notifications.pushObject({ message: 'First', type: 'error' });
-            notifications.notifications.pushObject({ message: 'Second', type: 'warn' });
-
-            this.subject().set('notifications', notifications);
-        });
-
-        ember_mocha.it('renders', function () {
-            // creates the component instance
-            var component = this.subject();
-            chai.expect(component._state).to.equal('preRender');
-
-            // renders the component on the page
-            this.render();
-            chai.expect(component._state).to.equal('inDOM');
-
-            chai.expect(this.$().prop('tagName')).to.equal('ASIDE');
-            chai.expect(this.$().hasClass('gh-notifications')).to.be['true'];
-            chai.expect(this.$().children().length).to.equal(2);
-
-            Ember['default'].run(function () {
-                component.set('notifications.notifications', Ember['default'].A());
-            });
-
-            chai.expect(this.$().children().length).to.equal(0);
-        });
-    });
-
-});
 define('ghost/tests/unit/components/gh-posts-list-item-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
 
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-posts-list-item', 'GhPostsListItemComponent', {
+    ember_mocha.describeComponent('gh-posts-list-item', 'Unit: Component: gh-posts-list-item', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27705,55 +32741,13 @@ define('ghost/tests/unit/components/gh-posts-list-item-test', ['chai', 'ember-mo
     });
 
 });
-define('ghost/tests/unit/components/gh-profile-image-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
-
-    'use strict';
-
-    /* jshint expr:true */
-    /* global md5 */
-    ember_mocha.describeComponent('gh-profile-image', 'GhProfileImageComponent', {
-        needs: ['service:ghost-paths']
-    }, function () {
-        ember_mocha.it('renders', function () {
-            // creates the component instance
-            var component = this.subject();
-            chai.expect(component._state).to.equal('preRender');
-
-            // renders the component on the page
-            this.render();
-            chai.expect(component._state).to.equal('inDOM');
-        });
-        ember_mocha.it('renders the gravatar image background if email is supplied', function () {
-            var component = this.subject(),
-                testEmail = 'test@example.com',
-                style,
-                size;
-
-            component.set('email', testEmail);
-            this.render();
-
-            size = component.get('size');
-
-            style = 'url(http://www.gravatar.com/avatar/' + md5(testEmail) + '?s=' + size + '&d=blank)';
-
-            chai.expect(component.$('#account-image').css('background-image')).to.equal(style);
-        });
-        ember_mocha.it('doesn\'t render the gravatar image background if email isn\'t supplied', function () {
-            var component = this.subject();
-
-            this.render();
-
-            chai.expect(component.$('#account-image').length).to.equal(0);
-        });
-    });
-
-});
 define('ghost/tests/unit/components/gh-search-input-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
 
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-search-input', 'GhSearchInputComponent', {
+    ember_mocha.describeComponent('gh-search-input', 'Unit: Component: gh-search-input', {
+        unit: true,
         needs: ['component:gh-selectize']
     }, function () {
         ember_mocha.it('renders', function () {
@@ -27773,7 +32767,8 @@ define('ghost/tests/unit/components/gh-select-native-test', ['chai', 'ember-moch
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-select-native', 'GhSelectNativeComponent', {
+    ember_mocha.describeComponent('gh-select-native', 'Unit: Component: gh-select-native', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27790,12 +32785,46 @@ define('ghost/tests/unit/components/gh-select-native-test', ['chai', 'ember-moch
     });
 
 });
+define('ghost/tests/unit/components/gh-selectize-test', ['chai', 'ember-mocha', 'ember'], function (chai, ember_mocha, Ember) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+
+    ember_mocha.describeComponent('gh-selectize', 'Unit: Component: gh-selectize', {
+        // Specify the other units that are required for this test
+        // needs: ['component:foo', 'helper:bar'],
+        unit: true
+    }, function () {
+        ember_mocha.it('re-orders selection when selectize order is changed', function () {
+            var component = this.subject();
+
+            run(function () {
+                component.set('content', Ember['default'].A(['item 1', 'item 2', 'item 3']));
+                component.set('selection', Ember['default'].A(['item 2', 'item 3']));
+                component.set('multiple', true);
+            });
+
+            this.render();
+
+            run(function () {
+                component._selectize.setValue(['item 3', 'item 2']);
+            });
+
+            chai.expect(component.get('value'), 'component value').to.deep.equal(['item 3', 'item 2']);
+            chai.expect(component.get('selection'), 'component selection').to.deep.equal(['item 3', 'item 2']);
+        });
+    });
+
+});
 define('ghost/tests/unit/components/gh-spin-button-test', ['chai', 'ember-mocha'], function (chai, ember_mocha) {
 
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-spin-button', 'GhSpinButtonComponent', {
+    ember_mocha.describeComponent('gh-spin-button', 'Unit: Component: gh-spin-button', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27816,7 +32845,9 @@ define('ghost/tests/unit/components/gh-trim-focus-input_test', ['ember', 'ember-
 
     'use strict';
 
-    ember_mocha.describeComponent('gh-trim-focus-input', function () {
+    ember_mocha.describeComponent('gh-trim-focus-input', 'Unit: Component: gh-trim-focus-input', {
+        unit: true
+    }, function () {
         ember_mocha.it('trims value on focusOut', function () {
             var component = this.subject({
                 value: 'some random stuff   '
@@ -27856,7 +32887,9 @@ define('ghost/tests/unit/components/gh-url-preview_test', ['ember-mocha'], funct
 
     'use strict';
 
-    ember_mocha.describeComponent('gh-url-preview', function () {
+    ember_mocha.describeComponent('gh-url-preview', 'Unit: Component: gh-url-preview', {
+        unit: true
+    }, function () {
         ember_mocha.it('generates the correct preview URL with a prefix', function () {
             var component = this.subject({
                 prefix: 'tag',
@@ -27893,7 +32926,8 @@ define('ghost/tests/unit/components/gh-user-active-test', ['chai', 'ember-mocha'
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-user-active', 'GhUserActiveComponent', {
+    ember_mocha.describeComponent('gh-user-active', 'Unit: Component: gh-user-active', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27915,7 +32949,8 @@ define('ghost/tests/unit/components/gh-user-invited-test', ['chai', 'ember-mocha
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeComponent('gh-user-invited', 'GhUserInvitedComponent', {
+    ember_mocha.describeComponent('gh-user-invited', 'Unit: Component: gh-user-invited', {
+        unit: true
         // specify the other units that are required for this test
         // needs: ['component:foo', 'helper:bar']
     }, function () {
@@ -27932,11 +32967,11 @@ define('ghost/tests/unit/components/gh-user-invited-test', ['chai', 'ember-mocha
     });
 
 });
-define('ghost/tests/unit/controllers/post-settings-menu_test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
+define('ghost/tests/unit/controllers/post-settings-menu-test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
 
     'use strict';
 
-    ember_mocha.describeModule('controller:post-settings-menu', {
+    ember_mocha.describeModule('controller:post-settings-menu', 'Unit: Controller: post-settings-menu', {
         needs: ['controller:application', 'service:notifications']
     }, function () {
         ember_mocha.it('slugValue is one-way bound to model.slug', function () {
@@ -28642,11 +33677,11 @@ define('ghost/tests/unit/controllers/post-settings-menu_test', ['ember', 'ember-
     });
 
 });
-define('ghost/tests/unit/controllers/settings-general_test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
+define('ghost/tests/unit/controllers/settings/general-test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
 
     'use strict';
 
-    ember_mocha.describeModule('controller:settings/general', {
+    ember_mocha.describeModule('controller:settings/general', 'Unit: Controller: settings/general', {
         needs: ['service:notifications']
     }, function () {
         ember_mocha.it('isDatedPermalinks should be correct', function () {
@@ -28736,7 +33771,7 @@ define('ghost/tests/unit/controllers/settings/navigation-test', ['chai', 'ember-
 
     var navSettingJSON = '[\n    {"label":"Home","url":"/"},\n    {"label":"JS Test","url":"javascript:alert(\'hello\');"},\n    {"label":"About","url":"/about"},\n    {"label":"Sub Folder","url":"/blah/blah"},\n    {"label":"Telephone","url":"tel:01234-567890"},\n    {"label":"Mailto","url":"mailto:test@example.com"},\n    {"label":"External","url":"https://example.com/testing?query=test#anchor"},\n    {"label":"No Protocol","url":"//example.com"}\n]';
 
-    ember_mocha.describeModule('controller:settings/navigation', 'Unit : Controller : settings/navigation', {
+    ember_mocha.describeModule('controller:settings/navigation', 'Unit: Controller: settings/navigation', {
         // Specify the other units that are required for this test.
         needs: ['service:config', 'service:notifications']
     }, function () {
@@ -28917,7 +33952,7 @@ define('ghost/tests/unit/helpers/gh-user-can-admin-test', ['ember-mocha', 'ghost
 
     'use strict';
 
-    describe('GhUserCanAdminHelper', function () {
+    describe('Unit: Helper: gh-user-can-admin', function () {
         // Mock up roles and test for truthy
         describe('Owner role', function () {
             var user = { get: function get(role) {
@@ -28973,7 +34008,7 @@ define('ghost/tests/unit/helpers/is-equal-test', ['chai', 'mocha', 'ghost/helper
     'use strict';
 
     /* jshint expr:true */
-    mocha.describe('IsEqualHelper', function () {
+    mocha.describe('Unit: Helper: is-equal', function () {
         // Replace this with your real tests.
         mocha.it('works', function () {
             var result = is_equal.isEqual([42, 42]);
@@ -28988,7 +34023,7 @@ define('ghost/tests/unit/helpers/is-not-test', ['chai', 'mocha', 'ghost/helpers/
     'use strict';
 
     /* jshint expr:true */
-    mocha.describe('IsNotHelper', function () {
+    mocha.describe('Unit: Helper: is-not', function () {
         // Replace this with your real tests.
         mocha.it('works', function () {
             var result = is_not.isNot(false);
@@ -29003,7 +34038,7 @@ define('ghost/tests/unit/helpers/read-path-test', ['chai', 'mocha', 'ghost/helpe
     'use strict';
 
     /* jshint expr:true */
-    mocha.describe('ReadPathHelper', function () {
+    mocha.describe('Unit: Helper: read-path', function () {
         // Replace this with your real tests.
         mocha.it('works', function () {
             var result = read_path.readPath([Ember['default'].Object.create({ hi: 'there' }), 'hi']);
@@ -29018,7 +34053,7 @@ define('ghost/tests/unit/mixins/infinite-scroll-test', ['chai', 'mocha', 'ember'
     'use strict';
 
     /* jshint expr:true */
-    mocha.describe('InfiniteScrollMixin', function () {
+    mocha.describe('Unit: Mixin: infinite-scroll', function () {
         // Replace this with your real tests.
         mocha.it('works', function () {
             var InfiniteScrollObject = Ember['default'].Object.extend(InfiniteScrollMixin['default']),
@@ -29029,11 +34064,51 @@ define('ghost/tests/unit/mixins/infinite-scroll-test', ['chai', 'mocha', 'ember'
     });
 
 });
-define('ghost/tests/unit/models/post_test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
+define('ghost/tests/unit/mixins/validation-engine-test', ['chai', 'mocha', 'ember', 'ghost/mixins/validation-engine'], function (chai, mocha, Ember, ValidationEngineMixin) {
 
     'use strict';
 
-    ember_mocha.describeModel('post', {
+    /* jshint expr:true */
+    mocha.describe('ValidationEngineMixin', function () {
+        // Replace this with your real tests.
+        // it('works', function () {
+        //     var ValidationEngineObject = Ember.Object.extend(ValidationEngineMixin);
+        //     var subject = ValidationEngineObject.create();
+        //     expect(subject).to.be.ok;
+        // });
+
+        mocha.describe('#validate', function () {
+            mocha.it('loads the correct validator');
+            mocha.it('rejects if the validator doesn\'t exist');
+            mocha.it('resolves with valid object');
+            mocha.it('rejects with invalid object');
+            mocha.it('clears all existing errors');
+
+            mocha.describe('with a specified property', function () {
+                mocha.it('resolves with valid property');
+                mocha.it('rejects with invalid property');
+                mocha.it('adds property to hasValidated array');
+                mocha.it('clears existing error on specified property');
+            });
+
+            mocha.it('handles a passed in model');
+            mocha.it('uses this.model if available');
+        });
+
+        mocha.describe('#save', function () {
+            mocha.it('calls validate');
+            mocha.it('rejects with validation errors');
+            mocha.it('calls object\'s #save if validation passes');
+            mocha.it('skips validation if it\'s a deletion');
+        });
+    });
+
+});
+define('ghost/tests/unit/models/post-test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
+
+    'use strict';
+
+    ember_mocha.describeModel('post', 'Unit: Model: post', {
         needs: ['model:user', 'model:tag', 'model:role']
     }, function () {
         ember_mocha.it('has a validation type of "post"', function () {
@@ -29105,11 +34180,11 @@ define('ghost/tests/unit/models/post_test', ['ember', 'ember-mocha'], function (
     });
 
 });
-define('ghost/tests/unit/models/role_test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
+define('ghost/tests/unit/models/role-test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
 
     'use strict';
 
-    ember_mocha.describeModel('role', function () {
+    ember_mocha.describeModel('role', 'Unit: Model: role', function () {
         ember_mocha.it('provides a lowercase version of the name', function () {
             var model = this.subject({
                 name: 'Author'
@@ -29128,11 +34203,11 @@ define('ghost/tests/unit/models/role_test', ['ember', 'ember-mocha'], function (
     });
 
 });
-define('ghost/tests/unit/models/setting_test', ['ember-mocha'], function (ember_mocha) {
+define('ghost/tests/unit/models/setting-test', ['ember-mocha'], function (ember_mocha) {
 
     'use strict';
 
-    ember_mocha.describeModel('setting', function () {
+    ember_mocha.describeModel('setting', 'Unit: Model: setting', function () {
         ember_mocha.it('has a validation type of "setting"', function () {
             var model = this.subject();
 
@@ -29141,11 +34216,11 @@ define('ghost/tests/unit/models/setting_test', ['ember-mocha'], function (ember_
     });
 
 });
-define('ghost/tests/unit/models/tag_test', ['ember-mocha'], function (ember_mocha) {
+define('ghost/tests/unit/models/tag-test', ['ember-mocha'], function (ember_mocha) {
 
     'use strict';
 
-    ember_mocha.describeModel('tag', function () {
+    ember_mocha.describeModel('tag', 'Unit: Model: tag', function () {
         ember_mocha.it('has a validation type of "tag"', function () {
             var model = this.subject();
 
@@ -29154,11 +34229,13 @@ define('ghost/tests/unit/models/tag_test', ['ember-mocha'], function (ember_moch
     });
 
 });
-define('ghost/tests/unit/models/user_test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
+define('ghost/tests/unit/models/user-test', ['ember', 'ember-mocha'], function (Ember, ember_mocha) {
 
     'use strict';
 
-    ember_mocha.describeModel('user', {
+    var run = Ember['default'].run;
+
+    ember_mocha.describeModel('user', 'Unit: Model: user', {
         needs: ['model:role']
     }, function () {
         ember_mocha.it('has a validation type of "user"', function () {
@@ -29175,24 +34252,21 @@ define('ghost/tests/unit/models/user_test', ['ember', 'ember-mocha'], function (
             expect(model.get('active')).to.be.ok;
 
             ['warn-1', 'warn-2', 'warn-3', 'warn-4', 'locked'].forEach(function (status) {
-                Ember['default'].run(function () {
+                run(function () {
                     model.set('status', status);
-
-                    expect(model.get('status')).to.be.ok;
                 });
+                expect(model.get('status')).to.be.ok;
             });
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'inactive');
-
-                expect(model.get('active')).to.not.be.ok;
             });
+            expect(model.get('active')).to.not.be.ok;
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'invited');
-
-                expect(model.get('active')).to.not.be.ok;
             });
+            expect(model.get('active')).to.not.be.ok;
         });
 
         ember_mocha.it('invited property is correct', function () {
@@ -29202,23 +34276,20 @@ define('ghost/tests/unit/models/user_test', ['ember', 'ember-mocha'], function (
 
             expect(model.get('invited')).to.be.ok;
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'invited-pending');
-
-                expect(model.get('invited')).to.be.ok;
             });
+            expect(model.get('invited')).to.be.ok;
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'active');
-
-                expect(model.get('invited')).to.not.be.ok;
             });
+            expect(model.get('invited')).to.not.be.ok;
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'inactive');
-
-                expect(model.get('invited')).to.not.be.ok;
             });
+            expect(model.get('invited')).to.not.be.ok;
         });
 
         ember_mocha.it('pending property is correct', function () {
@@ -29228,99 +34299,93 @@ define('ghost/tests/unit/models/user_test', ['ember', 'ember-mocha'], function (
 
             expect(model.get('pending')).to.be.ok;
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'invited');
-
-                expect(model.get('pending')).to.not.be.ok;
             });
+            expect(model.get('pending')).to.not.be.ok;
 
-            Ember['default'].run(function () {
+            run(function () {
                 model.set('status', 'inactive');
-
-                expect(model.get('pending')).to.not.be.ok;
             });
+            expect(model.get('pending')).to.not.be.ok;
         });
 
         ember_mocha.it('role property is correct', function () {
-            var model, role;
+            var _this = this;
 
-            model = this.subject();
+            var model = this.subject();
 
-            Ember['default'].run(this, function () {
-                role = this.store().createRecord('role', { name: 'Author' });
-
+            run(function () {
+                var role = _this.store().push({ data: { id: 1, type: 'role', attributes: { name: 'Author' } } });
                 model.get('roles').pushObject(role);
-
-                expect(model.get('role.name')).to.equal('Author');
             });
+            expect(model.get('role.name')).to.equal('Author');
 
-            Ember['default'].run(this, function () {
-                role = this.store().createRecord('role', { name: 'Editor' });
-
+            run(function () {
+                var role = _this.store().push({ data: { id: 1, type: 'role', attributes: { name: 'Editor' } } });
                 model.set('role', role);
-
-                expect(model.get('role.name')).to.equal('Editor');
             });
+            expect(model.get('role.name')).to.equal('Editor');
         });
 
         ember_mocha.it('isAuthor property is correct', function () {
+            var _this2 = this;
+
             var model = this.subject();
 
-            Ember['default'].run(this, function () {
-                var role = this.store().createRecord('role', { name: 'Author' });
-
+            run(function () {
+                var role = _this2.store().push({ data: { id: 1, type: 'role', attributes: { name: 'Author' } } });
                 model.set('role', role);
-
-                expect(model.get('isAuthor')).to.be.ok;
-                expect(model.get('isEditor')).to.not.be.ok;
-                expect(model.get('isAdmin')).to.not.be.ok;
-                expect(model.get('isOwner')).to.not.be.ok;
             });
+            expect(model.get('isAuthor')).to.be.ok;
+            expect(model.get('isEditor')).to.not.be.ok;
+            expect(model.get('isAdmin')).to.not.be.ok;
+            expect(model.get('isOwner')).to.not.be.ok;
         });
 
         ember_mocha.it('isEditor property is correct', function () {
+            var _this3 = this;
+
             var model = this.subject();
 
-            Ember['default'].run(this, function () {
-                var role = this.store().createRecord('role', { name: 'Editor' });
-
+            run(function () {
+                var role = _this3.store().push({ data: { id: 1, type: 'role', attributes: { name: 'Editor' } } });
                 model.set('role', role);
-
-                expect(model.get('isEditor')).to.be.ok;
-                expect(model.get('isAuthor')).to.not.be.ok;
-                expect(model.get('isAdmin')).to.not.be.ok;
-                expect(model.get('isOwner')).to.not.be.ok;
             });
+            expect(model.get('isEditor')).to.be.ok;
+            expect(model.get('isAuthor')).to.not.be.ok;
+            expect(model.get('isAdmin')).to.not.be.ok;
+            expect(model.get('isOwner')).to.not.be.ok;
         });
 
         ember_mocha.it('isAdmin property is correct', function () {
+            var _this4 = this;
+
             var model = this.subject();
 
-            Ember['default'].run(this, function () {
-                var role = this.store().createRecord('role', { name: 'Administrator' });
-
+            run(function () {
+                var role = _this4.store().push({ data: { id: 1, type: 'role', attributes: { name: 'Administrator' } } });
                 model.set('role', role);
-
-                expect(model.get('isAdmin')).to.be.ok;
-                expect(model.get('isAuthor')).to.not.be.ok;
-                expect(model.get('isEditor')).to.not.be.ok;
-                expect(model.get('isOwner')).to.not.be.ok;
             });
+            expect(model.get('isAdmin')).to.be.ok;
+            expect(model.get('isAuthor')).to.not.be.ok;
+            expect(model.get('isEditor')).to.not.be.ok;
+            expect(model.get('isOwner')).to.not.be.ok;
         });
 
         ember_mocha.it('isOwner property is correct', function () {
+            var _this5 = this;
+
             var model = this.subject();
 
-            Ember['default'].run(this, function () {
-                var role = this.store().createRecord('role', { name: 'Owner' });
-
+            run(function () {
+                var role = _this5.store().push({ data: { id: 1, type: 'role', attributes: { name: 'Owner' } } });
                 model.set('role', role);
-
-                expect(model.get('isOwner')).to.be.ok;
-                expect(model.get('isAuthor')).to.not.be.ok;
-                expect(model.get('isAdmin')).to.not.be.ok;
-                expect(model.get('isEditor')).to.not.be.ok;
             });
+            expect(model.get('isOwner')).to.be.ok;
+            expect(model.get('isAuthor')).to.not.be.ok;
+            expect(model.get('isAdmin')).to.not.be.ok;
+            expect(model.get('isEditor')).to.not.be.ok;
         });
     });
 
@@ -29330,7 +34395,7 @@ define('ghost/tests/unit/services/config-test', ['chai', 'ember-mocha', 'ember']
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeModule('service:config', 'ConfigService', {
+    ember_mocha.describeModule('service:config', 'Unit: Service: config', {
         // Specify the other units that are required for this test.
         // needs: ['service:foo']
     }, function () {
@@ -29355,7 +34420,10 @@ define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai'
     'use strict';
 
     /* jshint expr:true */
-    ember_mocha.describeModule('service:notifications', 'NotificationsService', {
+    var run = Ember['default'].run;
+    var get = Ember['default'].get;
+
+    ember_mocha.describeModule('service:notifications', 'Unit: Service: notifications', {
         // Specify the other units that are required for this test.
         // needs: ['model:notification']
     }, function () {
@@ -29367,11 +34435,17 @@ define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai'
         ember_mocha.it('filters alerts/notifications', function () {
             var notifications = this.subject();
 
-            notifications.set('content', [{ message: 'Alert', status: 'alert' }, { message: 'Notification', status: 'notification' }]);
+            // wrapped in run-loop to enure alerts/notifications CPs are updated
+            run(function () {
+                notifications.showAlert('Alert');
+                notifications.showNotification('Notification');
+            });
 
-            chai.expect(notifications.get('alerts')).to.deep.equal([{ message: 'Alert', status: 'alert' }]);
+            chai.expect(notifications.get('alerts.length')).to.equal(1);
+            chai.expect(notifications.get('alerts.firstObject.message')).to.equal('Alert');
 
-            chai.expect(notifications.get('notifications')).to.deep.equal([{ message: 'Notification', status: 'notification' }]);
+            chai.expect(notifications.get('notifications.length')).to.equal(1);
+            chai.expect(notifications.get('notifications.firstObject.message')).to.equal('Notification');
         });
 
         ember_mocha.it('#handleNotification deals with DS.Notification notifications', function () {
@@ -29399,70 +34473,111 @@ define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai'
         ember_mocha.it('#showAlert adds POJO alerts', function () {
             var notifications = this.subject();
 
-            notifications.showAlert('Test Alert', { type: 'error' });
+            run(function () {
+                notifications.showAlert('Test Alert', { type: 'error' });
+            });
 
-            chai.expect(notifications.get('alerts')).to.deep.include({ message: 'Test Alert', status: 'alert', type: 'error' });
+            chai.expect(notifications.get('alerts')).to.deep.include({ message: 'Test Alert', status: 'alert', type: 'error', key: undefined });
         });
 
         ember_mocha.it('#showAlert adds delayed notifications', function () {
             var notifications = this.subject();
 
-            notifications.showNotification('Test Alert', { type: 'error', delayed: true });
+            run(function () {
+                notifications.showNotification('Test Alert', { type: 'error', delayed: true });
+            });
 
-            chai.expect(notifications.get('delayedNotifications')).to.deep.include({ message: 'Test Alert', status: 'notification', type: 'error' });
+            chai.expect(notifications.get('delayedNotifications')).to.deep.include({ message: 'Test Alert', status: 'notification', type: 'error', key: undefined });
+        });
+
+        // in order to cater for complex keys that are suitable for i18n
+        // we split on the second period and treat the resulting base as
+        // the key for duplicate checking
+        ember_mocha.it('#showAlert clears duplicates', function () {
+            var notifications = this.subject();
+
+            run(function () {
+                notifications.showAlert('Kept');
+                notifications.showAlert('Duplicate', { key: 'duplicate.key.fail' });
+            });
+
+            chai.expect(notifications.get('alerts.length')).to.equal(2);
+
+            run(function () {
+                notifications.showAlert('Duplicate with new message', { key: 'duplicate.key.success' });
+            });
+
+            chai.expect(notifications.get('alerts.length')).to.equal(2);
+            chai.expect(notifications.get('alerts.lastObject.message')).to.equal('Duplicate with new message');
         });
 
         ember_mocha.it('#showNotification adds POJO notifications', function () {
             var notifications = this.subject();
 
-            notifications.showNotification('Test Notification', { type: 'success' });
+            run(function () {
+                notifications.showNotification('Test Notification', { type: 'success' });
+            });
 
-            chai.expect(notifications.get('notifications')).to.deep.include({ message: 'Test Notification', status: 'notification', type: 'success' });
+            chai.expect(notifications.get('notifications')).to.deep.include({ message: 'Test Notification', status: 'notification', type: 'success', key: undefined });
         });
 
         ember_mocha.it('#showNotification adds delayed notifications', function () {
             var notifications = this.subject();
 
-            notifications.showNotification('Test Notification', { delayed: true });
+            run(function () {
+                notifications.showNotification('Test Notification', { delayed: true });
+            });
 
-            chai.expect(notifications.get('delayedNotifications')).to.deep.include({ message: 'Test Notification', status: 'notification', type: undefined });
+            chai.expect(notifications.get('delayedNotifications')).to.deep.include({ message: 'Test Notification', status: 'notification', type: undefined, key: undefined });
         });
 
         ember_mocha.it('#showNotification clears existing notifications', function () {
             var notifications = this.subject();
 
-            notifications.showNotification('First');
-            notifications.showNotification('Second');
+            run(function () {
+                notifications.showNotification('First');
+                notifications.showNotification('Second');
+            });
 
-            chai.expect(notifications.get('content.length')).to.equal(1);
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'Second', status: 'notification', type: undefined }]);
+            chai.expect(notifications.get('notifications.length')).to.equal(1);
+            chai.expect(notifications.get('notifications')).to.deep.equal([{ message: 'Second', status: 'notification', type: undefined, key: undefined }]);
         });
 
         ember_mocha.it('#showNotification keeps existing notifications if doNotCloseNotifications option passed', function () {
             var notifications = this.subject();
 
-            notifications.showNotification('First');
-            notifications.showNotification('Second', { doNotCloseNotifications: true });
+            run(function () {
+                notifications.showNotification('First');
+                notifications.showNotification('Second', { doNotCloseNotifications: true });
+            });
 
-            chai.expect(notifications.get('content.length')).to.equal(2);
+            chai.expect(notifications.get('notifications.length')).to.equal(2);
         });
 
         // TODO: review whether this can be removed once it's no longer used by validations
         ember_mocha.it('#showErrors adds multiple notifications', function () {
             var notifications = this.subject();
 
-            notifications.showErrors([{ message: 'First' }, { message: 'Second' }]);
+            run(function () {
+                notifications.showErrors([{ message: 'First' }, { message: 'Second' }]);
+            });
 
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'First', status: 'notification', type: 'error' }, { message: 'Second', status: 'notification', type: 'error' }]);
+            chai.expect(notifications.get('notifications')).to.deep.equal([{ message: 'First', status: 'notification', type: 'error', key: undefined }, { message: 'Second', status: 'notification', type: 'error', key: undefined }]);
         });
 
         ember_mocha.it('#showAPIError adds single json response error', function () {
             var notifications = this.subject(),
                 resp = { jqXHR: { responseJSON: { error: 'Single error' } } };
 
-            notifications.showAPIError(resp);
+            run(function () {
+                notifications.showAPIError(resp);
+            });
 
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'Single error', status: 'alert', type: 'error' }]);
+            var notification = notifications.get('alerts.firstObject');
+            chai.expect(get(notification, 'message')).to.equal('Single error');
+            chai.expect(get(notification, 'status')).to.equal('alert');
+            chai.expect(get(notification, 'type')).to.equal('error');
+            chai.expect(get(notification, 'key')).to.equal('api-error');
         });
 
         // used to display validation errors returned from the server
@@ -29470,54 +34585,91 @@ define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai'
             var notifications = this.subject(),
                 resp = { jqXHR: { responseJSON: { errors: ['First error', 'Second error'] } } };
 
-            notifications.showAPIError(resp);
+            run(function () {
+                notifications.showAPIError(resp);
+            });
 
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'First error', status: 'notification', type: 'error' }, { message: 'Second error', status: 'notification', type: 'error' }]);
+            chai.expect(notifications.get('notifications')).to.deep.equal([{ message: 'First error', status: 'notification', type: 'error', key: undefined }, { message: 'Second error', status: 'notification', type: 'error', key: undefined }]);
         });
 
         ember_mocha.it('#showAPIError adds single json response message', function () {
             var notifications = this.subject(),
                 resp = { jqXHR: { responseJSON: { message: 'Single message' } } };
 
-            notifications.showAPIError(resp);
+            run(function () {
+                notifications.showAPIError(resp);
+            });
 
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'Single message', status: 'alert', type: 'error' }]);
+            var notification = notifications.get('alerts.firstObject');
+            chai.expect(get(notification, 'message')).to.equal('Single message');
+            chai.expect(get(notification, 'status')).to.equal('alert');
+            chai.expect(get(notification, 'type')).to.equal('error');
+            chai.expect(get(notification, 'key')).to.equal('api-error');
         });
 
         ember_mocha.it('#showAPIError displays default error text if response has no error/message', function () {
             var notifications = this.subject(),
                 resp = {};
 
-            notifications.showAPIError(resp);
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'There was a problem on the server, please try again.', status: 'alert', type: 'error' }]);
+            run(function () {
+                notifications.showAPIError(resp);
+            });
+            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'There was a problem on the server, please try again.', status: 'alert', type: 'error', key: 'api-error' }]);
 
             notifications.set('content', Ember['default'].A());
 
-            notifications.showAPIError(resp, { defaultErrorText: 'Overridden default' });
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'Overridden default', status: 'alert', type: 'error' }]);
+            run(function () {
+                notifications.showAPIError(resp, { defaultErrorText: 'Overridden default' });
+            });
+            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'Overridden default', status: 'alert', type: 'error', key: 'api-error' }]);
+        });
+
+        ember_mocha.it('#showAPIError sets correct key when passed a base key', function () {
+            var notifications = this.subject();
+
+            run(function () {
+                notifications.showAPIError('Test', { key: 'test.alert' });
+            });
+
+            chai.expect(notifications.get('alerts.firstObject.key')).to.equal('test.alert.api-error');
+        });
+
+        ember_mocha.it('#showAPIError sets correct key when not passed a key', function () {
+            var notifications = this.subject();
+
+            run(function () {
+                notifications.showAPIError('Test');
+            });
+
+            chai.expect(notifications.get('alerts.firstObject.key')).to.equal('api-error');
         });
 
         ember_mocha.it('#displayDelayed moves delayed notifications into content', function () {
             var notifications = this.subject();
 
-            notifications.showNotification('First', { delayed: true });
-            notifications.showNotification('Second', { delayed: true });
-            notifications.showNotification('Third', { delayed: false });
+            run(function () {
+                notifications.showNotification('First', { delayed: true });
+                notifications.showNotification('Second', { delayed: true });
+                notifications.showNotification('Third', { delayed: false });
+                notifications.displayDelayed();
+            });
 
-            notifications.displayDelayed();
-
-            chai.expect(notifications.get('content')).to.deep.equal([{ message: 'Third', status: 'notification', type: undefined }, { message: 'First', status: 'notification', type: undefined }, { message: 'Second', status: 'notification', type: undefined }]);
+            chai.expect(notifications.get('notifications')).to.deep.equal([{ message: 'Third', status: 'notification', type: undefined, key: undefined }, { message: 'First', status: 'notification', type: undefined, key: undefined }, { message: 'Second', status: 'notification', type: undefined, key: undefined }]);
         });
 
         ember_mocha.it('#closeNotification removes POJO notifications', function () {
             var notification = { message: 'Close test', status: 'notification' },
                 notifications = this.subject();
 
-            notifications.handleNotification(notification);
+            run(function () {
+                notifications.handleNotification(notification);
+            });
 
             chai.expect(notifications.get('notifications')).to.include(notification);
 
-            notifications.closeNotification(notification);
+            run(function () {
+                notifications.closeNotification(notification);
+            });
 
             chai.expect(notifications.get('notifications')).to.not.include(notification);
         });
@@ -29538,40 +34690,65 @@ define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai'
             };
             sinon['default'].spy(notification, 'save');
 
-            notifications.handleNotification(notification);
+            run(function () {
+                notifications.handleNotification(notification);
+            });
+
             chai.expect(notifications.get('alerts')).to.include(notification);
 
-            notifications.closeNotification(notification);
+            run(function () {
+                notifications.closeNotification(notification);
+            });
 
             chai.expect(notification.deleteRecord.calledOnce).to.be['true'];
             chai.expect(notification.save.calledOnce).to.be['true'];
 
-            // wrap in runloop so filter updates
-            Ember['default'].run.next(function () {
-                chai.expect(notifications.get('alerts')).to.not.include(notification);
-            });
+            chai.expect(notifications.get('alerts')).to.not.include(notification);
         });
 
         ember_mocha.it('#closeNotifications only removes notifications', function () {
             var notifications = this.subject();
 
-            notifications.showAlert('First alert');
-            notifications.showNotification('First notification');
-            notifications.showNotification('Second notification', { doNotCloseNotifications: true });
-
-            chai.expect(notifications.get('alerts.length')).to.equal(1);
-            chai.expect(notifications.get('notifications.length')).to.equal(2);
-
-            notifications.closeNotifications();
-
-            // wrap in runloop so filter updates
-            Ember['default'].run.next(function () {
-                chai.expect(notifications.get('alerts.length')).to.equal(1);
-                chai.expect(notifications.get('notifications.length')).to.equal(1);
+            run(function () {
+                notifications.showAlert('First alert');
+                notifications.showNotification('First notification');
+                notifications.showNotification('Second notification', { doNotCloseNotifications: true });
             });
+
+            chai.expect(notifications.get('alerts.length'), 'alerts count').to.equal(1);
+            chai.expect(notifications.get('notifications.length'), 'notifications count').to.equal(2);
+
+            run(function () {
+                notifications.closeNotifications();
+            });
+
+            chai.expect(notifications.get('alerts.length'), 'alerts count').to.equal(1);
+            chai.expect(notifications.get('notifications.length'), 'notifications count').to.equal(0);
         });
 
-        ember_mocha.it('#closeAll removes everything without deletion', function () {
+        ember_mocha.it('#closeNotifications only closes notifications with specified key', function () {
+            var notifications = this.subject();
+
+            run(function () {
+                notifications.showAlert('First alert');
+                // using handleNotification as showNotification will auto-prune
+                // duplicates and keys will be removed if doNotCloseNotifications
+                // is true
+                notifications.handleNotification({ message: 'First notification', key: 'test.close', status: 'notification' });
+                notifications.handleNotification({ message: 'Second notification', key: 'test.keep', status: 'notification' });
+                notifications.handleNotification({ message: 'Third notification', key: 'test.close', status: 'notification' });
+            });
+
+            run(function () {
+                notifications.closeNotifications('test.close');
+            });
+
+            chai.expect(notifications.get('notifications.length'), 'notifications count').to.equal(1);
+            chai.expect(notifications.get('notifications.firstObject.message'), 'notification message').to.equal('Second notification');
+            chai.expect(notifications.get('alerts.length'), 'alerts count').to.equal(1);
+        });
+
+        ember_mocha.it('#clearAll removes everything without deletion', function () {
             var notifications = this.subject(),
                 notificationModel = Ember['default'].Object.create({ message: 'model' });
 
@@ -29590,20 +34767,52 @@ define('ghost/tests/unit/services/notifications-test', ['ember', 'sinon', 'chai'
             notifications.handleNotification(notificationModel);
             notifications.handleNotification({ message: 'pojo' });
 
-            notifications.closeAll();
+            notifications.clearAll();
 
             chai.expect(notifications.get('content')).to.be.empty;
             chai.expect(notificationModel.deleteRecord.called).to.be['false'];
             chai.expect(notificationModel.save.called).to.be['false'];
         });
+
+        ember_mocha.it('#closeAlerts only removes alerts', function () {
+            var notifications = this.subject();
+
+            notifications.showNotification('First notification');
+            notifications.showAlert('First alert');
+            notifications.showAlert('Second alert');
+
+            run(function () {
+                notifications.closeAlerts();
+            });
+
+            chai.expect(notifications.get('alerts.length')).to.equal(0);
+            chai.expect(notifications.get('notifications.length')).to.equal(1);
+        });
+
+        ember_mocha.it('#closeAlerts closes only alerts with specified key', function () {
+            var notifications = this.subject();
+
+            notifications.showNotification('First notification');
+            notifications.showAlert('First alert', { key: 'test.close' });
+            notifications.showAlert('Second alert', { key: 'test.keep' });
+            notifications.showAlert('Third alert', { key: 'test.close' });
+
+            run(function () {
+                notifications.closeAlerts('test.close');
+            });
+
+            chai.expect(notifications.get('alerts.length')).to.equal(1);
+            chai.expect(notifications.get('alerts.firstObject.message')).to.equal('Second alert');
+            chai.expect(notifications.get('notifications.length')).to.equal(1);
+        });
     });
 
 });
-define('ghost/tests/unit/utils/ghost-paths_test', ['ghost/utils/ghost-paths'], function (ghostPaths) {
+define('ghost/tests/unit/utils/ghost-paths-test', ['ghost/utils/ghost-paths'], function (ghostPaths) {
 
     'use strict';
 
-    describe('ghost-paths', function () {
+    describe('Unit: Util: ghost-paths', function () {
         describe('join', function () {
             var join = ghostPaths['default']().url.join;
 
@@ -29690,7 +34899,7 @@ define('ghost/tests/unit/validators/nav-item-test', ['chai', 'mocha', 'ghost/val
         chai.expect(navItem.get('hasValidated')).to.include('url');
     };
 
-    mocha.describe('Unit : Validator : nav-item', function () {
+    mocha.describe('Unit: Validator: nav-item', function () {
         mocha.it('requires label presence', function () {
             var navItem = navigation.NavItem.create();
 
@@ -29761,11 +34970,306 @@ define('ghost/tests/unit/validators/nav-item-test', ['chai', 'mocha', 'ghost/val
     });
 
 });
+define('ghost/tests/unit/validators/tag-settings-test', ['chai', 'mocha', 'sinon', 'ember', 'ghost/mixins/validation-engine'], function (chai, mocha, sinon, Ember, ValidationEngine) {
+
+    'use strict';
+
+    /* jshint expr:true */
+    var run = Ember['default'].run;
+    var Tag = Ember['default'].Object.extend(ValidationEngine['default'], {
+        validationType: 'tag',
+
+        name: null,
+        description: null,
+        meta_title: null,
+        meta_description: null
+    });
+
+    // TODO: These tests have way too much duplication, consider creating test
+    // helpers for validations
+
+    // TODO: Move testing of validation-engine behaviour into validation-engine-test
+    // and replace these tests with specific validator tests
+
+    mocha.describe('Unit: Validator: tag-settings', function () {
+        mocha.it('validates all fields by default', function () {
+            var tag = Tag.create({}),
+                properties = tag.get('validators.tag.properties');
+
+            // TODO: This is checking implementation details rather than expected
+            // behaviour. Replace once we have consistent behaviour (see below)
+            chai.expect(properties, 'properties').to.include('name');
+            chai.expect(properties, 'properties').to.include('slug');
+            chai.expect(properties, 'properties').to.include('description');
+            chai.expect(properties, 'properties').to.include('metaTitle');
+            chai.expect(properties, 'properties').to.include('metaDescription');
+
+            // TODO: .validate (and  by extension .save) doesn't currently affect
+            // .hasValidated - it would be good to make this consistent.
+            // The following tests currently fail:
+            //
+            // run(() => {
+            //     tag.validate();
+            // });
+            //
+            // expect(tag.get('hasValidated'), 'hasValidated').to.include('name');
+            // expect(tag.get('hasValidated'), 'hasValidated').to.include('description');
+            // expect(tag.get('hasValidated'), 'hasValidated').to.include('metaTitle');
+            // expect(tag.get('hasValidated'), 'hasValidated').to.include('metaDescription');
+        });
+
+        mocha.it('passes with valid name', function () {
+            // longest valid name
+            var tag = Tag.create({ name: new Array(151).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('name').length, 'name length').to.equal(150);
+
+            run(function () {
+                tag.validate({ property: 'name' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            chai.expect(passed, 'passed').to.be['true'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('name');
+        });
+
+        mocha.it('validates name presence', function () {
+            var tag = Tag.create(),
+                passed = false;
+
+            // TODO: validator is currently a singleton meaning state leaks
+            // between all objects that use it. Each object should either
+            // get it's own validator instance or validator objects should not
+            // contain state. The following currently fails:
+            //
+            // let validator = tag.get('validators.tag')
+            // expect(validator.get('passed'), 'passed').to.be.false;
+
+            run(function () {
+                tag.validate({ property: 'name' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var nameErrors = tag.get('errors').errorsFor('name')[0];
+            chai.expect(nameErrors.attribute, 'errors.name.attribute').to.equal('name');
+            chai.expect(nameErrors.message, 'errors.name.message').to.equal('You must specify a name for the tag.');
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('name');
+        });
+
+        mocha.it('validates names starting with a comma', function () {
+            var tag = Tag.create({ name: ',test' }),
+                passed = false;
+
+            run(function () {
+                tag.validate({ property: 'name' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var nameErrors = tag.get('errors').errorsFor('name')[0];
+            chai.expect(nameErrors.attribute, 'errors.name.attribute').to.equal('name');
+            chai.expect(nameErrors.message, 'errors.name.message').to.equal('Tag names can\'t start with commas.');
+            chai.expect(tag.get('errors.length')).to.equal(1);
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('name');
+        });
+
+        mocha.it('validates name length', function () {
+            // shortest invalid name
+            var tag = Tag.create({ name: new Array(152).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('name').length, 'name length').to.equal(151);
+
+            run(function () {
+                tag.validate({ property: 'name' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var nameErrors = tag.get('errors').errorsFor('name')[0];
+            chai.expect(nameErrors.attribute, 'errors.name.attribute').to.equal('name');
+            chai.expect(nameErrors.message, 'errors.name.message').to.equal('Tag names cannot be longer than 150 characters.');
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('name');
+        });
+
+        mocha.it('passes with valid slug', function () {
+            // longest valid slug
+            var tag = Tag.create({ slug: new Array(151).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('slug').length, 'slug length').to.equal(150);
+
+            run(function () {
+                tag.validate({ property: 'slug' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            chai.expect(passed, 'passed').to.be['true'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('slug');
+        });
+
+        mocha.it('validates slug length', function () {
+            // shortest invalid slug
+            var tag = Tag.create({ slug: new Array(152).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('slug').length, 'slug length').to.equal(151);
+
+            run(function () {
+                tag.validate({ property: 'slug' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var slugErrors = tag.get('errors').errorsFor('slug')[0];
+            chai.expect(slugErrors.attribute, 'errors.slug.attribute').to.equal('slug');
+            chai.expect(slugErrors.message, 'errors.slug.message').to.equal('URL cannot be longer than 150 characters.');
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('slug');
+        });
+
+        mocha.it('passes with a valid description', function () {
+            // longest valid description
+            var tag = Tag.create({ description: new Array(201).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('description').length, 'description length').to.equal(200);
+
+            run(function () {
+                tag.validate({ property: 'description' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            chai.expect(passed, 'passed').to.be['true'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('description');
+        });
+
+        mocha.it('validates description length', function () {
+            // shortest invalid description
+            var tag = Tag.create({ description: new Array(202).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('description').length, 'description length').to.equal(201);
+
+            run(function () {
+                tag.validate({ property: 'description' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var errors = tag.get('errors').errorsFor('description')[0];
+            chai.expect(errors.attribute, 'errors.description.attribute').to.equal('description');
+            chai.expect(errors.message, 'errors.description.message').to.equal('Description cannot be longer than 200 characters.');
+
+            // TODO: tag.errors appears to be a singleton and previous errors are
+            // not cleared despite creating a new tag object
+            //
+            // console.log(JSON.stringify(tag.get('errors')));
+            // expect(tag.get('errors.length')).to.equal(1);
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('description');
+        });
+
+        // TODO: we have both meta_title and metaTitle property names on the
+        // model/validator respectively - this should be standardised
+        mocha.it('passes with a valid meta_title', function () {
+            // longest valid meta_title
+            var tag = Tag.create({ meta_title: new Array(151).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('meta_title').length, 'meta_title length').to.equal(150);
+
+            run(function () {
+                tag.validate({ property: 'metaTitle' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            chai.expect(passed, 'passed').to.be['true'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('metaTitle');
+        });
+
+        mocha.it('validates meta_title length', function () {
+            // shortest invalid meta_title
+            var tag = Tag.create({ meta_title: new Array(152).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('meta_title').length, 'meta_title length').to.equal(151);
+
+            run(function () {
+                tag.validate({ property: 'metaTitle' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var errors = tag.get('errors').errorsFor('meta_title')[0];
+            chai.expect(errors.attribute, 'errors.meta_title.attribute').to.equal('meta_title');
+            chai.expect(errors.message, 'errors.meta_title.message').to.equal('Meta Title cannot be longer than 150 characters.');
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('metaTitle');
+        });
+
+        // TODO: we have both meta_description and metaDescription property names on
+        // the model/validator respectively - this should be standardised
+        mocha.it('passes with a valid meta_description', function () {
+            // longest valid description
+            var tag = Tag.create({ meta_description: new Array(201).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('meta_description').length, 'meta_description length').to.equal(200);
+
+            run(function () {
+                tag.validate({ property: 'metaDescription' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            chai.expect(passed, 'passed').to.be['true'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('metaDescription');
+        });
+
+        mocha.it('validates meta_description length', function () {
+            // shortest invalid meta_description
+            var tag = Tag.create({ meta_description: new Array(202).join('x') }),
+                passed = false;
+
+            chai.expect(tag.get('meta_description').length, 'meta_description length').to.equal(201);
+
+            run(function () {
+                tag.validate({ property: 'metaDescription' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var errors = tag.get('errors').errorsFor('meta_description')[0];
+            chai.expect(errors.attribute, 'errors.meta_description.attribute').to.equal('meta_description');
+            chai.expect(errors.message, 'errors.meta_description.message').to.equal('Meta Description cannot be longer than 200 characters.');
+
+            chai.expect(passed, 'passed').to.be['false'];
+            chai.expect(tag.get('hasValidated'), 'hasValidated').to.include('metaDescription');
+        });
+    });
+
+});
 define('ghost/transforms/moment-date', ['exports', 'ember-data'], function (exports, DS) {
 
     'use strict';
 
-    var MomentDate = DS['default'].Transform.extend({
+    exports['default'] = DS['default'].Transform.extend({
         deserialize: function deserialize(serialized) {
             if (serialized) {
                 return moment(serialized);
@@ -29779,7 +35283,23 @@ define('ghost/transforms/moment-date', ['exports', 'ember-data'], function (expo
             return deserialized;
         }
     });
-    exports['default'] = MomentDate;
+
+});
+define('ghost/transforms/raw', ['exports', 'ember-data'], function (exports, DS) {
+
+    'use strict';
+
+    var Transform = DS['default'].Transform;
+
+    exports['default'] = Transform.extend({
+        deserialize: function deserialize(serialized) {
+            return serialized;
+        },
+
+        serialize: function serialize(deserialized) {
+            return deserialized;
+        }
+    });
 
 });
 define('ghost/utils/ajax', ['exports', 'ember'], function (exports, Ember) {
@@ -29835,7 +35355,7 @@ define('ghost/utils/bind', ['exports'], function (exports) {
 
     var slice = Array.prototype.slice;
 
-    function bind() /* func, args, thisArg */{
+    exports['default'] = function () /* func, args, thisArg */{
         var args = slice.call(arguments),
             func = args.shift(),
             thisArg = args.pop();
@@ -29847,14 +35367,12 @@ define('ghost/utils/bind', ['exports'], function (exports) {
         return bound;
     }
 
-    exports['default'] = bind;
-
 });
 define('ghost/utils/bound-one-way', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var BoundOneWay = function BoundOneWay(upstream, transform) {
+    exports['default'] = function (upstream, transform) {
         if (typeof transform !== 'function') {
             // default to the identity function
             transform = function (value) {
@@ -29870,9 +35388,7 @@ define('ghost/utils/bound-one-way', ['exports', 'ember'], function (exports, Emb
                 return value;
             }
         });
-    };
-
-    exports['default'] = BoundOneWay;
+    }
 
 });
 define('ghost/utils/caja-sanitizers', ['exports'], function (exports) {
@@ -29913,9 +35429,7 @@ define('ghost/utils/ctrl-or-cmd', ['exports'], function (exports) {
 
 	'use strict';
 
-	var ctrlOrCmd = navigator.userAgent.indexOf('Mac') !== -1 ? 'command' : 'ctrl';
-
-	exports['default'] = ctrlOrCmd;
+	exports['default'] = navigator.userAgent.indexOf('Mac') !== -1 ? 'command' : 'ctrl';
 
 });
 define('ghost/utils/date-formatting', ['exports'], function (exports) {
@@ -29957,7 +35471,7 @@ define('ghost/utils/document-title', ['exports', 'ember'], function (exports, Em
 
     'use strict';
 
-    var documentTitle = function documentTitle() {
+    exports['default'] = function () {
         Ember['default'].Route.reopen({
             // `titleToken` can either be a static string or a function
             // that accepts a model object and returns a string (or array
@@ -30002,21 +35516,15 @@ define('ghost/utils/document-title', ['exports', 'ember'], function (exports, Em
         });
 
         Ember['default'].Router.reopen({
-            updateTitle: (function () {
+            updateTitle: Ember['default'].on('didTransition', function () {
                 this.send('collectTitleTokens', []);
-            }).on('didTransition'),
+            }),
 
             setTitle: function setTitle(title) {
-                if (Ember['default'].testing) {
-                    this._title = title;
-                } else {
-                    window.document.title = title;
-                }
+                window.document.title = title;
             }
         });
-    };
-
-    exports['default'] = documentTitle;
+    }
 
 });
 define('ghost/utils/ed-image-manager', ['exports'], function (exports) {
@@ -30138,7 +35646,7 @@ define('ghost/utils/ghost-paths', ['exports'], function (exports) {
         return route += '/';
     };
 
-    function ghostPaths() {
+    exports['default'] = function () {
         var path = window.location.pathname,
             subdir = path.substr(0, path.search('/ghost/')),
             adminRoot = subdir + '/ghost',
@@ -30179,8 +35687,6 @@ define('ghost/utils/ghost-paths', ['exports'], function (exports) {
         };
     }
 
-    exports['default'] = ghostPaths;
-
 });
 define('ghost/utils/isFinite', ['exports'], function (exports) {
 
@@ -30190,11 +35696,9 @@ define('ghost/utils/isFinite', ['exports'], function (exports) {
 
     // isFinite function from lodash
 
-    function isFinite(value) {
+    exports['default'] = function (value) {
         return window.isFinite(value) && !window.isNaN(parseFloat(value));
     }
-
-    exports['default'] = isFinite;
 
 });
 define('ghost/utils/isNumber', ['exports'], function (exports) {
@@ -30205,11 +35709,9 @@ define('ghost/utils/isNumber', ['exports'], function (exports) {
 
   var toString = Object.prototype.toString;
 
-  function isNumber(value) {
+  exports['default'] = function (value) {
     return typeof value === 'number' || value && typeof value === 'object' && toString.call(value) === '[object Number]' || false;
   }
-
-  exports['default'] = isNumber;
 
 });
 define('ghost/utils/link-component', ['ember'], function (Ember) {
@@ -30237,9 +35739,7 @@ define('ghost/utils/mobile', ['exports'], function (exports) {
 
 	'use strict';
 
-	var mobileQuery = matchMedia('(max-width: 800px)');
-
-	exports['default'] = mobileQuery;
+	exports['default'] = matchMedia('(max-width: 800px)');
 
 });
 define('ghost/utils/random-password', ['exports'], function (exports) {
@@ -30248,14 +35748,12 @@ define('ghost/utils/random-password', ['exports'], function (exports) {
 
     /* global generatePassword */
 
-    function randomPassword() {
+    exports['default'] = function () {
         var word = generatePassword(6),
             randomN = Math.floor(Math.random() * 1000);
 
         return word + randomN;
     }
-
-    exports['default'] = randomPassword;
 
 });
 define('ghost/utils/set-scroll-classname', ['exports'], function (exports) {
@@ -30268,7 +35766,7 @@ define('ghost/utils/set-scroll-classname', ['exports'], function (exports) {
     // **target:** The element in which the class is applied. Defaults to scrolled element.
     // **class-name:** The class which is applied.
     // **offset:** How far the user has to scroll before the class is applied.
-    var setScrollClassName = function setScrollClassName(options) {
+    exports['default'] = function (options) {
         var $target = options.target || this,
             offset = options.offset,
             className = options.className || 'scrolling';
@@ -30278,9 +35776,7 @@ define('ghost/utils/set-scroll-classname', ['exports'], function (exports) {
         } else {
             $target.removeClass(className);
         }
-    };
-
-    exports['default'] = setScrollClassName;
+    }
 
 });
 define('ghost/utils/text-field', ['ember'], function (Ember) {
@@ -30298,7 +35794,7 @@ define('ghost/utils/titleize', ['exports', 'ember'], function (exports, Ember) {
 
     var lowerWords = ['of', 'a', 'the', 'and', 'an', 'or', 'nor', 'but', 'is', 'if', 'then', 'else', 'when', 'at', 'from', 'by', 'on', 'off', 'for', 'in', 'out', 'over', 'to', 'into', 'with'];
 
-    function titleize(input) {
+    exports['default'] = function (input) {
         var words = input.split(' ').map(function (word, index) {
             if (index === 0 || lowerWords.indexOf(word) === -1) {
                 word = Ember['default'].String.capitalize(word);
@@ -30309,8 +35805,6 @@ define('ghost/utils/titleize', ['exports', 'ember'], function (exports, Ember) {
 
         return words.join(' ');
     }
-
-    exports['default'] = titleize;
 
 });
 define('ghost/utils/validator-extensions', ['exports', 'ember'], function (exports, Ember) {
@@ -30334,6 +35828,21 @@ define('ghost/utils/validator-extensions', ['exports', 'ember'], function (expor
     };
 
 });
+define('ghost/utils/window-proxy', ['exports'], function (exports) {
+
+    'use strict';
+
+    exports['default'] = {
+        changeLocation: function changeLocation(url) {
+            window.location = url;
+        },
+
+        replaceLocation: function replaceLocation(url) {
+            window.location.replace(url);
+        }
+    };
+
+});
 define('ghost/utils/word-count', ['exports'], function (exports) {
 
     'use strict';
@@ -30341,7 +35850,7 @@ define('ghost/utils/word-count', ['exports'], function (exports) {
     // jscs: disable
     /* global XRegExp */
 
-    function wordCount(s) {
+    exports['default'] = function (s) {
 
         var nonANumLetters = new XRegExp("[^\\s\\d\\p{L}]", "g"); // all non-alphanumeric letters regexp
 
@@ -30355,14 +35864,12 @@ define('ghost/utils/word-count', ['exports'], function (exports) {
         return s.split(' ').length;
     }
 
-    exports['default'] = wordCount;
-
 });
 define('ghost/validators/base', ['exports', 'ember'], function (exports, Ember) {
 
     'use strict';
 
-    var BaseValidator = Ember['default'].Object.extend({
+    exports['default'] = Ember['default'].Object.extend({
         properties: [],
         passed: false,
 
@@ -30394,8 +35901,6 @@ define('ghost/validators/base', ['exports', 'ember'], function (exports, Ember) 
             this.set('passed', false);
         }
     });
-
-    exports['default'] = BaseValidator;
 
 });
 define('ghost/validators/nav-item', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
@@ -30462,7 +35967,7 @@ define('ghost/validators/new-user', ['exports', 'ghost/validators/base'], functi
 
     'use strict';
 
-    var NewUserValidator = BaseValidator['default'].extend({
+    exports['default'] = BaseValidator['default'].extend({
         properties: ['name', 'email', 'password'],
 
         name: function name(model) {
@@ -30494,14 +35999,12 @@ define('ghost/validators/new-user', ['exports', 'ghost/validators/base'], functi
         }
     });
 
-    exports['default'] = NewUserValidator;
-
 });
 define('ghost/validators/post', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
 
     'use strict';
 
-    var PostValidator = BaseValidator['default'].create({
+    exports['default'] = BaseValidator['default'].create({
         properties: ['title', 'metaTitle', 'metaDescription'],
 
         title: function title(model) {
@@ -30537,14 +36040,12 @@ define('ghost/validators/post', ['exports', 'ghost/validators/base'], function (
         }
     });
 
-    exports['default'] = PostValidator;
-
 });
 define('ghost/validators/reset', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
 
     'use strict';
 
-    var ResetValidator = BaseValidator['default'].create({
+    exports['default'] = BaseValidator['default'].create({
         properties: ['newPassword'],
         newPassword: function newPassword(model) {
             var p1 = model.get('newPassword'),
@@ -30563,14 +36064,12 @@ define('ghost/validators/reset', ['exports', 'ghost/validators/base'], function 
         }
     });
 
-    exports['default'] = ResetValidator;
-
 });
 define('ghost/validators/setting', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
 
     'use strict';
 
-    var SettingValidator = BaseValidator['default'].create({
+    exports['default'] = BaseValidator['default'].create({
         properties: ['title', 'description', 'password', 'postsPerPage'],
         title: function title(model) {
             var title = model.get('title');
@@ -30613,14 +36112,12 @@ define('ghost/validators/setting', ['exports', 'ghost/validators/base'], functio
         }
     });
 
-    exports['default'] = SettingValidator;
-
 });
 define('ghost/validators/setup', ['exports', 'ghost/validators/new-user'], function (exports, NewUserValidator) {
 
     'use strict';
 
-    var SetupValidator = NewUserValidator['default'].create({
+    exports['default'] = NewUserValidator['default'].create({
         properties: ['name', 'email', 'password', 'blogTitle'],
 
         blogTitle: function blogTitle(model) {
@@ -30633,14 +36130,12 @@ define('ghost/validators/setup', ['exports', 'ghost/validators/new-user'], funct
         }
     });
 
-    exports['default'] = SetupValidator;
-
 });
 define('ghost/validators/signin', ['exports', 'ghost/validators/base'], function (exports, BaseValidator) {
 
     'use strict';
 
-    var SigninValidator = BaseValidator['default'].create({
+    exports['default'] = BaseValidator['default'].create({
         properties: ['identification', 'signin', 'forgotPassword'],
         invalidMessage: 'Email address is not valid',
 
@@ -30687,8 +36182,6 @@ define('ghost/validators/signin', ['exports', 'ghost/validators/base'], function
         }
     });
 
-    exports['default'] = SigninValidator;
-
 });
 define('ghost/validators/signup', ['exports', 'ghost/validators/new-user'], function (exports, NewUserValidator) {
 
@@ -30701,8 +36194,9 @@ define('ghost/validators/tag-settings', ['exports', 'ghost/validators/base'], fu
 
     'use strict';
 
-    var TagSettingsValidator = BaseValidator['default'].create({
-        properties: ['name', 'metaTitle', 'metaDescription'],
+    exports['default'] = BaseValidator['default'].create({
+        properties: ['name', 'slug', 'description', 'metaTitle', 'metaDescription'],
+
         name: function name(model) {
             var name = model.get('name');
 
@@ -30717,6 +36211,25 @@ define('ghost/validators/tag-settings', ['exports', 'ghost/validators/base'], fu
                 this.invalidate();
             }
         },
+
+        slug: function slug(model) {
+            var slug = model.get('slug');
+
+            if (!validator.isLength(slug, 0, 150)) {
+                model.get('errors').add('slug', 'URL cannot be longer than 150 characters.');
+                this.invalidate();
+            }
+        },
+
+        description: function description(model) {
+            var description = model.get('description');
+
+            if (!validator.isLength(description, 0, 200)) {
+                model.get('errors').add('description', 'Description cannot be longer than 200 characters.');
+                this.invalidate();
+            }
+        },
+
         metaTitle: function metaTitle(model) {
             var metaTitle = model.get('meta_title');
 
@@ -30725,6 +36238,7 @@ define('ghost/validators/tag-settings', ['exports', 'ghost/validators/base'], fu
                 this.invalidate();
             }
         },
+
         metaDescription: function metaDescription(model) {
             var metaDescription = model.get('meta_description');
 
@@ -30735,14 +36249,12 @@ define('ghost/validators/tag-settings', ['exports', 'ghost/validators/base'], fu
         }
     });
 
-    exports['default'] = TagSettingsValidator;
-
 });
 define('ghost/validators/user', ['exports', 'ghost/validators/base', 'ember'], function (exports, BaseValidator, Ember) {
 
     'use strict';
 
-    var UserValidator = BaseValidator['default'].create({
+    exports['default'] = BaseValidator['default'].create({
         properties: ['name', 'bio', 'email', 'location', 'website', 'roles'],
         isActive: function isActive(model) {
             return model.get('status') === 'active';
@@ -30810,8 +36322,6 @@ define('ghost/validators/user', ['exports', 'ghost/validators/base', 'ember'], f
         }
     });
 
-    exports['default'] = UserValidator;
-
 });
 /* jshint ignore:start */
 
@@ -30841,7 +36351,7 @@ catch(err) {
 if (runningTests) {
   require("ghost/tests/test-helper");
 } else {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.1"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.2"});
 }
 
 /* jshint ignore:end */
