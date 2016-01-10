@@ -398,7 +398,7 @@ define('ghost/assets/lib/uploader', ['exports', 'ember', 'ghost/utils/ghost-path
             },
 
             removeExtras: function removeExtras() {
-                $dropzone.find('span.media, div.js-upload-progress, a.image-url, a.image-upload, a.image-webcam, div.js-fail, button.js-fail, a.js-cancel').remove();
+                $dropzone.find('span.media, div.js-upload-progress, a.image-url, a.image-upload, a.image-webcam, div.js-fail, button.js-fail, a.js-cancel, button.js-button-accept').remove();
             },
 
             initWithDropzone: function initWithDropzone() {
@@ -433,7 +433,9 @@ define('ghost/assets/lib/uploader', ['exports', 'ember', 'ghost/utils/ghost-path
                     _this4.initWithDropzone();
                 });
 
-                $dropzone.find('div.description').before($url);
+                if (!$dropzone.find('.js-url')[0]) {
+                    $dropzone.find('div.description').before($url);
+                }
 
                 if (settings.editor) {
                     $dropzone.find('div.js-url').append('<button class="btn btn-blue js-button-accept gh-input">Save</button>');
@@ -479,9 +481,6 @@ define('ghost/assets/lib/uploader', ['exports', 'ember', 'ghost/utils/ghost-path
                     $dropzone.find('img.js-upload-target').attr({ src: '' });
                     $dropzone.find('div.description').show();
                     $dropzone.trigger('imagecleared');
-                    $dropzone.delay(250).animate({ opacity: 100 }, 1000, function () {
-                        _this5.init();
-                    });
 
                     $dropzone.trigger('uploadsuccess', 'http://');
                     _this5.initWithDropzone();
@@ -5191,6 +5190,8 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
          * @return {Ember.RSVP.Promise} A promise that takes care of both calls
          */
         sendImage: function sendImage(user) {
+            var _this = this;
+
             var image = this.get('image');
 
             return new RSVP.Promise(function (resolve, reject) {
@@ -5198,7 +5199,7 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
                 image.submit().success(function (response) {
                     user.image = response;
                     (0, _icAjax.request)({
-                        url: this.get('ghostPaths.url').api('users', user.id.toString()),
+                        url: _this.get('ghostPaths.url').api('users', user.id.toString()),
                         type: 'PUT',
                         data: {
                             users: [user]
@@ -5227,6 +5228,23 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
             }
         },
 
+        afterAuthentication: function afterAuthentication(result) {
+            var _this2 = this;
+
+            if (this.get('image')) {
+                this.sendImage(result.users[0]).then(function () {
+                    _this2.toggleProperty('submitting');
+                    _this2.transitionToRoute('setup.three');
+                })['catch'](function (resp) {
+                    _this2.toggleProperty('submitting');
+                    _this2.get('notifications').showAPIError(resp, { key: 'setup.blog-details' });
+                });
+            } else {
+                this.toggleProperty('submitting');
+                this.transitionToRoute('setup.three');
+            }
+        },
+
         actions: {
             preValidate: function preValidate(model) {
                 // Only triggers validation if a value has been entered, preventing empty errors on focusOut
@@ -5236,11 +5254,10 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
             },
 
             setup: function setup() {
-                var _this = this;
+                var _this3 = this;
 
-                var setupProperties = ['blogTitle', 'name', 'email', 'password', 'image'];
+                var setupProperties = ['blogTitle', 'name', 'email', 'password'];
                 var data = this.getProperties(setupProperties);
-                var notifications = this.get('notifications');
                 var config = this.get('config');
                 var method = this.get('blogCreated') ? 'PUT' : 'POST';
 
@@ -5250,7 +5267,7 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
                 this.get('hasValidated').addObjects(setupProperties);
                 this.validate().then(function () {
                     (0, _icAjax.request)({
-                        url: _this.get('ghostPaths.url').api('authentication', 'setup'),
+                        url: _this3.get('ghostPaths.url').api('authentication', 'setup'),
                         type: method,
                         data: {
                             setup: [{
@@ -5262,31 +5279,26 @@ define('ghost/controllers/setup/two', ['exports', 'ember', 'ic-ajax', 'ghost/mix
                         }
                     }).then(function (result) {
                         config.set('blogTitle', data.blogTitle);
+
+                        // don't try to login again if we are already logged in
+                        if (_this3.get('session.isAuthenticated')) {
+                            return _this3.afterAuthentication(result);
+                        }
+
                         // Don't call the success handler, otherwise we will be redirected to admin
-                        _this.get('application').set('skipAuthSuccessHandler', true);
-                        _this.get('session').authenticate('authenticator:oauth2', _this.get('email'), _this.get('password')).then(function () {
-                            _this.set('blogCreated', true);
-                            if (data.image) {
-                                _this.sendImage(result.users[0]).then(function () {
-                                    _this.toggleProperty('submitting');
-                                    _this.transitionToRoute('setup.three');
-                                })['catch'](function (resp) {
-                                    _this.toggleProperty('submitting');
-                                    notifications.showAPIError(resp, { key: 'setup.blog-details' });
-                                });
-                            } else {
-                                _this.toggleProperty('submitting');
-                                _this.transitionToRoute('setup.three');
-                            }
+                        _this3.get('application').set('skipAuthSuccessHandler', true);
+                        _this3.get('session').authenticate('authenticator:oauth2', _this3.get('email'), _this3.get('password')).then(function () {
+                            _this3.set('blogCreated', true);
+                            return _this3.afterAuthentication(result);
                         })['catch'](function (error) {
-                            _this._handleAuthenticationError(error);
+                            _this3._handleAuthenticationError(error);
                         });
                     })['catch'](function (error) {
-                        _this._handleSaveError(error);
+                        _this3._handleSaveError(error);
                     });
                 })['catch'](function () {
-                    _this.toggleProperty('submitting');
-                    _this.set('flowErrors', 'Please fill out the form to setup your blog.');
+                    _this3.toggleProperty('submitting');
+                    _this3.set('flowErrors', 'Please fill out the form to setup your blog.');
                 });
             },
 
@@ -10820,25 +10832,6 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/Gargol");
-        dom.setAttribute(el2, "title", "Gargol");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "Gargol");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/bhops");
         dom.setAttribute(el2, "title", "bhops");
         var el3 = dom.createTextNode("\n        ");
@@ -10864,6 +10857,63 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3, "alt", "garyc40");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/kevinkucharczyk");
+        dom.setAttribute(el2, "title", "kevinkucharczyk");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "kevinkucharczyk");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/halfdan");
+        dom.setAttribute(el2, "title", "halfdan");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "halfdan");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/Gargol");
+        dom.setAttribute(el2, "title", "Gargol");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "Gargol");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -10947,44 +10997,6 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n");
         dom.appendChild(el1, el2);
         dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/olsio");
-        dom.setAttribute(el2, "title", "olsio");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "olsio");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cusackalex");
-        dom.setAttribute(el2, "title", "cusackalex");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cusackalex");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
@@ -11027,7 +11039,7 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         morphs[17] = dom.createAttrMorph(element17, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/vdemedes"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/delgermurun"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/mixonic"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/Gargol"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/bhops"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/garyc40"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/javorszky"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/HParker"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/yanntech"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/lcamacho"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/olsio"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/cusackalex"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/vdemedes"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/delgermurun"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/mixonic"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/bhops"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/garyc40"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/kevinkucharczyk"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/halfdan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/Gargol"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/javorszky"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/HParker"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/yanntech"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/lcamacho"]]]],
       locals: [],
       templates: []
     };
@@ -28888,7 +28900,7 @@ catch(err) {
 });
 
 if (!runningTests) {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.3"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.4"});
 }
 
 /* jshint ignore:end */
