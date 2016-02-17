@@ -5,13 +5,14 @@
 var hbs             = require('express-hbs'),
     _               = require('lodash'),
     errors          = require('../errors'),
+    i18n            = require('../i18n'),
 
     hbsUtils        = hbs.handlebars.Utils,
     foreach;
 
 foreach = function (context, options) {
     if (!options) {
-        errors.logWarn('Need to pass an iterator to #foreach');
+        errors.logWarn(i18n.t('warnings.helpers.foreach.iteratorNeeded'));
     }
 
     var fn = options.fn,
@@ -19,6 +20,8 @@ foreach = function (context, options) {
         columns = options.hash.columns,
         length = _.size(context),
         limit = parseInt(options.hash.limit, 10) || length,
+        from = parseInt(options.hash.from, 10) || 1,
+        to = parseInt(options.hash.to, 10) || (from - 1) + limit,
         output = '',
         data,
         contextPath;
@@ -40,7 +43,7 @@ foreach = function (context, options) {
             data.key = field;
             data.index = index;
             data.number = index + 1;
-            data.first = index === 0;
+            data.first = index === from - 1; // From uses 1-indexed, but array uses 0-indexed.
             data.last = !!last;
             data.even = index % 2 === 1;
             data.odd = !data.even;
@@ -59,13 +62,20 @@ foreach = function (context, options) {
     }
 
     function iterateCollection(context) {
-        var count = 1;
+        var count = 1,
+            current = 1;
 
         _.each(context, function (item, key) {
-            if (count <= limit) {
-                execIteration(key, count - 1, count === limit);
+            if (current < from) {
+                current += 1;
+                return;
+            }
+
+            if (current <= to) {
+                execIteration(key, current - 1, current === to);
             }
             count += 1;
+            current += 1;
         });
     }
 
