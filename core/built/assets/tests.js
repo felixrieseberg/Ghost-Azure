@@ -1,5 +1,7 @@
-define('ghost/tests/acceptance/authentication-test', ['exports', 'mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth', 'ember-cli-mirage', 'ghost/utils/window-proxy'], function (exports, _mocha, _chai, _ember, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth, _emberCliMirage, _ghostUtilsWindowProxy) {
+define('ghost/tests/acceptance/authentication-test', ['exports', 'mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth', 'ember-cli-mirage', 'ghost/utils/window-proxy', 'ghost/utils/ghost-paths'], function (exports, _mocha, _chai, _ember, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth, _emberCliMirage, _ghostUtilsWindowProxy, _ghostUtilsGhostPaths) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    var Ghost = (0, _ghostUtilsGhostPaths['default'])();
 
     (0, _mocha.describe)('Acceptance: Authentication', function () {
         var application = undefined,
@@ -102,7 +104,7 @@ define('ghost/tests/acceptance/authentication-test', ['exports', 'mocha', 'chai'
 
                 andThen(function () {
                     // we should see a re-auth modal
-                    (0, _chai.expect)(find('.modal-container #login').length, 'modal exists').to.equal(1);
+                    (0, _chai.expect)(find('.fullscreen-modal #login').length, 'modal exists').to.equal(1);
                 });
             });
 
@@ -112,6 +114,116 @@ define('ghost/tests/acceptance/authentication-test', ['exports', 'mocha', 'chai'
                 _ember['default'].run.throttle = origThrottle;
             });
         });
+
+        (0, _mocha.it)('adds auth headers to jquery ajax', function (done) {
+            var role = server.create('role', { name: 'Administrator' });
+            var user = server.create('user', { roles: [role] });
+
+            server.post('/uploads', function (db, request) {
+                return request;
+            });
+            server.loadFixtures();
+
+            // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application, {
+                access_token: 'test_token',
+                expires_in: 3600,
+                token_type: 'Bearer'
+            });
+            // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
+
+            // necessary to visit a page to fully boot the app in testing
+            visit('/').andThen(function () {
+                $.ajax({
+                    type: 'POST',
+                    url: Ghost.apiRoot + '/uploads/',
+                    data: { test: 'Test' }
+                }).then(function (request) {
+                    (0, _chai.expect)(request.requestHeaders.Authorization, 'Authorization header').to.exist;
+                    (0, _chai.expect)(request.requestHeaders.Authorization, 'Authotization header content').to.equal('Bearer test_token');
+                }).always(function () {
+                    done();
+                });
+            });
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/acceptance/password-reset-test', ['exports', 'mocha', 'chai', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app'], function (exports, _mocha, _chai, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp) {
+
+    (0, _mocha.describe)('Acceptance: Password Reset', function () {
+        var application = undefined;
+
+        (0, _mocha.beforeEach)(function () {
+            application = (0, _ghostTestsHelpersStartApp['default'])();
+        });
+
+        (0, _mocha.afterEach)(function () {
+            (0, _ghostTestsHelpersDestroyApp['default'])(application);
+        });
+
+        (0, _mocha.describe)('request reset', function () {
+            (0, _mocha.it)('is successful with valid data', function () {
+                visit('/signin');
+                fillIn('input[name="identification"]', 'test@example.com');
+                click('.forgotten-link');
+
+                andThen(function () {
+                    // an alert with instructions is displayed
+                    (0, _chai.expect)(find('.gh-alert-blue').length, 'alert count').to.equal(1);
+                });
+            });
+
+            (0, _mocha.it)('shows error messages with invalid data', function () {
+                visit('/signin');
+
+                // no email provided
+                click('.forgotten-link');
+
+                andThen(function () {
+                    // email field is invalid
+                    (0, _chai.expect)(find('input[name="identification"]').closest('.form-group').hasClass('error'), 'email field has error class (no email)').to.be['true'];
+
+                    // password field is valid
+                    (0, _chai.expect)(find('input[name="password"]').closest('.form-group').hasClass('error'), 'password field has error class (no email)').to.be['false'];
+
+                    // error message shown
+                    (0, _chai.expect)(find('p.main-error').text().trim(), 'error message').to.equal('We need your email address to reset your password!');
+                });
+
+                // invalid email provided
+                fillIn('input[name="identification"]', 'test');
+                click('.forgotten-link');
+
+                andThen(function () {
+                    // email field is invalid
+                    (0, _chai.expect)(find('input[name="identification"]').closest('.form-group').hasClass('error'), 'email field has error class (invalid email)').to.be['true'];
+
+                    // password field is valid
+                    (0, _chai.expect)(find('input[name="password"]').closest('.form-group').hasClass('error'), 'password field has error class (invalid email)').to.be['false'];
+
+                    // error message
+                    (0, _chai.expect)(find('p.main-error').text().trim(), 'error message').to.equal('We need your email address to reset your password!');
+                });
+
+                // unknown email provided
+                fillIn('input[name="identification"]', 'unknown@example.com');
+                click('.forgotten-link');
+
+                andThen(function () {
+                    // email field is invalid
+                    (0, _chai.expect)(find('input[name="identification"]').closest('.form-group').hasClass('error'), 'email field has error class (unknown email)').to.be['true'];
+
+                    // password field is valid
+                    (0, _chai.expect)(find('input[name="password"]').closest('.form-group').hasClass('error'), 'password field has error class (unknown email)').to.be['false'];
+
+                    // error message
+                    (0, _chai.expect)(find('p.main-error').text().trim(), 'error message').to.equal('There is no user with that email address.');
+                });
+            });
+        });
+
+        // TODO: add tests for the change password screen
     });
 });
 /* jshint expr:true */
@@ -402,7 +514,7 @@ define('ghost/tests/acceptance/settings/tags-test', ['exports', 'mocha', 'chai',
 
                 // delete tag
                 click('.tag-delete-button');
-                click('.modal-container .btn-red');
+                click('.fullscreen-modal .btn-red');
 
                 andThen(function () {
                     // it redirects to the first tag
@@ -485,6 +597,7 @@ define('ghost/tests/acceptance/settings/tags-test', ['exports', 'mocha', 'chai',
 /* jshint expr:true */
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
 define('ghost/tests/acceptance/setup-test', ['exports', 'mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth', 'ember-cli-mirage'], function (exports, _mocha, _chai, _ember, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth, _emberCliMirage) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
     (0, _mocha.describe)('Acceptance: Setup', function () {
         var application = undefined;
@@ -620,11 +733,66 @@ define('ghost/tests/acceptance/setup-test', ['exports', 'mocha', 'chai', 'ember'
                 andThen(function () {
                     // it redirects to the home / "content" screen
                     (0, _chai.expect)(currentURL(), 'url after submitting invites').to.equal('/');
+
+                    // it displays success alert
+                    (0, _chai.expect)(find('.gh-alert-green').length, 'number of success alerts').to.equal(1);
                 });
             });
 
-            (0, _mocha.it)('handles server validation errors in step 2');
-            (0, _mocha.it)('handles server validation errors in step 3');
+            (0, _mocha.it)('handles validation errors in step 2', function () {
+                var postCount = 0;
+
+                (0, _ghostTestsHelpersEmberSimpleAuth.invalidateSession)(application);
+                server.loadFixtures('roles');
+
+                server.post('/authentication/setup', function () {
+                    postCount++;
+
+                    // validation error
+                    if (postCount === 1) {
+                        return new _emberCliMirage['default'].Response(422, {}, {
+                            errors: [{
+                                errorType: 'ValidationError',
+                                message: 'Server response message'
+                            }]
+                        });
+                    }
+
+                    // server error
+                    if (postCount === 2) {
+                        return new _emberCliMirage['default'].Response(500, {}, null);
+                    }
+                });
+
+                visit('/setup/two');
+                click('.btn-green');
+
+                andThen(function () {
+                    // non-server validation
+                    (0, _chai.expect)(find('.main-error').text().trim(), 'error text').to.not.be.blank;
+                });
+
+                fillIn('[name="email"]', 'test@example.com');
+                fillIn('[name="name"]', 'Test User');
+                fillIn('[name="password"]', 'password');
+                fillIn('[name="blog-title"]', 'Blog Title');
+
+                // first post - simulated validation error
+                click('.btn-green');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.main-error').text().trim(), 'error text').to.equal('Server response message');
+                });
+
+                // second post - simulated server error
+                click('.btn-green');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.main-error').text().trim(), 'error text').to.be.blank;
+
+                    (0, _chai.expect)(find('.gh-alert-red').length, 'number of alerts').to.equal(1);
+                });
+            });
 
             (0, _mocha.it)('handles invalid origin error on step 2', function () {
                 // mimick the API response for an invalid origin
@@ -652,6 +820,126 @@ define('ghost/tests/acceptance/setup-test', ['exports', 'mocha', 'chai', 'ember'
                     (0, _chai.expect)(find('.btn-green .spinner').length, 'button has spinner').to.equal(0);
                     // we should show an error message
                     (0, _chai.expect)(find('.main-error').text(), 'error text').to.equal('Access Denied from url: unknown.com. Please use the url configured in config.js.');
+                });
+            });
+
+            (0, _mocha.it)('handles validation errors in step 3', function () {
+                var input = '[name="users"]';
+                var postCount = 0;
+                var button = undefined,
+                    formGroup = undefined,
+                    user = undefined;
+
+                (0, _ghostTestsHelpersEmberSimpleAuth.invalidateSession)(application);
+                server.loadFixtures('roles');
+
+                server.post('/users', function (db, request) {
+                    var _JSON$parse$users = _slicedToArray(JSON.parse(request.requestBody).users, 1);
+
+                    var params = _JSON$parse$users[0];
+
+                    postCount++;
+
+                    // invalid
+                    if (postCount === 1) {
+                        return new _emberCliMirage['default'].Response(422, {}, {
+                            errors: [{
+                                errorType: 'ValidationError',
+                                message: 'Dummy validation error'
+                            }]
+                        });
+                    }
+
+                    // valid
+                    user = db.users.insert(params);
+                    return {
+                        users: [user]
+                    };
+                });
+
+                // complete step 2 so we can access step 3
+                visit('/setup/two');
+                fillIn('[name="email"]', 'test@example.com');
+                fillIn('[name="name"]', 'Test User');
+                fillIn('[name="password"]', 'password');
+                fillIn('[name="blog-title"]', 'Blog Title');
+                click('.btn-green');
+
+                // default field/button state
+                andThen(function () {
+                    formGroup = find('.gh-flow-invite .form-group');
+                    button = find('.gh-flow-invite button[type="submit"]');
+
+                    (0, _chai.expect)(formGroup.hasClass('error'), 'default field has error class').to.be['false'];
+
+                    (0, _chai.expect)(button.text().trim(), 'default button text').to.equal('Invite some users');
+
+                    (0, _chai.expect)(button.hasClass('btn-minor'), 'default button is disabled').to.be['true'];
+                });
+
+                // no users submitted state
+                click('.gh-flow-invite button[type="submit"]');
+
+                andThen(function () {
+                    (0, _chai.expect)(formGroup.hasClass('error'), 'no users submitted field has error class').to.be['true'];
+
+                    (0, _chai.expect)(button.text().trim(), 'no users submitted button text').to.equal('No users to invite');
+
+                    (0, _chai.expect)(button.hasClass('btn-minor'), 'no users submitted button is disabled').to.be['true'];
+                });
+
+                // single invalid email
+                fillIn(input, 'invalid email');
+                triggerEvent(input, 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(formGroup.hasClass('error'), 'invalid field has error class').to.be['true'];
+
+                    (0, _chai.expect)(button.text().trim(), 'single invalid button text').to.equal('1 invalid email address');
+
+                    (0, _chai.expect)(button.hasClass('btn-minor'), 'invalid email button is disabled').to.be['true'];
+                });
+
+                // multiple invalid emails
+                fillIn(input, 'invalid email\nanother invalid address');
+                triggerEvent(input, 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(button.text().trim(), 'multiple invalid button text').to.equal('2 invalid email addresses');
+                });
+
+                // single valid email
+                fillIn(input, 'invited@example.com');
+                triggerEvent(input, 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(formGroup.hasClass('error'), 'valid field has error class').to.be['false'];
+
+                    (0, _chai.expect)(button.text().trim(), 'single valid button text').to.equal('Invite 1 user');
+
+                    (0, _chai.expect)(button.hasClass('btn-green'), 'valid email button is enabled').to.be['true'];
+                });
+
+                // multiple valid emails
+                fillIn(input, 'invited1@example.com\ninvited2@example.com');
+                triggerEvent(input, 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(button.text().trim(), 'multiple valid button text').to.equal('Invite 2 users');
+                });
+
+                // submit invitations with simulated failure on 1 invite
+                click('.btn-green');
+
+                andThen(function () {
+                    // it redirects to the home / "content" screen
+                    (0, _chai.expect)(currentURL(), 'url after submitting invites').to.equal('/');
+
+                    // it displays success alert
+                    (0, _chai.expect)(find('.gh-alert-green').length, 'number of success alerts').to.equal(1);
+
+                    // it displays failure alert
+                    (0, _chai.expect)(find('.gh-alert-red').length, 'number of failure alerts').to.equal(1);
                 });
             });
         });
@@ -757,7 +1045,7 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
             });
 
             (0, _mocha.describe)('invite new user', function () {
-                var emailInputField = '.modal-body .form-group input[name="email"]';
+                var emailInputField = '.fullscreen-modal input[name="email"]';
 
                 // @TODO: Evaluate after the modal PR goes in
                 (0, _mocha.it)('modal loads correctly', function () {
@@ -806,8 +1094,6 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                     visit('/team');
 
                     andThen(function () {
-                        (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/team');
-
                         (0, _chai.expect)(find('.user-list.invited-users .user-list-item').length, 'number of invited users').to.equal(0);
                     });
 
@@ -821,7 +1107,7 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                     });
 
                     fillIn(emailInputField, 'test@example.com');
-                    click('.modal-footer .js-button-accept');
+                    click('.fullscreen-modal .btn-green');
 
                     andThen(function () {
                         (0, _chai.expect)(find('.user-list.invited-users .user-list-item').length, 'number of invited users').to.equal(1);
@@ -841,33 +1127,36 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
 
                     visit('/team');
 
+                    // check our users lists are what we expect
                     andThen(function () {
-                        (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/team');
-
                         (0, _chai.expect)(find('.user-list.invited-users .user-list-item').length, 'number of invited users').to.equal(1);
                         // number of active users is 2 because of the logged-in user
                         (0, _chai.expect)(find('.user-list.active-users .user-list-item').length, 'number of active users').to.equal(2);
                     });
 
+                    // click the "invite new user" button to open the modal
                     click('.view-actions .btn-green');
+
+                    // fill in and submit the invite user modal with an existing user
                     fillIn(emailInputField, 'test1@example.com');
-                    click('.modal-footer .js-button-accept');
+                    click('.fullscreen-modal .btn-green');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.gh-alerts .gh-alert').length, 'number of alerts').to.equal(1);
-                        (0, _chai.expect)(find('.gh-alerts .gh-alert:first').hasClass('gh-alert-yellow'), 'alert is yellow').to.be['true'];
-                        (0, _chai.expect)(find('.gh-alerts .gh-alert:first .gh-alert-content').text(), 'first alert\'s text').to.contain('A user with that email address already exists.');
+                        // check the inline-validation
+                        (0, _chai.expect)(find('.fullscreen-modal .error .response').text().trim(), 'inviting existing user error').to.equal('A user with that email address already exists.');
                     });
 
-                    click('.gh-alerts .gh-alert:first .gh-alert-close');
-                    click('.view-actions .btn-green');
+                    // fill in and submit the invite user modal with an invited user
                     fillIn(emailInputField, 'test2@example.com');
-                    click('.modal-footer .js-button-accept');
+                    click('.fullscreen-modal .btn-green');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.gh-alerts .gh-alert').length, 'number of alerts').to.equal(1);
-                        (0, _chai.expect)(find('.gh-alerts .gh-alert:first').hasClass('gh-alert-yellow'), 'alert is yellow').to.be['true'];
-                        (0, _chai.expect)(find('.gh-alerts .gh-alert:first .gh-alert-content').text(), 'first alert\'s text').to.contain('A user with that email address was already invited.');
+                        // check the inline-validation
+                        (0, _chai.expect)(find('.fullscreen-modal .error .response').text().trim(), 'inviting invited user error').to.equal('A user with that email address was already invited.');
+
+                        // ensure that there's been no change in our user lists
+                        (0, _chai.expect)(find('.user-list.invited-users .user-list-item').length, 'number of invited users after failed invites').to.equal(1);
+                        (0, _chai.expect)(find('.user-list.active-users .user-list-item').length, 'number of active users after failed invites').to.equal(2);
                     });
                 });
             });
@@ -1257,7 +1546,7 @@ define('ghost/tests/integration/components/gh-alert-test', ['exports', 'chai', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1309,7 +1598,7 @@ define('ghost/tests/integration/components/gh-alert-test', ['exports', 'chai', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1388,7 +1677,7 @@ define('ghost/tests/integration/components/gh-alerts-test', ['exports', 'chai', 
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1445,7 +1734,7 @@ define('ghost/tests/integration/components/gh-alerts-test', ['exports', 'chai', 
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1506,7 +1795,7 @@ define('ghost/tests/integration/components/gh-cm-editor-test', ['exports', 'chai
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1583,7 +1872,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             'fragmentReason': {
                                 'name': 'triple-curlies'
                             },
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -1625,7 +1914,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1690,7 +1979,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             return {
                                 meta: {
                                     'fragmentReason': false,
-                                    'revision': 'Ember@2.2.0',
+                                    'revision': 'Ember@2.3.0',
                                     'loc': {
                                         'source': null,
                                         'start': {
@@ -1731,7 +2020,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                         return {
                             meta: {
                                 'fragmentReason': false,
-                                'revision': 'Ember@2.2.0',
+                                'revision': 'Ember@2.3.0',
                                 'loc': {
                                     'source': null,
                                     'start': {
@@ -1784,7 +2073,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -1868,7 +2157,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1926,7 +2215,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -1976,7 +2265,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2035,7 +2324,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2090,7 +2379,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2145,7 +2434,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2196,7 +2485,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2267,7 +2556,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2320,7 +2609,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2374,7 +2663,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2436,7 +2725,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2493,7 +2782,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2553,7 +2842,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2613,7 +2902,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2679,7 +2968,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2742,7 +3031,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2797,7 +3086,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2857,7 +3146,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2914,7 +3203,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2976,7 +3265,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3040,7 +3329,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3114,7 +3403,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3184,7 +3473,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3249,7 +3538,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -3317,7 +3606,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -3396,7 +3685,7 @@ define('ghost/tests/integration/components/gh-notification-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3449,7 +3738,7 @@ define('ghost/tests/integration/components/gh-notification-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3526,7 +3815,7 @@ define('ghost/tests/integration/components/gh-notifications-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3603,7 +3892,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3644,7 +3933,57 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
             (0, _chai.expect)(this.$()).to.have.length(1);
         });
 
-        (0, _emberMocha.it)('immediately renders the gravatar if valid email supplied', function () {
+        (0, _emberMocha.it)('renders and tears down ok with fileStorage:false', function () {
+            this.set('fileStorage', false);
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.3.0',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-profile-image', [], ['fileStorage', ['subexpr', '@mut', [['get', 'fileStorage', ['loc', [null, [2, 47], [2, 58]]]]], [], []]], ['loc', [null, [2, 16], [2, 60]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$()).to.have.length(1);
+            (0, _chai.expect)(this.$('input')).to.have.length(0);
+        }), (0, _emberMocha.it)('immediately renders the gravatar if valid email supplied', function () {
             var email = 'test@example.com';
             var expectedUrl = 'http://www.gravatar.com/avatar/' + md5(email) + '?s=100&d=blank';
 
@@ -3657,7 +3996,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3713,7 +4052,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3779,6 +4118,10 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
         blogUrl: 'http://localhost:2368'
     });
 
+    var mediaQueriesStub = _ember['default'].Service.extend({
+        maxWidth600: false
+    });
+
     (0, _emberMocha.describeComponent)('gh-tag-settings-form', 'Integration: Component: gh-tag-settings-form', {
         integration: true
     }, function () {
@@ -3804,6 +4147,9 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
 
             this.register('service:config', configStub);
             this.inject.service('config', { as: 'config' });
+
+            this.register('service:media-queries', mediaQueriesStub);
+            this.inject.service('media-queries', { as: 'mediaQueries' });
         });
 
         (0, _emberMocha.it)('renders', function () {
@@ -3814,7 +4160,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3846,7 +4192,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -3862,7 +4208,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3894,7 +4240,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -3913,7 +4259,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3945,7 +4291,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -3969,7 +4315,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4001,7 +4347,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4039,7 +4385,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4071,7 +4417,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4110,7 +4456,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4142,7 +4488,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4205,7 +4551,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4237,7 +4583,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4271,7 +4617,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4303,7 +4649,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4326,7 +4672,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4358,7 +4704,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4387,7 +4733,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4419,7 +4765,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4443,7 +4789,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4475,7 +4821,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4504,7 +4850,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4536,7 +4882,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4555,9 +4901,9 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
         (0, _emberMocha.it)('triggers delete tag modal on delete click', function (done) {
             var _this8 = this;
 
-            this.set('actions.openModal', function (modalName, model) {
-                (0, _chai.expect)(modalName, 'passed modal name').to.equal('delete-tag');
-                (0, _chai.expect)(model, 'passed model').to.equal(_this8.get('tag'));
+            // TODO: will time out if this isn't hit, there's probably a better
+            // way of testing this
+            this.set('actions.openModal', function () {
                 done();
             });
 
@@ -4568,7 +4914,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4600,7 +4946,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'openModal', 'openModal'], ['loc', [null, [2, 16], [2, 105]]]]],
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]], 'showDeleteTagModal', ['subexpr', 'action', ['openModal'], [], ['loc', [null, [2, 101], [2, 121]]]]], ['loc', [null, [2, 16], [2, 123]]]]],
                     locals: [],
                     templates: []
                 };
@@ -4609,6 +4955,57 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
             run(function () {
                 _this8.$('.tag-delete-button').click();
             });
+        });
+
+        (0, _emberMocha.it)('shows settings.tags arrow link on mobile', function () {
+            this.set('mediaQueries.maxWidth600', true);
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.3.0',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-tag-settings-form', [], ['tag', ['subexpr', '@mut', [['get', 'tag', ['loc', [null, [2, 43], [2, 46]]]]], [], []], 'setProperty', ['subexpr', 'action', ['setProperty'], [], ['loc', [null, [2, 59], [2, 81]]]]], ['loc', [null, [2, 16], [2, 83]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('.tag-settings-pane .settings-menu-header .settings-menu-header-action').length, 'settings.tags link is shown').to.equal(1);
         });
     });
 });
@@ -4634,7 +5031,7 @@ define('ghost/tests/integration/components/gh-tags-management-container-test', [
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4670,7 +5067,7 @@ define('ghost/tests/integration/components/gh-tags-management-container-test', [
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4732,7 +5129,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4768,7 +5165,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4818,7 +5215,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4854,7 +5251,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4905,7 +5302,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4941,7 +5338,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4991,7 +5388,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.2.0',
+                            'revision': 'Ember@2.3.0',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -5027,7 +5424,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.2.0',
+                        'revision': 'Ember@2.3.0',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5069,6 +5466,135 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
     });
 });
 /* jshint expr:true */
+define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-mocha', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _pretender, _emberTestHelpersWait) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    function stubAjaxEndpoint(server, response) {
+        server.get('/test/', function () {
+            return [500, { 'Content-Type': 'application/json' }, JSON.stringify(response)];
+        });
+    }
+
+    (0, _emberMocha.describeModule)('service:ajax', 'Integration: Service: ajax', {
+        integration: true
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new _pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('correctly parses single message response text', function (done) {
+            var error = { message: 'Test Error' };
+            stubAjaxEndpoint(server, error);
+
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true']();
+            })['catch'](function (error) {
+                (0, _chai.expect)(error.errors).to.equal('Test Error');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('correctly parses single error response text', function (done) {
+            var error = { error: 'Test Error' };
+            stubAjaxEndpoint(server, error);
+
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true']();
+            })['catch'](function (error) {
+                (0, _chai.expect)(error.errors).to.equal('Test Error');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('correctly parses multiple error messages', function (done) {
+            var error = { errors: ['First Error', 'Second Error'] };
+            stubAjaxEndpoint(server, error);
+
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true']();
+            })['catch'](function (error) {
+                (0, _chai.expect)(error.errors).to.deep.equal(['First Error', 'Second Error']);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('correctly returns default error message if no error text provided', function (done) {
+            stubAjaxEndpoint(server, {});
+
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true'];
+            })['catch'](function (error) {
+                var _error$errors = _slicedToArray(error.errors, 1);
+
+                var defaultError = _error$errors[0];
+
+                (0, _chai.expect)(defaultError.detail).to.equal('Ajax operation failed');
+                done();
+            });
+        });
+    });
+});
+define('ghost/tests/integration/services/slug-generator-test', ['exports', 'chai', 'ember-mocha', 'pretender', 'ember'], function (exports, _chai, _emberMocha, _pretender, _ember) {
+    var dasherize = _ember['default'].String.dasherize;
+
+    function stubSlugEndpoint(server, type, slug) {
+        server.get('/ghost/api/v0.1/slugs/:type/:slug/', function (request) {
+            (0, _chai.expect)(request.params.type).to.equal(type);
+            (0, _chai.expect)(request.params.slug).to.equal(slug);
+
+            return [200, { 'Content-Type': 'application/json' }, JSON.stringify({ slugs: [{ slug: dasherize(slug) }] })];
+        });
+    }
+
+    (0, _emberMocha.describeModule)('service:slug-generator', 'Integration: Service: slug-generator', {
+        integration: true
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new _pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('returns empty if no slug is provided', function (done) {
+            var service = this.subject();
+
+            service.generateSlug('post', '').then(function (slug) {
+                (0, _chai.expect)(slug).to.equal('');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('calls correct endpoint and returns correct data', function (done) {
+            var rawSlug = 'a test post';
+            stubSlugEndpoint(server, 'post', rawSlug);
+
+            var service = this.subject();
+
+            service.generateSlug('post', rawSlug).then(function (slug) {
+                (0, _chai.expect)(slug).to.equal(dasherize(rawSlug));
+                done();
+            });
+        });
+    });
+});
 define('ghost/tests/test-helper', ['exports', 'ghost/tests/helpers/resolver', 'ember-mocha'], function (exports, _ghostTestsHelpersResolver, _emberMocha) {
 
     (0, _emberMocha.setResolver)(_ghostTestsHelpersResolver['default']);
@@ -5165,9 +5691,9 @@ define('ghost/tests/unit/components/gh-editor-save-button-test', ['exports', 'ch
 define('ghost/tests/unit/components/gh-editor-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
 
     (0, _emberMocha.describeComponent)('gh-editor', 'Unit: Component: gh-editor', {
-        unit: true
+        unit: true,
         // specify the other units that are required for this test
-        // needs: ['component:foo', 'helper:bar']
+        needs: ['component:gh-ed-editor', 'component:gh-ed-preview', 'helper:gh-count-words', 'helper:route-action', 'service:notifications']
     }, function () {
         (0, _emberMocha.it)('renders', function () {
             // creates the component instance
@@ -5522,7 +6048,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
     }
 
     (0, _emberMocha.describeModule)('controller:post-settings-menu', 'Unit: Controller: post-settings-menu', {
-        needs: ['controller:application', 'service:notifications']
+        needs: ['controller:application', 'service:notifications', 'service:slug-generator']
     }, function () {
         (0, _emberMocha.it)('slugValue is one-way bound to model.slug', function () {
             var controller = this.subject({
@@ -5894,7 +6420,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should generate a slug and set it on the destination', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             return _ember['default'].RSVP.resolve(str + '-slug');
                         }
                     }),
@@ -5918,7 +6444,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should not set the destination if the title is "(Untitled)" and the post already has a slug', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             return _ember['default'].RSVP.resolve(str + '-slug');
                         }
                     }),
@@ -6072,7 +6598,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should not set a new slug if the server-generated slug matches existing slug', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             var promise = _ember['default'].RSVP.resolve(str.split('#')[0]);
                             this.set('lastPromise', promise);
                             return promise;
@@ -6098,7 +6624,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should not set a new slug if the only change is to the appended increment value', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             var sanitizedStr = str.replace(/[^a-zA-Z]/g, '');
                             var promise = _ember['default'].RSVP.resolve(sanitizedStr + '-2');
                             this.set('lastPromise', promise);
@@ -6125,7 +6651,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should set the slug if the new slug is different', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             var promise = _ember['default'].RSVP.resolve(str);
                             this.set('lastPromise', promise);
                             return promise;
@@ -6152,7 +6678,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should save the post when the slug changes and the post is not new', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             var promise = _ember['default'].RSVP.resolve(str);
                             this.set('lastPromise', promise);
                             return promise;
@@ -6184,7 +6710,7 @@ define('ghost/tests/unit/controllers/post-settings-menu-test', ['exports', 'embe
             (0, _emberMocha.it)('should not save the post when the slug changes and the post is new', function (done) {
                 var controller = this.subject({
                     slugGenerator: _ember['default'].Object.create({
-                        generateSlug: function generateSlug(str) {
+                        generateSlug: function generateSlug(slugType, str) {
                             var promise = _ember['default'].RSVP.resolve(str);
                             this.set('lastPromise', promise);
                             return promise;
@@ -6907,7 +7433,7 @@ define('ghost/tests/unit/services/config-test', ['exports', 'chai', 'ember-mocha
     });
 });
 /* jshint expr:true */
-define('ghost/tests/unit/services/notifications-test', ['exports', 'ember', 'sinon', 'chai', 'ember-mocha'], function (exports, _ember, _sinon, _chai, _emberMocha) {
+define('ghost/tests/unit/services/notifications-test', ['exports', 'ember', 'sinon', 'chai', 'ember-mocha', 'ember-ajax/errors'], function (exports, _ember, _sinon, _chai, _emberMocha, _emberAjaxErrors) {
     var run = _ember['default'].run;
     var get = _ember['default'].get;
 
@@ -7057,10 +7583,10 @@ define('ghost/tests/unit/services/notifications-test', ['exports', 'ember', 'sin
 
         (0, _emberMocha.it)('#showAPIError adds single json response error', function () {
             var notifications = this.subject();
-            var resp = { jqXHR: { responseJSON: { error: 'Single error' } } };
+            var error = new _emberAjaxErrors.AjaxError('Single error');
 
             run(function () {
-                notifications.showAPIError(resp);
+                notifications.showAPIError(error);
             });
 
             var notification = notifications.get('alerts.firstObject');
@@ -7073,37 +7599,23 @@ define('ghost/tests/unit/services/notifications-test', ['exports', 'ember', 'sin
         // used to display validation errors returned from the server
         (0, _emberMocha.it)('#showAPIError adds multiple json response errors', function () {
             var notifications = this.subject();
-            var resp = { jqXHR: { responseJSON: { errors: ['First error', 'Second error'] } } };
+            var error = new _emberAjaxErrors.AjaxError(['First error', 'Second error']);
 
             run(function () {
-                notifications.showAPIError(resp);
+                notifications.showAPIError(error);
             });
 
             (0, _chai.expect)(notifications.get('notifications')).to.deep.equal([{ message: 'First error', status: 'notification', type: 'error', key: undefined }, { message: 'Second error', status: 'notification', type: 'error', key: undefined }]);
         });
 
-        (0, _emberMocha.it)('#showAPIError adds single json response message', function () {
-            var notifications = this.subject();
-            var resp = { jqXHR: { responseJSON: { message: 'Single message' } } };
-
-            run(function () {
-                notifications.showAPIError(resp);
-            });
-
-            var notification = notifications.get('alerts.firstObject');
-            (0, _chai.expect)(get(notification, 'message')).to.equal('Single message');
-            (0, _chai.expect)(get(notification, 'status')).to.equal('alert');
-            (0, _chai.expect)(get(notification, 'type')).to.equal('error');
-            (0, _chai.expect)(get(notification, 'key')).to.equal('api-error');
-        });
-
         (0, _emberMocha.it)('#showAPIError displays default error text if response has no error/message', function () {
             var notifications = this.subject();
-            var resp = {};
+            var resp = false;
 
             run(function () {
                 notifications.showAPIError(resp);
             });
+
             (0, _chai.expect)(notifications.get('content')).to.deep.equal([{ message: 'There was a problem on the server, please try again.', status: 'alert', type: 'error', key: 'api-error' }]);
 
             notifications.set('content', emberA());
@@ -7132,6 +7644,21 @@ define('ghost/tests/unit/services/notifications-test', ['exports', 'ember', 'sin
             });
 
             (0, _chai.expect)(notifications.get('alerts.firstObject.key')).to.equal('api-error');
+        });
+
+        (0, _emberMocha.it)('#showAPIError parses errors from ember-ajax correctly', function () {
+            var notifications = this.subject();
+            var error = new _emberAjaxErrors.InvalidError('Test Error');
+
+            run(function () {
+                notifications.showAPIError(error);
+            });
+
+            var notification = notifications.get('alerts.firstObject');
+            (0, _chai.expect)(get(notification, 'message')).to.equal('Test Error');
+            (0, _chai.expect)(get(notification, 'status')).to.equal('alert');
+            (0, _chai.expect)(get(notification, 'type')).to.equal('error');
+            (0, _chai.expect)(get(notification, 'key')).to.equal('api-error');
         });
 
         (0, _emberMocha.it)('#displayDelayed moves delayed notifications into content', function () {
