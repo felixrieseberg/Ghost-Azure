@@ -1439,9 +1439,13 @@ select {
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
-  cursor: pointer;
   transition: border-color 0.15s linear;
   -webkit-appearance: none;
+}
+
+.gh-select,
+select {
+  cursor: pointer;
 }
 
 .gh-input.error,
@@ -5981,13 +5985,9 @@ body > .ember-view:not(.liquid-target-container) {
   background: rgb(133, 159, 65);
 }
 
-.gh-blognav-item:last-child {
+.gh-blognav-item:not(.gh-blognav-item--sortable) {
   padding-left: 36px;
   /* icon-grab + nav-item padding) */
-}
-
-.gh-blognav-item:last-child .gh-blognav-grab {
-  display: none;
 }
 
 /* Remove space between inputs on smaller screens */

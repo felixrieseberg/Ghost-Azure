@@ -75,6 +75,8 @@ define('ghost/adapters/base', ['exports', 'ember', 'ember-data/adapters/rest', '
     });
 });
 define('ghost/adapters/embedded-relation-adapter', ['exports', 'ember', 'ghost/adapters/base'], function (exports, _ember, _ghostAdaptersBase) {
+    function _typeof(obj) { return obj && obj.constructor === Symbol ? 'symbol' : typeof obj; }
+
     var get = _ember['default'].get;
     var isNone = _ember['default'].isNone;
 
@@ -170,7 +172,7 @@ define('ghost/adapters/embedded-relation-adapter', ['exports', 'ember', 'ghost/a
                     query = {};
                     query.id = options;
                     query.include = toInclude.join(',');
-                } else if (typeof options === 'object' || isNone(options)) {
+                } else if ((typeof options === 'undefined' ? 'undefined' : _typeof(options)) === 'object' || isNone(options)) {
                     // If this is a find all (no existing query object) build one and attach
                     // the includes.
                     // If this is a find with an existing query object then merge the includes
@@ -1244,6 +1246,54 @@ define('ghost/components/gh-error-message', ['exports', 'ember'], function (expo
         })
     });
 });
+define('ghost/components/gh-feature-flag', ['exports', 'ember'], function (exports, _ember) {
+    var computed = _ember['default'].computed;
+    var service = _ember['default'].inject.service;
+    var Component = _ember['default'].Component;
+
+    var FeatureFlagComponent = Component.extend({
+        tagName: 'label',
+        classNames: 'checkbox',
+        attributeBindings: ['for'],
+        _flagValue: null,
+
+        feature: service(),
+
+        isVisible: computed.notEmpty('_flagValue'),
+
+        init: function init() {
+            var _this = this;
+
+            this._super.apply(this, arguments);
+
+            this.get('feature.' + this.get('flag')).then(function (flagValue) {
+                _this.set('_flagValue', flagValue);
+            });
+        },
+
+        value: computed('_flagValue', {
+            get: function get() {
+                return this.get('_flagValue');
+            },
+            set: function set(key, value) {
+                return this.set('feature.' + this.get('flag'), value);
+            }
+        }),
+
+        'for': computed('flag', function () {
+            return 'labs-' + this.get('flag');
+        }),
+        name: computed('flag', function () {
+            return 'labs[' + this.get('flag') + ']';
+        })
+    });
+
+    FeatureFlagComponent.reopenClass({
+        positionalParams: ['flag']
+    });
+
+    exports['default'] = FeatureFlagComponent;
+});
 define('ghost/components/gh-file-upload', ['exports', 'ember'], function (exports, _ember) {
     var Component = _ember['default'].Component;
     exports['default'] = Component.extend({
@@ -1365,13 +1415,15 @@ define('ghost/components/gh-fullscreen-modal', ['exports', 'ember', 'liquid-teth
 
     exports['default'] = FullScreenModalComponent;
 });
-define('ghost/components/gh-infinite-scroll-box', ['exports', 'ember', 'ghost/mixins/infinite-scroll'], function (exports, _ember, _ghostMixinsInfiniteScroll) {
-  var Component = _ember['default'].Component;
-  exports['default'] = Component.extend(_ghostMixinsInfiniteScroll['default'], {});
-});
 define('ghost/components/gh-infinite-scroll', ['exports', 'ember', 'ghost/mixins/infinite-scroll'], function (exports, _ember, _ghostMixinsInfiniteScroll) {
-  var Component = _ember['default'].Component;
-  exports['default'] = Component.extend(_ghostMixinsInfiniteScroll['default']);
+    var Component = _ember['default'].Component;
+    exports['default'] = Component.extend(_ghostMixinsInfiniteScroll['default'], {
+        actions: {
+            checkScroll: function checkScroll() {
+                this._checkScroll();
+            }
+        }
+    });
 });
 define('ghost/components/gh-input', ['exports', 'ember', 'ghost/mixins/text-input'], function (exports, _ember, _ghostMixinsTextInput) {
     var TextField = _ember['default'].TextField;
@@ -1535,8 +1587,8 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
             return this.get('baseUrl') === this.get('value');
         }),
 
-        fakePlaceholder: computed('isBaseUrl', 'hasFocus', function () {
-            return this.get('isBaseUrl') && this.get('last') && !this.get('hasFocus');
+        fakePlaceholder: computed('isBaseUrl', 'hasFocus', 'isNew', function () {
+            return this.get('isBaseUrl') && this.get('isNew') && !this.get('hasFocus');
         }),
 
         didReceiveAttrs: function didReceiveAttrs() {
@@ -1581,9 +1633,10 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
         },
 
         keyPress: function keyPress(event) {
+            this.attrs.clearErrors();
+
             // enter key
             if (event.keyCode === 13) {
-                event.preventDefault();
                 this.notifyUrlChanged();
             }
 
@@ -1646,22 +1699,30 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
                 if (!url.match(/^\//)) {
                     url = '/' + url;
                 }
+
+                if (!url.match(/\/$/) && !url.match(/[\.#\?]/)) {
+                    url = url + '/';
+                }
             }
 
             this.sendAction('change', url);
         }
     });
 });
-define('ghost/components/gh-navitem', ['exports', 'ember', 'ghost/mixins/validation-state'], function (exports, _ember, _ghostMixinsValidationState) {
+define('ghost/components/gh-navitem', ['exports', 'ember', 'ghost/mixins/validation-state', 'ember-sortable/mixins/sortable-item'], function (exports, _ember, _ghostMixinsValidationState, _emberSortableMixinsSortableItem) {
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
+    var run = _ember['default'].run;
+    var alias = computed.alias;
     var readOnly = computed.readOnly;
-    exports['default'] = Component.extend(_ghostMixinsValidationState['default'], {
+    exports['default'] = Component.extend(_ghostMixinsValidationState['default'], _emberSortableMixinsSortableItem['default'], {
         classNames: 'gh-blognav-item',
-        classNameBindings: ['errorClass'],
+        classNameBindings: ['errorClass', 'navItem.isNew::gh-blognav-item--sortable'],
 
-        attributeBindings: ['order:data-order'],
-        order: readOnly('navItem.order'),
+        'new': false,
+        handle: '.gh-blognav-grab',
+
+        model: alias('navItem'),
         errors: readOnly('navItem.errors'),
 
         errorClass: computed('hasError', function () {
@@ -1672,12 +1733,12 @@ define('ghost/components/gh-navitem', ['exports', 'ember', 'ghost/mixins/validat
 
         keyPress: function keyPress(event) {
             // enter key
-            if (event.keyCode === 13) {
+            if (event.keyCode === 13 && this.get('navItem.isNew')) {
                 event.preventDefault();
-                this.send('addItem');
+                run.scheduleOnce('actions', this, function () {
+                    this.send('addItem');
+                });
             }
-
-            this.get('navItem.errors').clear();
         },
 
         actions: {
@@ -1691,6 +1752,14 @@ define('ghost/components/gh-navitem', ['exports', 'ember', 'ghost/mixins/validat
 
             updateUrl: function updateUrl(value) {
                 this.sendAction('updateUrl', value, this.get('navItem'));
+            },
+
+            clearLabelErrors: function clearLabelErrors() {
+                this.get('navItem.errors').remove('label');
+            },
+
+            clearUrlErrors: function clearUrlErrors() {
+                this.get('navItem.errors').remove('url');
             }
         }
     });
@@ -1826,10 +1895,6 @@ define('ghost/components/gh-posts-list-item', ['exports', 'ember', 'ghost/mixins
             return _ember['default'].String.htmlSafe('background-image: url(' + this.get('authorAvatar') + ')');
         }),
 
-        viewOrEdit: computed('previewIsHidden', function () {
-            return this.get('previewIsHidden') ? 'editor.edit' : 'posts.post';
-        }),
-
         click: function click() {
             this.sendAction('onClick', this.get('post'));
         },
@@ -1846,6 +1911,9 @@ define('ghost/components/gh-posts-list-item', ['exports', 'ember', 'ghost/mixins
         willDestroyElement: function willDestroyElement() {
             this._super.apply(this, arguments);
             this.removeObserver('active', this, this.scrollIntoView);
+            if (this.get('post.isDeleted') && this.attrs.onDelete) {
+                this.attrs.onDelete();
+            }
         },
 
         scrollIntoView: function scrollIntoView() {
@@ -1941,7 +2009,7 @@ define('ghost/components/gh-profile-image', ['exports', 'ember'], function (expo
 
             var style = '';
             if (email) {
-                var url = 'http://www.gravatar.com/avatar/' + window.md5(email) + '?s=' + size + '&d=blank';
+                var url = '//www.gravatar.com/avatar/' + window.md5(email) + '?s=' + size + '&d=blank';
                 style = 'background-image: url(' + url + ')';
             }
             return _ember['default'].String.htmlSafe(style);
@@ -2632,8 +2700,8 @@ define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/util
         scratchName: (0, _ghostUtilsBoundOneWay['default'])('tag.name'),
         scratchSlug: (0, _ghostUtilsBoundOneWay['default'])('tag.slug'),
         scratchDescription: (0, _ghostUtilsBoundOneWay['default'])('tag.description'),
-        scratchMetaTitle: (0, _ghostUtilsBoundOneWay['default'])('tag.meta_title'),
-        scratchMetaDescription: (0, _ghostUtilsBoundOneWay['default'])('tag.meta_description'),
+        scratchMetaTitle: (0, _ghostUtilsBoundOneWay['default'])('tag.metaTitle'),
+        scratchMetaDescription: (0, _ghostUtilsBoundOneWay['default'])('tag.metaDescription'),
 
         isViewingSubview: false,
 
@@ -2753,6 +2821,17 @@ define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/util
     });
 });
 /* global key */
+define('ghost/components/gh-tag', ['exports', 'ember'], function (exports, _ember) {
+    exports['default'] = _ember['default'].Component.extend({
+        willDestroyElement: function willDestroyElement() {
+            this._super.apply(this, arguments);
+
+            if (this.get('tag.isDeleted') && this.attrs.onDelete) {
+                this.attrs.onDelete();
+            }
+        }
+    });
+});
 define('ghost/components/gh-tags-management-container', ['exports', 'ember'], function (exports, _ember) {
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
@@ -2992,8 +3071,8 @@ define('ghost/components/gh-user-active', ['exports', 'ember'], function (export
             return _ember['default'].String.htmlSafe('background-image: url(' + url + ')');
         }),
 
-        lastLogin: computed('user.last_login', function () {
-            var lastLogin = this.get('user.last_login');
+        lastLogin: computed('user.lastLogin', function () {
+            var lastLogin = this.get('user.lastLogin');
 
             return lastLogin ? lastLogin.fromNow() : '(Never)';
         })
@@ -3011,8 +3090,8 @@ define('ghost/components/gh-user-invited', ['exports', 'ember'], function (expor
 
         notifications: service(),
 
-        createdAt: computed('user.created_at', function () {
-            var createdAt = this.get('user.created_at');
+        createdAt: computed('user.createdAt', function () {
+            var createdAt = this.get('user.createdAt');
 
             return createdAt ? createdAt.fromNow() : '';
         }),
@@ -3346,6 +3425,8 @@ define("ghost/components/liquid-measured", ["exports", "liquid-fire/components/l
   });
 });
 define('ghost/components/liquid-modal', ['exports', 'ember', 'ember-getowner-polyfill'], function (exports, _ember, _emberGetownerPolyfill) {
+  function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
+
   exports['default'] = _ember['default'].Component.extend({
     classNames: ['liquid-modal'],
     currentContext: _ember['default'].computed('owner.modalContexts.lastObject', function () {
@@ -3426,7 +3507,7 @@ define('ghost/components/liquid-modal', ['exports', 'ember', 'ember-getowner-pol
             clearThem = {};
 
         for (var key in params) {
-          if (proto[key] instanceof _ember['default'].ComputedProperty) {
+          if (_instanceof(proto[key], _ember['default'].ComputedProperty)) {
             clearThem[key] = undefined;
           } else {
             clearThem[key] = proto[key];
@@ -4259,6 +4340,12 @@ define('ghost/components/modals/upload-image', ['exports', 'ember', 'ghost/compo
         }
     });
 });
+define('ghost/components/sortable-group', ['exports', 'ember-sortable/components/sortable-group'], function (exports, _emberSortableComponentsSortableGroup) {
+  exports['default'] = _emberSortableComponentsSortableGroup['default'];
+});
+define('ghost/components/sortable-item', ['exports', 'ember-sortable/components/sortable-item'], function (exports, _emberSortableComponentsSortableItem) {
+  exports['default'] = _emberSortableComponentsSortableItem['default'];
+});
 define('ghost/controllers/about', ['exports', 'ember'], function (exports, _ember) {
     var Controller = _ember['default'].Controller;
     var computed = _ember['default'].computed;
@@ -4512,8 +4599,8 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
             this.set('lastPromise', promise);
         },
 
-        metaTitleScratch: (0, _ghostUtilsBoundOneWay['default'])('model.meta_title'),
-        metaDescriptionScratch: (0, _ghostUtilsBoundOneWay['default'])('model.meta_description'),
+        metaTitleScratch: (0, _ghostUtilsBoundOneWay['default'])('model.metaTitle'),
+        metaDescriptionScratch: (0, _ghostUtilsBoundOneWay['default'])('model.metaDescription'),
 
         seoTitle: computed('model.titleScratch', 'metaTitleScratch', function () {
             var metaTitle = this.get('metaTitleScratch') || '';
@@ -4727,13 +4814,13 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
                 var _this6 = this;
 
                 var newPublishedAt = (0, _ghostUtilsDateFormatting.parseDateString)(userInput);
-                var publishedAt = moment(this.get('model.published_at'));
+                var publishedAt = moment(this.get('model.publishedAt'));
                 var errMessage = '';
 
                 if (!userInput) {
-                    // Clear out the published_at field for a draft
+                    // Clear out the publishedAt field for a draft
                     if (this.get('model.isDraft')) {
-                        this.set('model.published_at', null);
+                        this.set('model.publishedAt', null);
                     }
 
                     return;
@@ -4759,7 +4846,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
                 }
 
                 // Validation complete
-                this.set('model.published_at', newPublishedAt);
+                this.set('model.publishedAt', newPublishedAt);
 
                 // If this is a new post.  Don't save the model.  Defer the save
                 // to the user pressing the save button
@@ -4774,7 +4861,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
             },
 
             setMetaTitle: function setMetaTitle(metaTitle) {
-                var property = 'meta_title';
+                var property = 'metaTitle';
                 var model = this.get('model');
                 var currentTitle = model.get(property) || '';
 
@@ -4795,7 +4882,7 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
             },
 
             setMetaDescription: function setMetaDescription(metaDescription) {
-                var property = 'meta_description';
+                var property = 'metaDescription';
                 var model = this.get('model');
                 var currentDescription = model.get(property) || '';
 
@@ -4948,18 +5035,18 @@ define('ghost/controllers/posts', ['exports', 'ember'], function (exports, _embe
 
     // a custom sort function is needed in order to sort the posts list the same way the server would:
     //     status: ASC
-    //     published_at: DESC
-    //     updated_at: DESC
+    //     publishedAt: DESC
+    //     updatedAt: DESC
     //     id: DESC
     function comparator(item1, item2) {
-        var updated1 = item1.get('updated_at');
-        var updated2 = item2.get('updated_at');
+        var updated1 = item1.get('updatedAt');
+        var updated2 = item2.get('updatedAt');
         var idResult = undefined,
             publishedAtResult = undefined,
             statusResult = undefined,
             updatedAtResult = undefined;
 
-        // when `updated_at` is undefined, the model is still
+        // when `updatedAt` is undefined, the model is still
         // being written to with the results from the server
         if (item1.get('isNew') || !updated1) {
             return -1;
@@ -4991,8 +5078,8 @@ define('ghost/controllers/posts', ['exports', 'ember'], function (exports, _embe
     }
 
     function publishedAtCompare(item1, item2) {
-        var published1 = item1.get('published_at');
-        var published2 = item2.get('published_at');
+        var published1 = item1.get('publishedAt');
+        var published2 = item2.get('publishedAt');
 
         if (!published1 && !published2) {
             return 0;
@@ -5017,21 +5104,13 @@ define('ghost/controllers/posts', ['exports', 'ember'], function (exports, _embe
         postListFocused: equal('keyboardFocus', 'postList'),
         postContentFocused: equal('keyboardFocus', 'postContent'),
 
-        sortedPosts: computed('model.@each.status', 'model.@each.published_at', 'model.@each.isNew', 'model.@each.updated_at', function () {
+        sortedPosts: computed('model.@each.status', 'model.@each.publishedAt', 'model.@each.isNew', 'model.@each.updatedAt', function () {
             var postsArray = this.get('model').toArray();
 
             return postsArray.sort(comparator);
         }),
 
         actions: {
-            showPostContent: function showPostContent(post) {
-                if (!post) {
-                    return;
-                }
-
-                this.transitionToRoute('posts.post', post);
-            },
-
             toggleDeletePostModal: function toggleDeletePostModal() {
                 this.toggleProperty('showDeletePostModal');
             }
@@ -5243,10 +5322,7 @@ define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/
 define('ghost/controllers/settings/labs', ['exports', 'ember'], function (exports, _ember) {
     var $ = _ember['default'].$;
     var Controller = _ember['default'].Controller;
-    var computed = _ember['default'].computed;
-    var _Ember$inject = _ember['default'].inject;
-    var service = _Ember$inject.service;
-    var controller = _Ember$inject.controller;
+    var service = _ember['default'].inject.service;
     var isArray = _ember['default'].isArray;
     exports['default'] = Controller.extend({
         uploadButtonText: 'Import',
@@ -5257,42 +5333,11 @@ define('ghost/controllers/settings/labs', ['exports', 'ember'], function (export
         ghostPaths: service(),
         notifications: service(),
         session: service(),
-        feature: controller(),
         ajax: service(),
-
-        labsJSON: computed('model.labs', function () {
-            return JSON.parse(this.get('model.labs') || {});
-        }),
-
-        saveLabs: function saveLabs(optionName, optionValue) {
-            var _this = this;
-
-            var labsJSON = this.get('labsJSON');
-
-            // Set new value in the JSON object
-            labsJSON[optionName] = optionValue;
-
-            this.set('model.labs', JSON.stringify(labsJSON));
-
-            this.get('model').save()['catch'](function (errors) {
-                _this.showErrors(errors);
-                _this.get('model').rollbackAttributes();
-            });
-        },
-
-        usePublicAPI: computed('feature.publicAPI', {
-            get: function get() {
-                return this.get('feature.publicAPI');
-            },
-            set: function set(key, value) {
-                this.saveLabs('publicAPI', value);
-                return value;
-            }
-        }),
 
         actions: {
             onUpload: function onUpload(file) {
-                var _this2 = this;
+                var _this = this;
 
                 var formData = new FormData();
                 var notifications = this.get('notifications');
@@ -5312,19 +5357,19 @@ define('ghost/controllers/settings/labs', ['exports', 'ember'], function (export
                     processData: false
                 }).then(function () {
                     // Clear the store, so that all the new data gets fetched correctly.
-                    _this2.store.unloadAll();
+                    _this.store.unloadAll();
                     // Reload currentUser and set session
-                    _this2.set('session.user', _this2.store.findRecord('user', currentUserId));
+                    _this.set('session.user', _this.store.findRecord('user', currentUserId));
                     // TODO: keep as notification, add link to view content
                     notifications.showNotification('Import successful.', { key: 'import.upload.success' });
                 })['catch'](function (response) {
                     if (response && response.errors && isArray(response.errors)) {
-                        _this2.set('importErrors', response.errors);
+                        _this.set('importErrors', response.errors);
                     }
 
                     notifications.showAlert('Import Failed', { type: 'error', key: 'import.upload.failed' });
                 })['finally'](function () {
-                    _this2.set('uploadButtonText', 'Import');
+                    _this.set('uploadButtonText', 'Import');
                 });
             },
 
@@ -5342,7 +5387,7 @@ define('ghost/controllers/settings/labs', ['exports', 'ember'], function (export
             },
 
             sendTestEmail: function sendTestEmail() {
-                var _this3 = this;
+                var _this2 = this;
 
                 var notifications = this.get('notifications');
                 var emailUrl = this.get('ghostPaths.url').api('mail', 'test');
@@ -5351,10 +5396,10 @@ define('ghost/controllers/settings/labs', ['exports', 'ember'], function (export
 
                 this.get('ajax').post(emailUrl).then(function () {
                     notifications.showAlert('Check your email for the test message.', { type: 'info', key: 'test-email.send.success' });
-                    _this3.toggleProperty('submitting');
+                    _this2.toggleProperty('submitting');
                 })['catch'](function (error) {
                     notifications.showAPIError(error, { key: 'test-email:send' });
-                    _this3.toggleProperty('submitting');
+                    _this2.toggleProperty('submitting');
                 });
             },
 
@@ -5370,7 +5415,6 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
     var isBlank = _ember['default'].isBlank;
-    var observer = _ember['default'].observer;
     var Errors = _emberData['default'].Errors;
 
     var emberA = _ember['default'].A;
@@ -5378,12 +5422,26 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
     var NavItem = _ember['default'].Object.extend(_ghostMixinsValidationEngine['default'], {
         label: '',
         url: '',
-        last: false,
+        isNew: false,
 
         validationType: 'navItem',
 
         isComplete: computed('label', 'url', function () {
-            return !(isBlank(this.get('label').trim()) || isBlank(this.get('url')));
+            var _getProperties = this.getProperties('label', 'url');
+
+            var label = _getProperties.label;
+            var url = _getProperties.url;
+
+            return !isBlank(label) && !isBlank(url);
+        }),
+
+        isBlank: computed('label', 'url', function () {
+            var _getProperties2 = this.getProperties('label', 'url');
+
+            var label = _getProperties2.label;
+            var url = _getProperties2.url;
+
+            return isBlank(label) && isBlank(url);
         }),
 
         init: function init() {
@@ -5398,6 +5456,8 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
         config: service(),
         notifications: service(),
 
+        newNavItem: null,
+
         blogUrl: computed('config.blogUrl', function () {
             var url = this.get('config.blogUrl');
 
@@ -5405,8 +5465,7 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
         }),
 
         navigationItems: computed('model.navigation', function () {
-            var lastItem = undefined,
-                navItems = undefined;
+            var navItems = undefined;
 
             try {
                 navItems = JSON.parse(this.get('model.navigation') || [{}]);
@@ -5418,46 +5477,35 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
                 return NavItem.create(item);
             });
 
-            lastItem = navItems.get('lastObject');
-            if (!lastItem || lastItem.get('isComplete')) {
-                navItems.addObject(NavItem.create({ last: true }));
-            }
-
             return navItems;
         }),
 
-        updateLastNavItem: observer('navigationItems.[]', function () {
-            var navItems = this.get('navigationItems');
-
-            navItems.forEach(function (item, index, items) {
-                if (index === items.length - 1) {
-                    item.set('last', true);
-                } else {
-                    item.set('last', false);
-                }
-            });
-        }),
+        init: function init() {
+            this._super.apply(this, arguments);
+            this.set('newNavItem', NavItem.create({ isNew: true }));
+        },
 
         save: function save() {
             var _this = this;
 
             var navItems = this.get('navigationItems');
+            var newNavItem = this.get('newNavItem');
             var notifications = this.get('notifications');
-            var navSetting = undefined,
-                validationPromises = undefined;
+            var validationPromises = [];
+            var navSetting = undefined;
 
-            validationPromises = navItems.map(function (item) {
-                return item.validate();
+            if (!newNavItem.get('isBlank')) {
+                validationPromises.pushObject(this.send('addItem'));
+            }
+
+            navItems.map(function (item) {
+                validationPromises.pushObject(item.validate());
             });
 
             return RSVP.all(validationPromises).then(function () {
                 navSetting = navItems.map(function (item) {
                     var label = item.get('label').trim();
                     var url = item.get('url').trim();
-
-                    if (item.get('last') && !item.get('isComplete')) {
-                        return null;
-                    }
 
                     return { label: label, url: url };
                 }).compact();
@@ -5476,15 +5524,24 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
             });
         },
 
+        addNewNavItem: function addNewNavItem() {
+            var navItems = this.get('navigationItems');
+            var newNavItem = this.get('newNavItem');
+
+            newNavItem.set('isNew', false);
+            navItems.pushObject(newNavItem);
+            this.set('newNavItem', NavItem.create({ isNew: true }));
+        },
+
         actions: {
             addItem: function addItem() {
-                var navItems = this.get('navigationItems');
-                var lastItem = navItems.get('lastObject');
+                var _this2 = this;
 
-                if (lastItem && lastItem.get('isComplete')) {
-                    // Add new blank navItem
-                    navItems.addObject(NavItem.create({ last: true }));
-                }
+                var newNavItem = this.get('newNavItem');
+
+                return newNavItem.validate().then(function () {
+                    _this2.addNewNavItem();
+                });
             },
 
             deleteItem: function deleteItem(item) {
@@ -5497,12 +5554,8 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
                 navItems.removeObject(item);
             },
 
-            moveItem: function moveItem(index, newIndex) {
-                var navItems = this.get('navigationItems');
-                var item = navItems.objectAt(index);
-
-                navItems.removeAt(index);
-                navItems.insertAt(newIndex, item);
+            reorderItems: function reorderItems(navItems) {
+                this.set('navigationItems', navItems);
             },
 
             updateUrl: function updateUrl(url, navItem) {
@@ -5511,6 +5564,10 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
                 }
 
                 navItem.set('url', url);
+            },
+
+            reset: function reset() {
+                this.set('newNavItem', NavItem.create({ isNew: true }));
             }
         }
     });
@@ -7251,7 +7308,7 @@ define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function
         /* Download Count ------------------------------------------------------- */
 
         var downloadCount = 0;
-        this.get('http://ghost.org/count/', function () {
+        this.get('https://count.ghost.org/', function () {
             downloadCount++;
             return {
                 count: downloadCount
@@ -7323,7 +7380,7 @@ define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function
         });
 
         this.put('/settings/', function (db, request) {
-            var newSettings = JSON.parse(request.requestBody);
+            var newSettings = JSON.parse(request.requestBody).settings;
 
             db.settings.remove();
             db.settings.insert(newSettings);
@@ -7512,7 +7569,60 @@ define('ghost/mirage/factories/notification', ['exports', 'ember-cli-mirage'], f
 /* jscs:disable */
 define('ghost/mirage/factories/post', ['exports', 'ember-cli-mirage'], function (exports, _emberCliMirage) {
     exports['default'] = _emberCliMirage['default'].Factory.extend({
-        // TODO: fill in with actual factory data
+        uuid: function uuid(i) {
+            return 'post-' + i;
+        },
+        description: function description(i) {
+            return 'Title for post ' + i + '.';
+        },
+        slug: function slug(i) {
+            return 'post-' + i;
+        },
+        markdown: function markdown(i) {
+            return 'Markdown for post ' + i + '.';
+        },
+        html: function html(i) {
+            return 'HTML for post ' + i + '.';
+        },
+        image: function image(i) {
+            return '/content/images/2015/10/post-' + i + '.jpg';
+        },
+        featured: function featured() {
+            return false;
+        },
+        page: function page() {
+            return false;
+        },
+        status: function status(i) {
+            return '/content/images/2015/10/post-' + i + '.jpg';
+        },
+        meta_description: function meta_description(i) {
+            return 'Meta description for post ' + i + '.';
+        },
+        meta_title: function meta_title(i) {
+            return 'Meta Title for post ' + i;
+        },
+        author_id: function author_id() {
+            return 1;
+        },
+        updated_at: function updated_at() {
+            return '2015-10-19T16:25:07.756Z';
+        },
+        updated_by: function updated_by() {
+            return 1;
+        },
+        published_at: function published_at() {
+            return '2015-10-19T16:25:07.756Z';
+        },
+        published_by: function published_by() {
+            return 1;
+        },
+        created_at: function created_at() {
+            return '2015-09-11T09:44:29.871Z';
+        },
+        created_by: function created_by() {
+            return 1;
+        }
     });
 });
 /* jscs:disable */
@@ -7753,16 +7863,6 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         value: 'Thoughts, stories and ideas.'
     }, {
         id: 3,
-        uuid: '347cedbe-f867-4184-a04d-e176dff24053',
-        key: 'email',
-        value: 'info@example.com',
-        type: 'blog',
-        created_at: '2013-11-25T14:48:11.000Z',
-        created_by: 1,
-        updated_at: '2015-08-20T04:30:20.000Z',
-        updated_by: 1
-    }, {
-        id: 4,
         uuid: '4339ce48-b485-418a-acc2-1d34cf17a5e3',
         key: 'logo',
         value: '/content/images/2013/Nov/logo.png',
@@ -7772,7 +7872,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.273Z',
         updated_by: 1
     }, {
-        id: 5,
+        id: 4,
         uuid: 'e41b6c2a-7f72-45ea-96d8-ee016f06d78b',
         key: 'cover',
         value: '/content/images/2014/Feb/cover.jpg',
@@ -7782,7 +7882,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.276Z',
         updated_by: 1
     }, {
-        id: 6,
+        id: 5,
         uuid: '4558457e-9f61-47a5-9d45-8b83829bf1cf',
         key: 'defaultLang',
         value: 'en_US',
@@ -7794,7 +7894,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        id: 7,
+        id: 6,
         key: 'postsPerPage',
         type: 'blog',
         updated_at: '2015-10-04T16:26:05.211Z',
@@ -7802,7 +7902,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: '775e6ca1-bcc3-4347-a53d-15d5d76c04a4',
         value: '5'
     }, {
-        id: 8,
+        id: 7,
         uuid: '3c93b240-d22b-473f-9063-537023e06c2d',
         key: 'forceI18n',
         value: 'true',
@@ -7812,7 +7912,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.280Z',
         updated_by: 1
     }, {
-        id: 9,
+        id: 8,
         uuid: '4e58389f-f173-4387-b28c-0435623882ad',
         key: 'activeTheme',
         value: 'casper',
@@ -7822,7 +7922,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.284Z',
         updated_by: 1
     }, {
-        id: 10,
+        id: 9,
         uuid: '8052c2bf-9c19-4d6c-8944-7465321d00be',
         key: 'permalinks',
         value: '/:slug/',
@@ -7834,7 +7934,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        id: 11,
+        id: 10,
         key: 'ghost_head',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.858Z',
@@ -7844,7 +7944,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        id: 12,
+        id: 11,
         key: 'ghost_foot',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.858Z',
@@ -7852,7 +7952,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: '0649d45e-828b-4dd0-8381-3dff6d1d5ddb',
         value: ''
     }, {
-        id: 13,
+        id: 12,
         uuid: 'd806f358-7996-4c74-b153-8876959c4b70',
         key: 'labs',
         value: '{"codeInjectionUI":true}',
@@ -7864,13 +7964,33 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
-        id: 14,
+        id: 13,
         key: 'navigation',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.868Z',
         updated_by: 1,
         uuid: '4cc51d1c-fcbd-47e6-a71b-fdd1abb223fc',
         value: JSON.stringify([{ label: 'Home', url: '/' }, { label: 'About', url: '/about' }])
+    }, {
+        created_at: '2015-09-11T09:44:30.810Z',
+        created_by: 1,
+        id: 14,
+        key: 'isPrivate',
+        type: 'blog',
+        updated_at: '2015-09-23T13:32:49.868Z',
+        updated_by: 1,
+        uuid: 'e306ec3e-d079-11e5-ab30-625662870761',
+        value: false
+    }, {
+        created_at: '2015-09-11T09:44:30.810Z',
+        created_by: 1,
+        id: 15,
+        key: 'password',
+        type: 'blog',
+        updated_at: '2015-09-23T13:32:49.868Z',
+        updated_by: 1,
+        uuid: 'f8e8cbda-d079-11e5-ab30-625662870761',
+        value: ''
     }, {
         key: 'availableThemes',
         value: [{
@@ -8785,8 +8905,8 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
                 }
 
                 this.set('model.title', this.get('model.titleScratch'));
-                this.set('model.meta_title', psmController.get('metaTitleScratch'));
-                this.set('model.meta_description', psmController.get('metaDescriptionScratch'));
+                this.set('model.metaTitle', psmController.get('metaTitleScratch'));
+                this.set('model.metaDescription', psmController.get('metaDescriptionScratch'));
 
                 if (!this.get('model.slug')) {
                     // Cancel any pending slug generation that may still be queued in the
@@ -9015,10 +9135,9 @@ define('ghost/mixins/infinite-scroll', ['exports', 'ember'], function (exports, 
 
         /**
          * Determines if we are past a scroll point where we need to fetch the next page
-         * @param {object} event The scroll event
          */
-        checkScroll: function checkScroll(event) {
-            var element = event.target;
+        _checkScroll: function _checkScroll() {
+            var element = this.get('element');
             var triggerPoint = this.get('triggerPoint');
             var isLoading = this.get('isLoading');
 
@@ -9035,11 +9154,11 @@ define('ghost/mixins/infinite-scroll', ['exports', 'ember'], function (exports, 
 
             var el = this.get('element');
 
-            el.onscroll = run.bind(this, this.checkScroll);
+            el.onscroll = run.bind(this, this._checkScroll);
 
-            if (el.scrollHeight <= el.clientHeight) {
-                this.sendAction('fetch');
-            }
+            // run on load, on the offchance that the initial load
+            // did not fill the view.
+            this._checkScroll();
         },
 
         willDestroyElement: function willDestroyElement() {
@@ -9400,6 +9519,8 @@ define('ghost/mixins/text-input', ['exports', 'ember'], function (exports, _embe
     });
 });
 define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'ember-data/model', 'ghost/utils/ajax', 'ghost/utils/validator-extensions', 'ghost/validators/post', 'ghost/validators/setup', 'ghost/validators/signup', 'ghost/validators/signin', 'ghost/validators/setting', 'ghost/validators/reset', 'ghost/validators/user', 'ghost/validators/tag-settings', 'ghost/validators/nav-item', 'ghost/validators/invite-user'], function (exports, _ember, _emberData, _emberDataModel, _ghostUtilsAjax, _ghostUtilsValidatorExtensions, _ghostValidatorsPost, _ghostValidatorsSetup, _ghostValidatorsSignup, _ghostValidatorsSignin, _ghostValidatorsSetting, _ghostValidatorsReset, _ghostValidatorsUser, _ghostValidatorsTagSettings, _ghostValidatorsNavItem, _ghostValidatorsInviteUser) {
+    function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
+
     var Mixin = _ember['default'].Mixin;
     var RSVP = _ember['default'].RSVP;
     var isArray = _ember['default'].isArray;
@@ -9465,7 +9586,7 @@ define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'emb
 
             if (opts.model) {
                 model = opts.model;
-            } else if (this instanceof _emberDataModel['default']) {
+            } else if (_instanceof(this, _emberDataModel['default'])) {
                 model = this;
             } else if (this.get('model')) {
                 model = this.get('model');
@@ -9602,16 +9723,16 @@ define('ghost/models/post', ['exports', 'ember', 'ember-data/model', 'ember-data
         page: (0, _emberDataAttr['default'])('boolean', { defaultValue: false }),
         status: (0, _emberDataAttr['default'])('string', { defaultValue: 'draft' }),
         language: (0, _emberDataAttr['default'])('string', { defaultValue: 'en_US' }),
-        meta_title: (0, _emberDataAttr['default'])('string'),
-        meta_description: (0, _emberDataAttr['default'])('string'),
+        metaTitle: (0, _emberDataAttr['default'])('string'),
+        metaDescription: (0, _emberDataAttr['default'])('string'),
         author: (0, _emberDataRelationships.belongsTo)('user', { async: true }),
-        author_id: (0, _emberDataAttr['default'])('number'),
-        updated_at: (0, _emberDataAttr['default'])('moment-date'),
-        updated_by: (0, _emberDataAttr['default'])(),
-        published_at: (0, _emberDataAttr['default'])('moment-date'),
-        published_by: (0, _emberDataRelationships.belongsTo)('user', { async: true }),
-        created_at: (0, _emberDataAttr['default'])('moment-date'),
-        created_by: (0, _emberDataAttr['default'])(),
+        authorId: (0, _emberDataAttr['default'])('number'),
+        updatedAt: (0, _emberDataAttr['default'])('moment-date'),
+        updatedBy: (0, _emberDataAttr['default'])(),
+        publishedAt: (0, _emberDataAttr['default'])('moment-date'),
+        publishedBy: (0, _emberDataRelationships.belongsTo)('user', { async: true }),
+        createdAt: (0, _emberDataAttr['default'])('moment-date'),
+        createdBy: (0, _emberDataAttr['default'])(),
         tags: (0, _emberDataRelationships.hasMany)('tag', {
             embedded: 'always',
             async: false
@@ -9659,7 +9780,7 @@ define('ghost/models/post', ['exports', 'ember', 'ember-data/model', 'ember-data
         },
 
         isAuthoredByUser: function isAuthoredByUser(user) {
-            return parseInt(user.get('id'), 10) === parseInt(this.get('author_id'), 10);
+            return parseInt(user.get('id'), 10) === parseInt(this.get('authorId'), 10);
         }
 
     });
@@ -9671,10 +9792,10 @@ define('ghost/models/role', ['exports', 'ember', 'ember-data/model', 'ember-data
         uuid: (0, _emberDataAttr['default'])('string'),
         name: (0, _emberDataAttr['default'])('string'),
         description: (0, _emberDataAttr['default'])('string'),
-        created_at: (0, _emberDataAttr['default'])('moment-date'),
-        updated_at: (0, _emberDataAttr['default'])('moment-date'),
-        created_by: (0, _emberDataAttr['default'])(),
-        updated_by: (0, _emberDataAttr['default'])(),
+        createdAt: (0, _emberDataAttr['default'])('moment-date'),
+        updatedAt: (0, _emberDataAttr['default'])('moment-date'),
+        createdBy: (0, _emberDataAttr['default'])(),
+        updatedBy: (0, _emberDataAttr['default'])(),
 
         lowerCaseName: computed('name', function () {
             return this.get('name').toLocaleLowerCase();
@@ -9714,14 +9835,14 @@ define('ghost/models/tag', ['exports', 'ember-data/model', 'ember-data/attr', 'g
         slug: (0, _emberDataAttr['default'])('string'),
         description: (0, _emberDataAttr['default'])('string'),
         parent: (0, _emberDataAttr['default'])(),
-        meta_title: (0, _emberDataAttr['default'])('string'),
-        meta_description: (0, _emberDataAttr['default'])('string'),
+        metaTitle: (0, _emberDataAttr['default'])('string'),
+        metaDescription: (0, _emberDataAttr['default'])('string'),
         image: (0, _emberDataAttr['default'])('string'),
         hidden: (0, _emberDataAttr['default'])('boolean'),
-        created_at: (0, _emberDataAttr['default'])('moment-date'),
-        updated_at: (0, _emberDataAttr['default'])('moment-date'),
-        created_by: (0, _emberDataAttr['default'])(),
-        updated_by: (0, _emberDataAttr['default'])(),
+        createdAt: (0, _emberDataAttr['default'])('moment-date'),
+        updatedAt: (0, _emberDataAttr['default'])('moment-date'),
+        createdBy: (0, _emberDataAttr['default'])(),
+        updatedBy: (0, _emberDataAttr['default'])(),
         count: (0, _emberDataAttr['default'])('raw')
     });
 });
@@ -9746,13 +9867,13 @@ define('ghost/models/user', ['exports', 'ember', 'ember-data/model', 'ember-data
         accessibility: (0, _emberDataAttr['default'])('string'),
         status: (0, _emberDataAttr['default'])('string'),
         language: (0, _emberDataAttr['default'])('string', { defaultValue: 'en_US' }),
-        meta_title: (0, _emberDataAttr['default'])('string'),
-        meta_description: (0, _emberDataAttr['default'])('string'),
-        last_login: (0, _emberDataAttr['default'])('moment-date'),
-        created_at: (0, _emberDataAttr['default'])('moment-date'),
-        created_by: (0, _emberDataAttr['default'])('number'),
-        updated_at: (0, _emberDataAttr['default'])('moment-date'),
-        updated_by: (0, _emberDataAttr['default'])('number'),
+        metaTitle: (0, _emberDataAttr['default'])('string'),
+        metaDescription: (0, _emberDataAttr['default'])('string'),
+        lastLogin: (0, _emberDataAttr['default'])('moment-date'),
+        createdAt: (0, _emberDataAttr['default'])('moment-date'),
+        createdBy: (0, _emberDataAttr['default'])('number'),
+        updatedAt: (0, _emberDataAttr['default'])('moment-date'),
+        updatedBy: (0, _emberDataAttr['default'])('number'),
         roles: (0, _emberDataRelationships.hasMany)('role', {
             embedded: 'always',
             async: false
@@ -10084,7 +10205,7 @@ define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'gh
                     return post;
                 }
 
-                return _this.replaceRoute('posts.index');
+                return _this.replaceWith('posts.index');
             });
         },
 
@@ -10095,7 +10216,7 @@ define('ghost/routes/editor/edit', ['exports', 'ghost/routes/authenticated', 'gh
 
             return this.get('session.user').then(function (user) {
                 if (user.get('isAuthor') && !post.isAuthoredByUser(user)) {
-                    return _this2.replaceRoute('posts.index');
+                    return _this2.replaceWith('posts.index');
                 }
             });
         },
@@ -10280,8 +10401,8 @@ define('ghost/routes/posts/index', ['exports', 'ember', 'ember-simple-auth/mixin
         }
     });
 });
-define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/utils/isNumber', 'ghost/utils/isFinite'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsShortcutsRoute, _ghostUtilsIsNumber, _ghostUtilsIsFinite) {
-    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsShortcutsRoute['default'], {
+define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/mixins/404-handler', 'ghost/utils/isNumber', 'ghost/utils/isFinite'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsShortcutsRoute, _ghostMixins404Handler, _ghostUtilsIsNumber, _ghostUtilsIsFinite) {
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsShortcutsRoute['default'], _ghostMixins404Handler['default'], {
         model: function model(params) {
             var _this = this;
 
@@ -10308,12 +10429,14 @@ define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'gho
                 staticPages: 'all'
             };
 
-            return this.store.queryRecord('post', query).then(function (post) {
+            return this.store.query('post', query).then(function (records) {
+                var post = records.get('firstObject');
+
                 if (post) {
                     return post;
                 }
 
-                return _this.replaceRoute('posts.index');
+                return _this.replaceWith('posts.index');
             });
         },
 
@@ -10322,7 +10445,7 @@ define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'gho
 
             return this.get('session.user').then(function (user) {
                 if (user.get('isAuthor') && !post.isAuthoredByUser(user)) {
-                    return _this2.replaceRoute('posts.index');
+                    return _this2.replaceWith('posts.index');
                 }
             });
         },
@@ -10564,6 +10687,11 @@ define('ghost/routes/settings/navigation', ['exports', 'ember', 'ghost/routes/au
             });
         },
 
+        setupController: function setupController() {
+            this._super.apply(this, arguments);
+            this.get('controller').send('reset');
+        },
+
         actions: {
             save: function save() {
                 // since shortcuts are run on the route, we have to signal to the components
@@ -10664,8 +10792,6 @@ define('ghost/routes/settings/tags', ['exports', 'ember', 'ghost/routes/authenti
 
         model: function model() {
             var _this = this;
-
-            this.store.unloadAll('tag');
 
             return this.loadFirstPage().then(function () {
                 return _this.store.filter('tag', function (tag) {
@@ -10919,7 +11045,6 @@ define('ghost/routes/signout', ['exports', 'ember', 'ghost/routes/authenticated'
             this.get('notifications').clearAll();
             if (canInvoke(transition, 'send')) {
                 transition.send('invalidateSession');
-                transition.abort();
             } else {
                 this.send('invalidateSession');
             }
@@ -11088,6 +11213,7 @@ define('ghost/routes/team/user', ['exports', 'ghost/routes/authenticated', 'ghos
 });
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
 define('ghost/serializers/application', ['exports', 'ember', 'ember-data/serializers/rest'], function (exports, _ember, _emberDataSerializersRest) {
+    var decamelize = _ember['default'].String.decamelize;
     exports['default'] = _emberDataSerializersRest['default'].extend({
         serializeIntoHash: function serializeIntoHash(hash, type, record, options) {
             // Our API expects an id on the posted object
@@ -11102,6 +11228,10 @@ define('ghost/serializers/application', ['exports', 'ember', 'ember-data/seriali
             delete data.uuid;
 
             hash[root] = [data];
+        },
+
+        keyForAttribute: function keyForAttribute(attr) {
+            return decamelize(attr);
         }
     });
 });
@@ -11113,13 +11243,14 @@ define('ghost/serializers/post', ['exports', 'ember', 'ember-data', 'ghost/seria
             tags: { embedded: 'always' }
         },
 
-        normalize: function normalize(typeClass, hash, prop) {
-            // this is to enable us to still access the raw author_id
+        normalizeHash: {
+            // this is to enable us to still access the raw authorId
             // without requiring an extra get request (since it is an
             // async relationship).
-            hash.author_id = hash.author;
-
-            return this._super(typeClass, hash, prop);
+            posts: function posts(hash) {
+                hash.author_id = hash.author;
+                return hash;
+            }
         },
 
         normalizeSingleResponse: function normalizeSingleResponse(store, primaryModelClass, payload) {
@@ -11188,6 +11319,10 @@ define('ghost/serializers/setting', ['exports', 'ember', 'ghost/serializers/appl
             return this._super(store, primaryModelClass, payload, id, requestType);
         },
 
+        keyForAttribute: function keyForAttribute(attr) {
+            return attr;
+        },
+
         _extractObjectFromArrayPayload: function _extractObjectFromArrayPayload(_payload) {
             var payload = { id: '0' };
 
@@ -11247,6 +11382,8 @@ define('ghost/serializers/user', ['exports', 'ember', 'ember-data', 'ghost/seria
     });
 });
 define('ghost/services/ajax', ['exports', 'ember', 'ember-ajax/services/ajax'], function (exports, _ember, _emberAjaxServicesAjax) {
+    function _typeof(obj) { return obj && obj.constructor === Symbol ? 'symbol' : typeof obj; }
+
     var inject = _ember['default'].inject;
     var computed = _ember['default'].computed;
     exports['default'] = _emberAjaxServicesAjax['default'].extend({
@@ -11275,7 +11412,7 @@ define('ghost/services/ajax', ['exports', 'ember', 'ember-ajax/services/ajax'], 
         }),
 
         normalizeErrorResponse: function normalizeErrorResponse(status, headers, payload) {
-            if (payload && typeof payload === 'object') {
+            if (payload && (typeof payload === 'undefined' ? 'undefined' : _typeof(payload)) === 'object') {
                 return payload.error || payload.errors || payload.message || false;
             } else {
                 return false;
@@ -11350,6 +11487,106 @@ define('ghost/services/dropdown', ['exports', 'ember', 'ghost/mixins/body-event-
 });
 
 // This is used by the dropdown initializer (and subsequently popovers) to manage closing & toggling
+define('ghost/services/feature', ['exports', 'ember'], function (exports, _ember) {
+    exports.feature = feature;
+    var Service = _ember['default'].Service;
+    var computed = _ember['default'].computed;
+    var service = _ember['default'].inject.service;
+    var Promise = _ember['default'].RSVP.Promise;
+    var set = _ember['default'].set;
+
+    var EmberError = _ember['default'].Error;
+
+    function feature(name) {
+        return computed('config.' + name, 'labs.' + name, {
+            get: function get() {
+                var _this = this;
+
+                return new Promise(function (resolve) {
+                    if (_this.get('config.' + name)) {
+                        return resolve(_this.get('config.' + name));
+                    }
+
+                    _this.get('labs').then(function (labs) {
+                        resolve(labs[name] || false);
+                    });
+                });
+            },
+            set: function set(key, value) {
+                return this.update(key, value).then(function (savedValue) {
+                    return savedValue;
+                });
+            }
+        });
+    }
+
+    exports['default'] = Service.extend({
+        store: service(),
+        config: service(),
+        notifications: service(),
+
+        _settings: null,
+
+        publicAPI: feature('publicAPI'),
+
+        _parseLabs: function _parseLabs(settings) {
+            var labs = settings.get('labs');
+
+            try {
+                return JSON.parse(labs) || {};
+            } catch (e) {
+                return {};
+            }
+        },
+
+        labs: computed('_settings', function () {
+            var _this2 = this;
+
+            return new Promise(function (resolve, reject) {
+                if (_this2.get('_settings')) {
+                    // So we don't query the backend every single time
+                    resolve(_this2._parseLabs(_this2.get('_settings')));
+                }
+                var store = _this2.get('store');
+
+                store.query('setting', { type: 'blog' }).then(function (settings) {
+                    var setting = settings.get('firstObject');
+
+                    _this2.set('_settings', setting);
+                    resolve(_this2._parseLabs(setting));
+                })['catch'](reject);
+            });
+        }),
+
+        update: function update(key, value) {
+            var _this3 = this;
+
+            return new Promise(function (resolve, reject) {
+                _this3.get('labs').then(function (labs) {
+                    var settings = _this3.get('_settings');
+
+                    set(labs, key, value);
+
+                    settings.set('labs', JSON.stringify(labs));
+                    settings.save().then(function (savedSettings) {
+                        _this3.set('_settings', savedSettings);
+                        resolve(_this3._parseLabs(savedSettings).get(key));
+                    })['catch'](function (errors) {
+                        if (errors) {
+                            // model.save errors, show notifications
+                            _this3.get('notifications').showErrors(errors);
+                            settings.rollbackAttributes();
+                        } else {
+                            settings.rollbackAttributes();
+                            throw new EmberError('Validation of the feature service settings model failed when updating labs.');
+                        }
+                        resolve(_this3._parseLabs(settings)[key]);
+                    });
+                })['catch'](reject);
+            });
+        }
+    });
+});
 define('ghost/services/ghost-paths', ['exports', 'ember', 'ghost/utils/ghost-paths'], function (exports, _ember, _ghostUtilsGhostPaths) {
     var Service = _ember['default'].Service;
     var _ProxyMixin = _ember['default']._ProxyMixin;
@@ -11432,6 +11669,8 @@ define('ghost/services/media-queries', ['exports', 'ember'], function (exports, 
     });
 });
 define('ghost/services/notifications', ['exports', 'ember', 'ember-ajax/errors'], function (exports, _ember, _emberAjaxErrors) {
+    function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
+
     var Service = _ember['default'].Service;
     var filter = _ember['default'].computed.filter;
     var get = _ember['default'].get;
@@ -11545,7 +11784,7 @@ define('ghost/services/notifications', ['exports', 'ember', 'ember-ajax/errors']
 
             options.defaultErrorText = options.defaultErrorText || 'There was a problem on the server, please try again.';
 
-            if (resp instanceof _emberAjaxErrors.AjaxError) {
+            if (_instanceof(resp, _emberAjaxErrors.AjaxError)) {
                 resp = resp.errors;
             }
 
@@ -11684,7 +11923,7 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -11879,6 +12118,44 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/novaugust");
+        dom.setAttribute(el2, "title", "novaugust");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "novaugust");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/jaswilli");
+        dom.setAttribute(el2, "title", "jaswilli");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "jaswilli");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/bhops");
         dom.setAttribute(el2, "title", "bhops");
         var el3 = dom.createTextNode("\n        ");
@@ -11917,12 +12194,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/novaugust");
-        dom.setAttribute(el2, "title", "novaugust");
+        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
+        dom.setAttribute(el2, "title", "cobbspur");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "novaugust");
+        dom.setAttribute(el3, "alt", "cobbspur");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -11955,12 +12232,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cusackalex");
-        dom.setAttribute(el2, "title", "cusackalex");
+        dom.setAttribute(el2, "href", "https://github.com/cameronviner");
+        dom.setAttribute(el2, "title", "cameronviner");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cusackalex");
+        dom.setAttribute(el3, "alt", "cameronviner");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -11999,44 +12276,6 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3, "alt", "rfpe");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/ericschultz");
-        dom.setAttribute(el2, "title", "ericschultz");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "ericschultz");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/boennemann");
-        dom.setAttribute(el2, "title", "boennemann");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "boennemann");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12086,7 +12325,7 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         morphs[17] = dom.createAttrMorph(element17, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/halfdan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/kevinkucharczyk"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/jtwebman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/mixonic"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/bhops"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/garyc40"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/novaugust"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/jamesslock"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/cusackalex"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/jgillich"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/rfpe"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/ericschultz"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/boennemann"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/halfdan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/kevinkucharczyk"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/jtwebman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/mixonic"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/novaugust"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/jaswilli"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/bhops"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/garyc40"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/jamesslock"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/cameronviner"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/jgillich"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/rfpe"]]]],
       locals: [],
       templates: []
     };
@@ -12099,7 +12338,7 @@ define("ghost/templates/-import-errors", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -12146,7 +12385,7 @@ define("ghost/templates/-import-errors", ["exports"], function (exports) {
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -12193,7 +12432,7 @@ define("ghost/templates/-import-errors", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -12237,7 +12476,7 @@ define("ghost/templates/-user-list-item", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -12282,7 +12521,7 @@ define("ghost/templates/-user-list-item", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -12324,7 +12563,7 @@ define("ghost/templates/-user-list-item", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -12425,7 +12664,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -12463,7 +12702,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -12503,7 +12742,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -12540,7 +12779,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -12800,7 +13039,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -12836,7 +13075,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -12878,7 +13117,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -12922,7 +13161,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["wrong-type", "multiple-nodes"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -12930,7 +13169,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
               "column": 0
             },
             "end": {
-              "line": 23,
+              "line": 22,
               "column": 0
             }
           },
@@ -12973,10 +13212,6 @@ define("ghost/templates/application", ["exports"], function (exports) {
           dom.appendChild(el1, el2);
           var el2 = dom.createComment("");
           dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
           var el2 = dom.createTextNode("\n    ");
           dom.appendChild(el1, el2);
           dom.appendChild(el0, el1);
@@ -12986,7 +13221,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
           var element0 = dom.childAt(fragment, [5]);
-          var morphs = new Array(9);
+          var morphs = new Array(8);
           morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
           morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
           morphs[2] = dom.createAttrMorph(element0, 'class');
@@ -12995,10 +13230,9 @@ define("ghost/templates/application", ["exports"], function (exports) {
           morphs[5] = dom.createMorphAt(element0, 5, 5);
           morphs[6] = dom.createMorphAt(element0, 7, 7);
           morphs[7] = dom.createMorphAt(element0, 9, 9);
-          morphs[8] = dom.createMorphAt(element0, 11, 11);
           return morphs;
         },
-        statements: [["block", "gh-skip-link", [], ["anchor", ".gh-main"], 0, null, ["loc", [null, [2, 4], [2, 76]]]], ["inline", "gh-alerts", [], ["notify", "topNotificationChange"], ["loc", [null, [4, 4], [4, 48]]]], ["attribute", "class", ["concat", ["gh-viewport ", ["subexpr", "if", [["get", "autoNav", ["loc", [null, [6, 33], [6, 40]]]], "gh-autonav"], [], ["loc", [null, [6, 28], [6, 55]]]], " ", ["subexpr", "if", [["get", "showSettingsMenu", ["loc", [null, [6, 61], [6, 77]]]], "settings-menu-expanded"], [], ["loc", [null, [6, 56], [6, 104]]]], " ", ["subexpr", "if", [["get", "showMobileMenu", ["loc", [null, [6, 110], [6, 124]]]], "mobile-menu-expanded"], [], ["loc", [null, [6, 105], [6, 149]]]]]]], ["block", "unless", [["get", "signedOut", ["loc", [null, [7, 18], [7, 27]]]]], [], 1, null, ["loc", [null, [7, 8], [9, 19]]]], ["block", "gh-main", [], ["onMouseEnter", "closeAutoNav", "data-notification-count", ["subexpr", "@mut", [["get", "topNotificationCount", ["loc", [null, [11, 71], [11, 91]]]]], [], []]], 2, null, ["loc", [null, [11, 8], [13, 20]]]], ["content", "gh-notifications", ["loc", [null, [16, 8], [16, 28]]]], ["inline", "gh-content-cover", [], ["onClick", "closeMenus", "onMouseEnter", "closeAutoNav"], ["loc", [null, [18, 8], [18, 77]]]], ["inline", "outlet", ["modal"], [], ["loc", [null, [20, 8], [20, 26]]]], ["inline", "outlet", ["settings-menu"], [], ["loc", [null, [21, 8], [21, 34]]]]],
+        statements: [["block", "gh-skip-link", [], ["anchor", ".gh-main"], 0, null, ["loc", [null, [2, 4], [2, 76]]]], ["inline", "gh-alerts", [], ["notify", "topNotificationChange"], ["loc", [null, [4, 4], [4, 48]]]], ["attribute", "class", ["concat", ["gh-viewport ", ["subexpr", "if", [["get", "autoNav", ["loc", [null, [6, 33], [6, 40]]]], "gh-autonav"], [], ["loc", [null, [6, 28], [6, 55]]]], " ", ["subexpr", "if", [["get", "showSettingsMenu", ["loc", [null, [6, 61], [6, 77]]]], "settings-menu-expanded"], [], ["loc", [null, [6, 56], [6, 104]]]], " ", ["subexpr", "if", [["get", "showMobileMenu", ["loc", [null, [6, 110], [6, 124]]]], "mobile-menu-expanded"], [], ["loc", [null, [6, 105], [6, 149]]]]]]], ["block", "unless", [["get", "signedOut", ["loc", [null, [7, 18], [7, 27]]]]], [], 1, null, ["loc", [null, [7, 8], [9, 19]]]], ["block", "gh-main", [], ["onMouseEnter", "closeAutoNav", "data-notification-count", ["subexpr", "@mut", [["get", "topNotificationCount", ["loc", [null, [11, 71], [11, 91]]]]], [], []]], 2, null, ["loc", [null, [11, 8], [13, 20]]]], ["content", "gh-notifications", ["loc", [null, [16, 8], [16, 28]]]], ["inline", "gh-content-cover", [], ["onClick", "closeMenus", "onMouseEnter", "closeAutoNav"], ["loc", [null, [18, 8], [18, 77]]]], ["inline", "outlet", ["settings-menu"], [], ["loc", [null, [20, 8], [20, 34]]]]],
         locals: [],
         templates: [child0, child1, child2]
       };
@@ -13007,15 +13241,15 @@ define("ghost/templates/application", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 25,
+              "line": 24,
               "column": 0
             },
             "end": {
-              "line": 29,
+              "line": 28,
               "column": 0
             }
           },
@@ -13040,7 +13274,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
           morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-fullscreen-modal", ["markdown-help"], ["close", ["subexpr", "route-action", ["toggleMarkdownHelpModal"], [], ["loc", [null, [27, 32], [27, 72]]]], "modifier", "wide"], ["loc", [null, [26, 4], [28, 43]]]]],
+        statements: [["inline", "gh-fullscreen-modal", ["markdown-help"], ["close", ["subexpr", "route-action", ["toggleMarkdownHelpModal"], [], ["loc", [null, [26, 32], [26, 72]]]], "modifier", "wide"], ["loc", [null, [25, 4], [27, 43]]]]],
         locals: [],
         templates: []
       };
@@ -13051,7 +13285,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13059,7 +13293,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 30,
+            "line": 29,
             "column": 0
           }
         },
@@ -13087,7 +13321,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["block", "gh-app", [], ["showSettingsMenu", ["subexpr", "@mut", [["get", "showSettingsMenu", ["loc", [null, [1, 27], [1, 43]]]]], [], []]], 0, null, ["loc", [null, [1, 0], [23, 11]]]], ["block", "if", [["get", "showMarkdownHelpModal", ["loc", [null, [25, 6], [25, 27]]]]], [], 1, null, ["loc", [null, [25, 0], [29, 7]]]]],
+      statements: [["block", "gh-app", [], ["showSettingsMenu", ["subexpr", "@mut", [["get", "showSettingsMenu", ["loc", [null, [1, 27], [1, 43]]]]], [], []]], 0, null, ["loc", [null, [1, 0], [22, 11]]]], ["block", "if", [["get", "showMarkdownHelpModal", ["loc", [null, [24, 6], [24, 27]]]]], [], 1, null, ["loc", [null, [24, 0], [28, 7]]]]],
       locals: [],
       templates: [child0, child1]
     };
@@ -13102,7 +13336,7 @@ define("ghost/templates/components/gh-activating-list-item", ["exports"], functi
             "name": "missing-wrapper",
             "problems": ["wrong-type", "multiple-nodes"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -13147,7 +13381,7 @@ define("ghost/templates/components/gh-activating-list-item", ["exports"], functi
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13193,7 +13427,7 @@ define("ghost/templates/components/gh-alert", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13256,7 +13490,7 @@ define("ghost/templates/components/gh-alerts", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -13300,7 +13534,7 @@ define("ghost/templates/components/gh-alerts", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13345,7 +13579,7 @@ define("ghost/templates/components/gh-app", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13391,7 +13625,7 @@ define("ghost/templates/components/gh-blog-url", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13436,7 +13670,7 @@ define("ghost/templates/components/gh-content-preview-content", ["exports"], fun
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13482,7 +13716,7 @@ define("ghost/templates/components/gh-content-view-container", ["exports"], func
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13514,7 +13748,7 @@ define("ghost/templates/components/gh-content-view-container", ["exports"], func
         dom.insertBoundary(fragment, 0);
         return morphs;
       },
-      statements: [["inline", "yield", [["get", "this", ["loc", [null, [1, 8], [1, 12]]]]], [], ["loc", [null, [1, 0], [1, 14]]]]],
+      statements: [["inline", "yield", [["get", "previewIsHidden", ["loc", [null, [1, 8], [1, 23]]]]], [], ["loc", [null, [1, 0], [1, 25]]]]],
       locals: [],
       templates: []
     };
@@ -13528,7 +13762,7 @@ define("ghost/templates/components/gh-datetime-input", ["exports"], function (ex
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13574,7 +13808,7 @@ define("ghost/templates/components/gh-ed-preview", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13621,7 +13855,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -13661,7 +13895,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -13710,7 +13944,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -13768,7 +14002,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -13856,7 +14090,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -13907,7 +14141,7 @@ define("ghost/templates/components/gh-editor", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -13951,7 +14185,7 @@ define("ghost/templates/components/gh-editor", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14154,7 +14388,7 @@ define("ghost/templates/components/gh-error-message", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14192,6 +14426,64 @@ define("ghost/templates/components/gh-error-message", ["exports"], function (exp
     };
   })());
 });
+define("ghost/templates/components/gh-feature-flag", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type", "multiple-nodes"]
+        },
+        "revision": "Ember@2.3.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 4,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-feature-flag.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("span");
+        dom.setAttribute(el1, "class", "input-toggle-component");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("p");
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(2);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        morphs[1] = dom.createUnsafeMorphAt(dom.childAt(fragment, [4]), 0, 0);
+        dom.insertBoundary(fragment, 0);
+        return morphs;
+      },
+      statements: [["inline", "input", [], ["id", ["subexpr", "@mut", [["get", "for", ["loc", [null, [1, 11], [1, 14]]]]], [], []], "name", ["subexpr", "@mut", [["get", "name", ["loc", [null, [1, 20], [1, 24]]]]], [], []], "type", "checkbox", "checked", ["subexpr", "@mut", [["get", "value", ["loc", [null, [1, 49], [1, 54]]]]], [], []]], ["loc", [null, [1, 0], [1, 56]]]], ["content", "yield", ["loc", [null, [3, 3], [3, 14]]]]],
+      locals: [],
+      templates: []
+    };
+  })());
+});
 define("ghost/templates/components/gh-file-upload", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     return {
@@ -14200,7 +14492,7 @@ define("ghost/templates/components/gh-file-upload", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14265,7 +14557,7 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -14307,7 +14599,7 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -14351,7 +14643,7 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14401,52 +14693,6 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
     };
   })());
 });
-define("ghost/templates/components/gh-infinite-scroll-box", ["exports"], function (exports) {
-  exports["default"] = Ember.HTMLBars.template((function () {
-    return {
-      meta: {
-        "fragmentReason": {
-          "name": "missing-wrapper",
-          "problems": ["wrong-type"]
-        },
-        "revision": "Ember@2.3.0",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 2,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/components/gh-infinite-scroll-box.hbs"
-      },
-      isEmpty: false,
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createComment("");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var morphs = new Array(1);
-        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
-        dom.insertBoundary(fragment, 0);
-        return morphs;
-      },
-      statements: [["content", "yield", ["loc", [null, [1, 0], [1, 9]]]]],
-      locals: [],
-      templates: []
-    };
-  })());
-});
 define("ghost/templates/components/gh-infinite-scroll", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     return {
@@ -14455,7 +14701,7 @@ define("ghost/templates/components/gh-infinite-scroll", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14487,7 +14733,7 @@ define("ghost/templates/components/gh-infinite-scroll", ["exports"], function (e
         dom.insertBoundary(fragment, 0);
         return morphs;
       },
-      statements: [["content", "yield", ["loc", [null, [1, 0], [1, 9]]]]],
+      statements: [["inline", "yield", [["subexpr", "action", ["checkScroll"], [], ["loc", [null, [1, 8], [1, 30]]]]], [], ["loc", [null, [1, 0], [1, 32]]]]],
       locals: [],
       templates: []
     };
@@ -14500,7 +14746,7 @@ define("ghost/templates/components/gh-menu-toggle", ["exports"], function (expor
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14545,7 +14791,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -14588,7 +14834,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -14635,7 +14881,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -14704,7 +14950,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -14803,7 +15049,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
             "name": "missing-wrapper",
             "problems": ["multiple-nodes"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -14876,7 +15122,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -14915,7 +15161,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -14954,7 +15200,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -14992,7 +15238,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15068,7 +15314,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15107,7 +15353,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15146,7 +15392,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15186,7 +15432,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -15225,7 +15471,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -15264,7 +15510,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -15303,7 +15549,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -15342,7 +15588,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -15380,7 +15626,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15469,7 +15715,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15522,7 +15768,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15666,7 +15912,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -15817,7 +16063,7 @@ define("ghost/templates/components/gh-navigation", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -15863,7 +16109,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15913,7 +16159,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15951,7 +16197,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
           morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-trim-focus-input", [], ["focus", ["subexpr", "@mut", [["get", "navItem.last", ["loc", [null, [9, 36], [9, 48]]]]], [], []], "placeholder", "Label", "value", ["subexpr", "@mut", [["get", "navItem.label", ["loc", [null, [9, 75], [9, 88]]]]], [], []]], ["loc", [null, [9, 8], [9, 90]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [10, 34], [10, 48]]]]], [], []], "property", "label"], ["loc", [null, [10, 8], [10, 67]]]]],
+        statements: [["inline", "gh-trim-focus-input", [], ["focus", ["subexpr", "@mut", [["get", "navItem.last", ["loc", [null, [9, 36], [9, 48]]]]], [], []], "placeholder", "Label", "value", ["subexpr", "@mut", [["get", "navItem.label", ["loc", [null, [9, 75], [9, 88]]]]], [], []], "keyPress", ["subexpr", "action", ["clearLabelErrors"], [], ["loc", [null, [9, 98], [9, 125]]]]], ["loc", [null, [9, 8], [9, 127]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [10, 34], [10, 48]]]]], [], []], "property", "label"], ["loc", [null, [10, 8], [10, 67]]]]],
         locals: [],
         templates: []
       };
@@ -15960,7 +16206,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -15998,7 +16244,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
           morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-navitem-url-input", [], ["baseUrl", ["subexpr", "@mut", [["get", "baseUrl", ["loc", [null, [13, 39], [13, 46]]]]], [], []], "url", ["subexpr", "@mut", [["get", "navItem.url", ["loc", [null, [13, 51], [13, 62]]]]], [], []], "last", ["subexpr", "@mut", [["get", "navItem.last", ["loc", [null, [13, 68], [13, 80]]]]], [], []], "change", "updateUrl"], ["loc", [null, [13, 8], [13, 101]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [14, 34], [14, 48]]]]], [], []], "property", "url"], ["loc", [null, [14, 8], [14, 65]]]]],
+        statements: [["inline", "gh-navitem-url-input", [], ["baseUrl", ["subexpr", "@mut", [["get", "baseUrl", ["loc", [null, [13, 39], [13, 46]]]]], [], []], "url", ["subexpr", "@mut", [["get", "navItem.url", ["loc", [null, [13, 51], [13, 62]]]]], [], []], "isNew", ["subexpr", "@mut", [["get", "navItem.isNew", ["loc", [null, [13, 69], [13, 82]]]]], [], []], "change", "updateUrl", "clearErrors", ["subexpr", "action", ["clearUrlErrors"], [], ["loc", [null, [13, 114], [13, 139]]]]], ["loc", [null, [13, 8], [13, 141]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [14, 34], [14, 48]]]]], [], []], "property", "url"], ["loc", [null, [14, 8], [14, 65]]]]],
         locals: [],
         templates: []
       };
@@ -16007,7 +16253,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16064,7 +16310,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16123,7 +16369,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16173,7 +16419,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
         dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["block", "unless", [["get", "navItem.last", ["loc", [null, [1, 10], [1, 22]]]]], [], 0, null, ["loc", [null, [1, 0], [5, 11]]]], ["block", "gh-validation-status-container", [], ["tagName", "span", "class", "gh-blognav-label", "errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [8, 85], [8, 99]]]]], [], []], "property", "label", "hasValidated", ["subexpr", "@mut", [["get", "navItem.hasValidated", ["loc", [null, [8, 130], [8, 150]]]]], [], []]], 1, null, ["loc", [null, [8, 4], [11, 39]]]], ["block", "gh-validation-status-container", [], ["tagName", "span", "class", "gh-blognav-url", "errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [12, 83], [12, 97]]]]], [], []], "property", "url", "hasValidated", ["subexpr", "@mut", [["get", "navItem.hasValidated", ["loc", [null, [12, 126], [12, 146]]]]], [], []]], 2, null, ["loc", [null, [12, 4], [15, 39]]]], ["block", "if", [["get", "navItem.last", ["loc", [null, [18, 6], [18, 18]]]]], [], 3, 4, ["loc", [null, [18, 0], [26, 7]]]]],
+      statements: [["block", "unless", [["get", "navItem.isNew", ["loc", [null, [1, 10], [1, 23]]]]], [], 0, null, ["loc", [null, [1, 0], [5, 11]]]], ["block", "gh-validation-status-container", [], ["tagName", "span", "class", "gh-blognav-label", "errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [8, 85], [8, 99]]]]], [], []], "property", "label", "hasValidated", ["subexpr", "@mut", [["get", "navItem.hasValidated", ["loc", [null, [8, 130], [8, 150]]]]], [], []]], 1, null, ["loc", [null, [8, 4], [11, 39]]]], ["block", "gh-validation-status-container", [], ["tagName", "span", "class", "gh-blognav-url", "errors", ["subexpr", "@mut", [["get", "navItem.errors", ["loc", [null, [12, 83], [12, 97]]]]], [], []], "property", "url", "hasValidated", ["subexpr", "@mut", [["get", "navItem.hasValidated", ["loc", [null, [12, 126], [12, 146]]]]], [], []]], 2, null, ["loc", [null, [12, 4], [15, 39]]]], ["block", "if", [["get", "navItem.isNew", ["loc", [null, [18, 6], [18, 19]]]]], [], 3, 4, ["loc", [null, [18, 0], [26, 7]]]]],
       locals: [],
       templates: [child0, child1, child2, child3, child4]
     };
@@ -16187,7 +16433,7 @@ define("ghost/templates/components/gh-notification", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16250,7 +16496,7 @@ define("ghost/templates/components/gh-notifications", ["exports"], function (exp
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16294,7 +16540,7 @@ define("ghost/templates/components/gh-notifications", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16339,7 +16585,7 @@ define("ghost/templates/components/gh-posts-list-item", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16384,7 +16630,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -16437,7 +16683,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16485,7 +16731,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16525,7 +16771,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16609,7 +16855,7 @@ define("ghost/templates/components/gh-search-input", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16668,7 +16914,7 @@ define("ghost/templates/components/gh-select-native", ["exports"], function (exp
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16719,7 +16965,7 @@ define("ghost/templates/components/gh-select-native", ["exports"], function (exp
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16772,7 +17018,7 @@ define("ghost/templates/components/gh-select-native", ["exports"], function (exp
           "name": "modifiers",
           "modifiers": ["action"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -16828,7 +17074,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16870,7 +17116,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -16912,7 +17158,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -16953,7 +17199,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -16995,7 +17241,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -17039,7 +17285,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -17077,7 +17323,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17131,7 +17377,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17175,7 +17421,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17229,7 +17475,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17288,7 +17534,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17357,7 +17603,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17407,7 +17653,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17467,7 +17713,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 3, 3);
           return morphs;
         },
-        statements: [["inline", "gh-input", [], ["id", "meta-title", "name", "meta_title", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchMetaTitle", ["loc", [null, [62, 79], [62, 95]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "meta_title"], [], ["loc", [null, [62, 106], [62, 141]]]]], ["loc", [null, [62, 16], [62, 143]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [63, 42], [63, 52]]]]], [], []], "property", "meta_title"], ["loc", [null, [63, 16], [63, 76]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaTitle", ["loc", [null, [64, 93], [64, 109]]]], 70], [], ["loc", [null, [64, 66], [64, 114]]]]],
+        statements: [["inline", "gh-input", [], ["id", "meta-title", "name", "metaTitle", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchMetaTitle", ["loc", [null, [62, 78], [62, 94]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "metaTitle"], [], ["loc", [null, [62, 105], [62, 139]]]]], ["loc", [null, [62, 16], [62, 141]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [63, 42], [63, 52]]]]], [], []], "property", "metaTitle"], ["loc", [null, [63, 16], [63, 75]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaTitle", ["loc", [null, [64, 93], [64, 109]]]], 70], [], ["loc", [null, [64, 66], [64, 114]]]]],
         locals: [],
         templates: []
       };
@@ -17476,7 +17722,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -17536,7 +17782,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 3, 3);
           return morphs;
         },
-        statements: [["inline", "gh-textarea", [], ["id", "meta-description", "name", "meta_description", "value", ["subexpr", "@mut", [["get", "scratchMetaDescription", ["loc", [null, [69, 82], [69, 104]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "meta_description"], [], ["loc", [null, [69, 115], [69, 156]]]]], ["loc", [null, [69, 16], [69, 158]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [70, 42], [70, 52]]]]], [], []], "property", "meta_description"], ["loc", [null, [70, 16], [70, 82]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaDescription", ["loc", [null, [71, 94], [71, 116]]]], 156], [], ["loc", [null, [71, 67], [71, 122]]]]],
+        statements: [["inline", "gh-textarea", [], ["id", "meta-description", "name", "metaDescription", "value", ["subexpr", "@mut", [["get", "scratchMetaDescription", ["loc", [null, [69, 81], [69, 103]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "metaDescription"], [], ["loc", [null, [69, 114], [69, 154]]]]], ["loc", [null, [69, 16], [69, 156]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [70, 42], [70, 52]]]]], [], []], "property", "metaDescription"], ["loc", [null, [70, 16], [70, 81]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaDescription", ["loc", [null, [71, 94], [71, 116]]]], 156], [], ["loc", [null, [71, 67], [71, 122]]]]],
         locals: [],
         templates: []
       };
@@ -17547,7 +17793,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -17782,9 +18028,129 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
         morphs[15] = dom.createMorphAt(dom.childAt(element9, [5]), 0, 0);
         return morphs;
       },
-      statements: [["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [1, 17], [1, 33]]]], "settings-menu-pane-out-left", "settings-menu-pane-in"], [], ["loc", [null, [1, 12], [1, 89]]]], " settings-menu settings-menu-pane tag-settings-pane"]]], ["attribute", "class", ["concat", ["settings-menu-header ", ["subexpr", "if", [["get", "isMobile", ["loc", [null, [2, 42], [2, 50]]]], "subview"], [], ["loc", [null, [2, 37], [2, 62]]]]]]], ["block", "if", [["get", "isMobile", ["loc", [null, [3, 14], [3, 22]]]]], [], 0, 1, ["loc", [null, [3, 8], [9, 15]]]], ["inline", "gh-uploader", [], ["uploaded", "setCoverImage", "canceled", "clearCoverImage", "description", "Add tag image", "image", ["subexpr", "@mut", [["get", "tag.image", ["loc", [null, [12, 108], [12, 117]]]]], [], []], "initUploader", "setUploaderReference", "tagName", "section"], ["loc", [null, [12, 8], [12, 173]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [14, 36], [14, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [14, 60], [14, 76]]]]], [], []], "property", "name"], 2, null, ["loc", [null, [14, 12], [18, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [20, 36], [20, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [20, 60], [20, 76]]]]], [], []], "property", "slug"], 3, null, ["loc", [null, [20, 12], [25, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [27, 36], [27, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [27, 60], [27, 76]]]]], [], []], "property", "description"], 4, null, ["loc", [null, [27, 12], [32, 30]]]], ["element", "action", ["openMeta"], [], ["loc", [null, [35, 42], [35, 63]]]], ["block", "unless", [["get", "tag.isNew", ["loc", [null, [44, 22], [44, 31]]]]], [], 5, null, ["loc", [null, [44, 12], [46, 23]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [51, 17], [51, 33]]]], "settings-menu-pane-in", "settings-menu-pane-out-right"], [], ["loc", [null, [51, 12], [51, 90]]]], " settings-menu settings-menu-pane tag-meta-settings-pane"]]], ["element", "action", ["closeMeta"], [], ["loc", [null, [53, 16], [53, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [60, 36], [60, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [60, 60], [60, 76]]]]], [], []], "property", "meta_title"], 6, null, ["loc", [null, [60, 12], [65, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [67, 36], [67, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [67, 60], [67, 76]]]]], [], []], "property", "meta_description"], 7, null, ["loc", [null, [67, 12], [72, 30]]]], ["content", "seoTitle", ["loc", [null, [77, 51], [77, 63]]]], ["content", "seoURL", ["loc", [null, [78, 50], [78, 60]]]], ["content", "seoDescription", ["loc", [null, [79, 57], [79, 75]]]]],
+      statements: [["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [1, 17], [1, 33]]]], "settings-menu-pane-out-left", "settings-menu-pane-in"], [], ["loc", [null, [1, 12], [1, 89]]]], " settings-menu settings-menu-pane tag-settings-pane"]]], ["attribute", "class", ["concat", ["settings-menu-header ", ["subexpr", "if", [["get", "isMobile", ["loc", [null, [2, 42], [2, 50]]]], "subview"], [], ["loc", [null, [2, 37], [2, 62]]]]]]], ["block", "if", [["get", "isMobile", ["loc", [null, [3, 14], [3, 22]]]]], [], 0, 1, ["loc", [null, [3, 8], [9, 15]]]], ["inline", "gh-uploader", [], ["uploaded", "setCoverImage", "canceled", "clearCoverImage", "description", "Add tag image", "image", ["subexpr", "@mut", [["get", "tag.image", ["loc", [null, [12, 108], [12, 117]]]]], [], []], "initUploader", "setUploaderReference", "tagName", "section"], ["loc", [null, [12, 8], [12, 173]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [14, 36], [14, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [14, 60], [14, 76]]]]], [], []], "property", "name"], 2, null, ["loc", [null, [14, 12], [18, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [20, 36], [20, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [20, 60], [20, 76]]]]], [], []], "property", "slug"], 3, null, ["loc", [null, [20, 12], [25, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [27, 36], [27, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [27, 60], [27, 76]]]]], [], []], "property", "description"], 4, null, ["loc", [null, [27, 12], [32, 30]]]], ["element", "action", ["openMeta"], [], ["loc", [null, [35, 42], [35, 63]]]], ["block", "unless", [["get", "tag.isNew", ["loc", [null, [44, 22], [44, 31]]]]], [], 5, null, ["loc", [null, [44, 12], [46, 23]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [51, 17], [51, 33]]]], "settings-menu-pane-in", "settings-menu-pane-out-right"], [], ["loc", [null, [51, 12], [51, 90]]]], " settings-menu settings-menu-pane tag-meta-settings-pane"]]], ["element", "action", ["closeMeta"], [], ["loc", [null, [53, 16], [53, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [60, 36], [60, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [60, 60], [60, 76]]]]], [], []], "property", "metaTitle"], 6, null, ["loc", [null, [60, 12], [65, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [67, 36], [67, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [67, 60], [67, 76]]]]], [], []], "property", "metaDescription"], 7, null, ["loc", [null, [67, 12], [72, 30]]]], ["content", "seoTitle", ["loc", [null, [77, 51], [77, 63]]]], ["content", "seoURL", ["loc", [null, [78, 50], [78, 60]]]], ["content", "seoDescription", ["loc", [null, [79, 57], [79, 75]]]]],
       locals: [],
       templates: [child0, child1, child2, child3, child4, child5, child6, child7]
+    };
+  })());
+});
+define("ghost/templates/components/gh-tag", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.3.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 2,
+              "column": 4
+            },
+            "end": {
+              "line": 7,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-tag.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1, "class", "tag-title");
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1, "class", "label label-default");
+          var el2 = dom.createTextNode("/");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          dom.setAttribute(el1, "class", "tag-description");
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1, "class", "tags-count");
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(4);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+          morphs[1] = dom.createMorphAt(dom.childAt(fragment, [3]), 1, 1);
+          morphs[2] = dom.createMorphAt(dom.childAt(fragment, [5]), 0, 0);
+          morphs[3] = dom.createMorphAt(dom.childAt(fragment, [7]), 0, 0);
+          return morphs;
+        },
+        statements: [["content", "tag.name", ["loc", [null, [3, 32], [3, 44]]]], ["content", "tag.slug", ["loc", [null, [4, 43], [4, 55]]]], ["content", "tag.description", ["loc", [null, [5, 35], [5, 54]]]], ["content", "tag.count.posts", ["loc", [null, [6, 33], [6, 52]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "triple-curlies"
+        },
+        "revision": "Ember@2.3.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 9,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-tag.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "settings-tag");
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]), 1, 1);
+        return morphs;
+      },
+      statements: [["block", "link-to", ["settings.tags.tag", ["get", "tag", ["loc", [null, [2, 35], [2, 38]]]]], ["class", "tag-edit-button"], 0, null, ["loc", [null, [2, 4], [7, 16]]]]],
+      locals: [],
+      templates: [child0]
     };
   })());
 });
@@ -17796,7 +18162,7 @@ define("ghost/templates/components/gh-tags-management-container", ["exports"], f
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -17842,7 +18208,7 @@ define("ghost/templates/components/gh-uploader", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -17907,7 +18273,7 @@ define("ghost/templates/components/gh-url-preview", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -17953,7 +18319,7 @@ define("ghost/templates/components/gh-user-active", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -17999,7 +18365,7 @@ define("ghost/templates/components/gh-user-invited", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -18045,7 +18411,7 @@ define("ghost/templates/components/gh-view-title", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -18106,7 +18472,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18146,7 +18512,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18185,7 +18551,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -18227,7 +18593,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -18270,7 +18636,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18310,7 +18676,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18349,7 +18715,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18388,7 +18754,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -18427,7 +18793,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -18469,7 +18835,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -18514,7 +18880,7 @@ define("ghost/templates/components/liquid-container", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -18559,7 +18925,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18601,7 +18967,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18642,7 +19008,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -18684,7 +19050,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -18727,7 +19093,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18769,7 +19135,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18810,7 +19176,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18849,7 +19215,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -18888,7 +19254,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -18930,7 +19296,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -18974,7 +19340,7 @@ define("ghost/templates/components/liquid-modal", ["exports"], function (exports
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -19029,7 +19395,7 @@ define("ghost/templates/components/liquid-modal", ["exports"], function (exports
             "name": "missing-wrapper",
             "problems": ["wrong-type", "multiple-nodes"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19077,7 +19443,7 @@ define("ghost/templates/components/liquid-modal", ["exports"], function (exports
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -19122,7 +19488,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19161,7 +19527,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -19203,7 +19569,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19245,7 +19611,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -19290,7 +19656,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19329,7 +19695,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -19371,7 +19737,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19413,7 +19779,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -19457,7 +19823,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -19499,7 +19865,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19541,7 +19907,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19580,7 +19946,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -19619,7 +19985,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19661,7 +20027,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -19706,7 +20072,7 @@ define("ghost/templates/components/modals/copy-html", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -19783,7 +20149,7 @@ define("ghost/templates/components/modals/delete-all", ["exports"], function (ex
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19821,7 +20187,7 @@ define("ghost/templates/components/modals/delete-all", ["exports"], function (ex
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -19925,7 +20291,7 @@ define("ghost/templates/components/modals/delete-post", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -19963,7 +20329,7 @@ define("ghost/templates/components/modals/delete-post", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -20078,7 +20444,7 @@ define("ghost/templates/components/modals/delete-tag", ["exports"], function (ex
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20133,7 +20499,7 @@ define("ghost/templates/components/modals/delete-tag", ["exports"], function (ex
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20171,7 +20537,7 @@ define("ghost/templates/components/modals/delete-tag", ["exports"], function (ex
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -20284,7 +20650,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20339,7 +20705,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20381,7 +20747,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20419,7 +20785,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -20516,7 +20882,7 @@ define("ghost/templates/components/modals/invite-new-user", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20570,7 +20936,7 @@ define("ghost/templates/components/modals/invite-new-user", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -20608,7 +20974,7 @@ define("ghost/templates/components/modals/invite-new-user", ["exports"], functio
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -20733,7 +21099,7 @@ define("ghost/templates/components/modals/leave-editor", ["exports"], function (
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -20845,7 +21211,7 @@ define("ghost/templates/components/modals/markdown-help", ["exports"], function 
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -21272,7 +21638,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21314,7 +21680,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21350,7 +21716,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21397,7 +21763,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -21495,7 +21861,7 @@ define("ghost/templates/components/modals/transfer-owner", ["exports"], function
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21533,7 +21899,7 @@ define("ghost/templates/components/modals/transfer-owner", ["exports"], function
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -21633,7 +21999,7 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21671,7 +22037,7 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -21764,7 +22130,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21806,7 +22172,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21848,7 +22214,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21890,7 +22256,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -21934,7 +22300,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -22043,7 +22409,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -22083,7 +22449,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22143,7 +22509,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -22216,7 +22582,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -22313,7 +22679,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22365,7 +22731,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22417,7 +22783,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22462,7 +22828,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
             return morphs;
           },
-          statements: [["inline", "gh-datetime-input", [], ["value", ["subexpr", "@mut", [["get", "model.published_at", ["loc", [null, [31, 42], [31, 60]]]]], [], []], "update", ["subexpr", "action", ["setPublishedAt"], [], ["loc", [null, [32, 43], [32, 68]]]], "inputClass", "post-setting-date", "inputId", "post-setting-date", "inputName", "post-setting-date"], ["loc", [null, [31, 16], [35, 67]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [36, 42], [36, 54]]]]], [], []], "property", "post-setting-date"], ["loc", [null, [36, 16], [36, 85]]]]],
+          statements: [["inline", "gh-datetime-input", [], ["value", ["subexpr", "@mut", [["get", "model.publishedAt", ["loc", [null, [31, 42], [31, 59]]]]], [], []], "update", ["subexpr", "action", ["setPublishedAt"], [], ["loc", [null, [32, 43], [32, 68]]]], "inputClass", "post-setting-date", "inputId", "post-setting-date", "inputName", "post-setting-date"], ["loc", [null, [31, 16], [35, 67]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [36, 42], [36, 54]]]]], [], []], "property", "post-setting-date"], ["loc", [null, [36, 16], [36, 85]]]]],
           locals: [],
           templates: []
         };
@@ -22471,7 +22837,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22542,7 +22908,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22604,7 +22970,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -22664,7 +23030,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
                 morphs[2] = dom.createMorphAt(fragment, 7, 7, contextualElement);
                 return morphs;
               },
-              statements: [["inline", "gh-input", [], ["class", "post-setting-meta-title", "id", "meta-title", "value", ["subexpr", "@mut", [["get", "metaTitleScratch", ["loc", [null, [114, 81], [114, 97]]]]], [], []], "name", "post-setting-meta-title", "focus-out", "setMetaTitle", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [114, 16], [114, 190]]]], ["inline", "gh-count-down-characters", [["get", "metaTitleScratch", ["loc", [null, [115, 93], [115, 109]]]], 70], [], ["loc", [null, [115, 66], [115, 114]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [116, 42], [116, 54]]]]], [], []], "property", "meta_title"], ["loc", [null, [116, 16], [116, 78]]]]],
+              statements: [["inline", "gh-input", [], ["class", "post-setting-meta-title", "id", "meta-title", "value", ["subexpr", "@mut", [["get", "metaTitleScratch", ["loc", [null, [114, 81], [114, 97]]]]], [], []], "name", "post-setting-meta-title", "focus-out", "setMetaTitle", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [114, 16], [114, 190]]]], ["inline", "gh-count-down-characters", [["get", "metaTitleScratch", ["loc", [null, [115, 93], [115, 109]]]], 70], [], ["loc", [null, [115, 66], [115, 114]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [116, 42], [116, 54]]]]], [], []], "property", "metaTitle"], ["loc", [null, [116, 16], [116, 77]]]]],
               locals: [],
               templates: []
             };
@@ -22673,7 +23039,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -22733,7 +23099,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
                 morphs[2] = dom.createMorphAt(fragment, 7, 7, contextualElement);
                 return morphs;
               },
-              statements: [["inline", "gh-textarea", [], ["class", "gh-input post-setting-meta-description", "id", "meta-description", "value", ["subexpr", "@mut", [["get", "metaDescriptionScratch", ["loc", [null, [121, 105], [121, 127]]]]], [], []], "name", "post-setting-meta-description", "focus-out", "setMetaDescription", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [121, 16], [121, 232]]]], ["inline", "gh-count-down-characters", [["get", "metaDescriptionScratch", ["loc", [null, [122, 94], [122, 116]]]], 156], [], ["loc", [null, [122, 67], [122, 122]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [123, 42], [123, 54]]]]], [], []], "property", "meta_description"], ["loc", [null, [123, 16], [123, 84]]]]],
+              statements: [["inline", "gh-textarea", [], ["class", "gh-input post-setting-meta-description", "id", "meta-description", "value", ["subexpr", "@mut", [["get", "metaDescriptionScratch", ["loc", [null, [121, 105], [121, 127]]]]], [], []], "name", "post-setting-meta-description", "focus-out", "setMetaDescription", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [121, 16], [121, 232]]]], ["inline", "gh-count-down-characters", [["get", "metaDescriptionScratch", ["loc", [null, [122, 94], [122, 116]]]], 156], [], ["loc", [null, [122, 67], [122, 122]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [123, 42], [123, 54]]]]], [], []], "property", "metaDescription"], ["loc", [null, [123, 16], [123, 83]]]]],
               locals: [],
               templates: []
             };
@@ -22741,7 +23107,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -22869,7 +23235,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
               morphs[6] = dom.createMorphAt(dom.childAt(element2, [5]), 0, 0);
               return morphs;
             },
-            statements: [["element", "action", ["closeSubview"], [], ["loc", [null, [105, 20], [105, 45]]]], ["element", "action", ["discardEnter"], ["on", "submit"], ["loc", [null, [111, 18], [111, 55]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [112, 36], [112, 48]]]]], [], []], "property", "meta_title"], 0, null, ["loc", [null, [112, 12], [117, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [119, 36], [119, 48]]]]], [], []], "property", "meta_description"], 1, null, ["loc", [null, [119, 12], [124, 30]]]], ["content", "seoTitle", ["loc", [null, [129, 51], [129, 63]]]], ["content", "seoURL", ["loc", [null, [130, 50], [130, 60]]]], ["content", "seoDescription", ["loc", [null, [131, 57], [131, 75]]]]],
+            statements: [["element", "action", ["closeSubview"], [], ["loc", [null, [105, 20], [105, 45]]]], ["element", "action", ["discardEnter"], ["on", "submit"], ["loc", [null, [111, 18], [111, 55]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [112, 36], [112, 48]]]]], [], []], "property", "metaTitle"], 0, null, ["loc", [null, [112, 12], [117, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [119, 36], [119, 48]]]]], [], []], "property", "metaDescription"], 1, null, ["loc", [null, [119, 12], [124, 30]]]], ["content", "seoTitle", ["loc", [null, [129, 51], [129, 63]]]], ["content", "seoURL", ["loc", [null, [130, 50], [130, 60]]]], ["content", "seoDescription", ["loc", [null, [131, 57], [131, 75]]]]],
             locals: [],
             templates: [child0, child1]
           };
@@ -22877,7 +23243,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -22918,7 +23284,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -23167,7 +23533,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -23211,7 +23577,7 @@ define("ghost/templates/posts/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -23251,7 +23617,7 @@ define("ghost/templates/posts/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -23307,7 +23673,7 @@ define("ghost/templates/posts/index", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -23355,7 +23721,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -23393,7 +23759,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -23434,7 +23800,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -23498,7 +23864,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -23553,7 +23919,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -23591,7 +23957,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -23632,7 +23998,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                   return {
                     meta: {
                       "fragmentReason": false,
-                      "revision": "Ember@2.3.0",
+                      "revision": "Ember@2.3.1",
                       "loc": {
                         "source": null,
                         "start": {
@@ -23675,7 +24041,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                   return {
                     meta: {
                       "fragmentReason": false,
-                      "revision": "Ember@2.3.0",
+                      "revision": "Ember@2.3.1",
                       "loc": {
                         "source": null,
                         "start": {
@@ -23717,7 +24083,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                       morphs[1] = dom.createMorphAt(element0, 1, 1);
                       return morphs;
                     },
-                    statements: [["attribute", "datetime", ["concat", [["get", "post.published_at", ["loc", [null, [27, 62], [27, 79]]]]]]], ["inline", "gh-format-timeago", [["get", "post.published_at", ["loc", [null, [28, 78], [28, 95]]]]], [], ["loc", [null, [28, 58], [28, 97]]]]],
+                    statements: [["attribute", "datetime", ["concat", [["get", "post.publishedAt", ["loc", [null, [27, 62], [27, 78]]]]]]], ["inline", "gh-format-timeago", [["get", "post.publishedAt", ["loc", [null, [28, 78], [28, 94]]]]], [], ["loc", [null, [28, 58], [28, 96]]]]],
                     locals: [],
                     templates: []
                   };
@@ -23725,7 +24091,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.3.0",
+                    "revision": "Ember@2.3.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -23765,7 +24131,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.3.0",
+                    "revision": "Ember@2.3.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -23807,7 +24173,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
               return {
                 meta: {
                   "fragmentReason": false,
-                  "revision": "Ember@2.3.0",
+                  "revision": "Ember@2.3.1",
                   "loc": {
                     "source": null,
                     "start": {
@@ -23895,7 +24261,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -23926,7 +24292,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                 dom.insertBoundary(fragment, null);
                 return morphs;
               },
-              statements: [["block", "link-to", [["get", "component.viewOrEdit", ["loc", [null, [15, 35], [15, 55]]]], ["get", "post.id", ["loc", [null, [15, 56], [15, 63]]]]], ["class", "permalink", "title", "Edit this post"], 0, null, ["loc", [null, [15, 24], [36, 36]]]]],
+              statements: [["block", "link-to", [["subexpr", "if", [["get", "previewIsHidden", ["loc", [null, [15, 39], [15, 54]]]], "editor.edit", "posts.post"], [], ["loc", [null, [15, 35], [15, 82]]]], ["get", "post.id", ["loc", [null, [15, 83], [15, 90]]]]], ["class", "permalink", "title", "Edit this post"], 0, null, ["loc", [null, [15, 24], [36, 36]]]]],
               locals: ["component"],
               templates: [child0]
             };
@@ -23934,7 +24300,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -23965,7 +24331,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
               dom.insertBoundary(fragment, null);
               return morphs;
             },
-            statements: [["block", "gh-posts-list-item", [], ["post", ["subexpr", "@mut", [["get", "post", ["loc", [null, [14, 47], [14, 51]]]]], [], []], "onDoubleClick", "openEditor", "previewIsHidden", ["subexpr", "@mut", [["get", "container.previewIsHidden", ["loc", [null, [14, 95], [14, 120]]]]], [], []]], 0, null, ["loc", [null, [14, 20], [37, 43]]]]],
+            statements: [["block", "gh-posts-list-item", [], ["post", ["subexpr", "@mut", [["get", "post", ["loc", [null, [14, 47], [14, 51]]]]], [], []], "onDoubleClick", "openEditor", "onDelete", ["subexpr", "action", [["get", "checkScroll", ["loc", [null, [14, 96], [14, 107]]]]], [], ["loc", [null, [14, 88], [14, 108]]]]], 0, null, ["loc", [null, [14, 20], [37, 43]]]]],
             locals: ["post"],
             templates: [child0]
           };
@@ -23973,7 +24339,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -23988,7 +24354,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
             "moduleName": "ghost/templates/posts.hbs"
           },
           isEmpty: false,
-          arity: 0,
+          arity: 1,
           cachedFragment: null,
           hasRendered: false,
           buildFragment: function buildFragment(dom) {
@@ -24014,7 +24380,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
             return morphs;
           },
           statements: [["block", "each", [["get", "sortedPosts", ["loc", [null, [13, 24], [13, 35]]]]], ["key", "id"], 0, null, ["loc", [null, [13, 16], [38, 25]]]]],
-          locals: [],
+          locals: ["checkScroll"],
           templates: [child0]
         };
       })();
@@ -24024,7 +24390,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["multiple-nodes"]
           },
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24109,8 +24475,8 @@ define("ghost/templates/posts", ["exports"], function (exports) {
           morphs[5] = dom.createMorphAt(element7, 1, 1);
           return morphs;
         },
-        statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 4], [3, 92]]]], ["block", "link-to", ["editor.new"], ["class", "btn btn-green", "title", "New Post"], 1, null, ["loc", [null, [5, 8], [5, 92]]]], ["attribute", "class", ["concat", ["content-list js-content-list ", ["subexpr", "if", [["get", "postListFocused", ["loc", [null, [10, 54], [10, 69]]]], "keyboard-focused"], [], ["loc", [null, [10, 49], [10, 90]]]]]]], ["block", "gh-infinite-scroll-box", [], ["tagName", "section", "classNames", "content-list-content js-content-scrollbox", "fetch", "loadNextPage"], 2, null, ["loc", [null, [11, 8], [40, 35]]]], ["attribute", "class", ["concat", ["content-preview js-content-preview ", ["subexpr", "if", [["get", "postContentFocused", ["loc", [null, [42, 60], [42, 78]]]], "keyboard-focused"], [], ["loc", [null, [42, 55], [42, 99]]]]]]], ["content", "outlet", ["loc", [null, [43, 8], [43, 18]]]]],
-        locals: ["container"],
+        statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 4], [3, 92]]]], ["block", "link-to", ["editor.new"], ["class", "btn btn-green", "title", "New Post"], 1, null, ["loc", [null, [5, 8], [5, 92]]]], ["attribute", "class", ["concat", ["content-list js-content-list ", ["subexpr", "if", [["get", "postListFocused", ["loc", [null, [10, 54], [10, 69]]]], "keyboard-focused"], [], ["loc", [null, [10, 49], [10, 90]]]]]]], ["block", "gh-infinite-scroll", [], ["tagName", "section", "classNames", "content-list-content js-content-scrollbox", "fetch", "loadNextPage"], 2, null, ["loc", [null, [11, 8], [40, 31]]]], ["attribute", "class", ["concat", ["content-preview js-content-preview ", ["subexpr", "if", [["get", "postContentFocused", ["loc", [null, [42, 60], [42, 78]]]], "keyboard-focused"], [], ["loc", [null, [42, 55], [42, 99]]]]]]], ["content", "outlet", ["loc", [null, [43, 8], [43, 18]]]]],
+        locals: ["previewIsHidden"],
         templates: [child0, child1, child2]
       };
     })();
@@ -24118,7 +24484,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24162,7 +24528,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -24210,7 +24576,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24252,7 +24618,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24294,7 +24660,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24331,7 +24697,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -24424,7 +24790,7 @@ define("ghost/templates/settings/code-injection", ["exports"], function (exports
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24462,7 +24828,7 @@ define("ghost/templates/settings/code-injection", ["exports"], function (exports
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24499,7 +24865,7 @@ define("ghost/templates/settings/code-injection", ["exports"], function (exports
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -24660,7 +25026,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24698,7 +25064,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24734,7 +25100,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24794,7 +25160,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24859,7 +25225,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24906,7 +25272,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24953,7 +25319,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -24995,7 +25361,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -25042,7 +25408,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -25089,7 +25455,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -25132,7 +25498,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -25184,7 +25550,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -25225,7 +25591,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -25539,7 +25905,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -25577,7 +25943,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -25613,15 +25979,58 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 61,
+              "line": 50,
+              "column": 20
+            },
+            "end": {
+              "line": 52,
+              "column": 20
+            }
+          },
+          "moduleName": "ghost/templates/settings/labs.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                        Public API - For full instructions, read the ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("a");
+          dom.setAttribute(el1, "href", "http://support.ghost.org/public-api-beta/");
+          var el2 = dom.createTextNode("developer guide");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode(".\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child3 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.3.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 59,
               "column": 0
             },
             "end": {
-              "line": 65,
+              "line": 63,
               "column": 0
             }
           },
@@ -25646,7 +26055,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
           morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-fullscreen-modal", ["delete-all"], ["close", ["subexpr", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [63, 32], [63, 63]]]], "modifier", "action wide"], ["loc", [null, [62, 4], [64, 50]]]]],
+        statements: [["inline", "gh-fullscreen-modal", ["delete-all"], ["close", ["subexpr", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [61, 32], [61, 63]]]], "modifier", "action wide"], ["loc", [null, [60, 4], [62, 50]]]]],
         locals: [],
         templates: []
       };
@@ -25657,7 +26066,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -25665,7 +26074,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 66,
+            "line": 64,
             "column": 0
           }
         },
@@ -25881,37 +26290,11 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
         var el7 = dom.createTextNode("Enable Beta Features");
         dom.appendChild(el6, el7);
         dom.appendChild(el5, el6);
-        var el6 = dom.createTextNode("\n                    ");
+        var el6 = dom.createTextNode("\n");
         dom.appendChild(el5, el6);
-        var el6 = dom.createElement("label");
-        dom.setAttribute(el6, "class", "checkbox");
-        dom.setAttribute(el6, "for", "labs-publicAPI");
-        var el7 = dom.createTextNode("\n                        ");
-        dom.appendChild(el6, el7);
-        var el7 = dom.createComment("");
-        dom.appendChild(el6, el7);
-        var el7 = dom.createTextNode("\n                        ");
-        dom.appendChild(el6, el7);
-        var el7 = dom.createElement("span");
-        dom.setAttribute(el7, "class", "input-toggle-component");
-        dom.appendChild(el6, el7);
-        var el7 = dom.createTextNode("\n                        ");
-        dom.appendChild(el6, el7);
-        var el7 = dom.createElement("p");
-        var el8 = dom.createTextNode("Public API - For full instructions, read the ");
-        dom.appendChild(el7, el8);
-        var el8 = dom.createElement("a");
-        dom.setAttribute(el8, "href", "http://support.ghost.org/public-api-beta/");
-        var el9 = dom.createTextNode("developer guide");
-        dom.appendChild(el8, el9);
-        dom.appendChild(el7, el8);
-        var el8 = dom.createTextNode(".");
-        dom.appendChild(el7, el8);
-        dom.appendChild(el6, el7);
-        var el7 = dom.createTextNode("\n                    ");
-        dom.appendChild(el6, el7);
+        var el6 = dom.createComment("");
         dom.appendChild(el5, el6);
-        var el6 = dom.createTextNode("\n                ");
+        var el6 = dom.createTextNode("                ");
         dom.appendChild(el5, el6);
         dom.appendChild(el4, el5);
         var el5 = dom.createTextNode("\n            ");
@@ -25945,108 +26328,108 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
         morphs[3] = dom.createMorphAt(element3, 5, 5);
         morphs[4] = dom.createElementMorph(element4);
         morphs[5] = dom.createMorphAt(dom.childAt(element1, [9, 1, 1]), 3, 3);
-        morphs[6] = dom.createMorphAt(dom.childAt(element1, [13, 1, 1, 3]), 1, 1);
+        morphs[6] = dom.createMorphAt(dom.childAt(element1, [13, 1, 1]), 3, 3);
         morphs[7] = dom.createMorphAt(fragment, 2, 2, contextualElement);
         dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 93]]]], ["element", "action", ["exportData"], [], ["loc", [null, [12, 63], [12, 86]]]], ["inline", "partial", ["import-errors"], [], ["loc", [null, [21, 20], [21, 47]]]], ["inline", "gh-file-upload", [], ["id", "importfile", "classNames", "flex", "uploadButtonText", ["subexpr", "@mut", [["get", "uploadButtonText", ["loc", [null, [22, 88], [22, 104]]]]], [], []], "onUpload", "onUpload"], ["loc", [null, [22, 20], [22, 126]]]], ["element", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [31, 72], [31, 105]]]], ["block", "gh-spin-button", [], ["id", "sendtestemail", "class", "btn btn-blue", "action", "sendTestEmail", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [40, 112], [40, 122]]]]], [], []]], 1, null, ["loc", [null, [40, 20], [40, 147]]]], ["inline", "input", [], ["id", "labs-publicAPI", "name", "labs[publicAPI]", "type", "checkbox", "checked", ["subexpr", "@mut", [["get", "usePublicAPI", ["loc", [null, [51, 99], [51, 111]]]]], [], []]], ["loc", [null, [51, 24], [51, 113]]]], ["block", "if", [["get", "showDeleteAllModal", ["loc", [null, [61, 6], [61, 24]]]]], [], 2, null, ["loc", [null, [61, 0], [65, 7]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 93]]]], ["element", "action", ["exportData"], [], ["loc", [null, [12, 63], [12, 86]]]], ["inline", "partial", ["import-errors"], [], ["loc", [null, [21, 20], [21, 47]]]], ["inline", "gh-file-upload", [], ["id", "importfile", "classNames", "flex", "uploadButtonText", ["subexpr", "@mut", [["get", "uploadButtonText", ["loc", [null, [22, 88], [22, 104]]]]], [], []], "onUpload", "onUpload"], ["loc", [null, [22, 20], [22, 126]]]], ["element", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [31, 72], [31, 105]]]], ["block", "gh-spin-button", [], ["id", "sendtestemail", "class", "btn btn-blue", "action", "sendTestEmail", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [40, 112], [40, 122]]]]], [], []]], 1, null, ["loc", [null, [40, 20], [40, 147]]]], ["block", "gh-feature-flag", ["publicAPI"], [], 2, null, ["loc", [null, [50, 20], [52, 40]]]], ["block", "if", [["get", "showDeleteAllModal", ["loc", [null, [59, 6], [59, 24]]]]], [], 3, null, ["loc", [null, [59, 0], [63, 7]]]]],
       locals: [],
-      templates: [child0, child1, child2]
+      templates: [child0, child1, child2, child3]
     };
   })());
 });
 define("ghost/templates/settings/navigation", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.3.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 3,
+              "column": 8
+            },
+            "end": {
+              "line": 3,
+              "column": 81
+            }
+          },
+          "moduleName": "ghost/templates/settings/navigation.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createElement("span");
+          var el2 = dom.createTextNode("Navigation");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.3.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 5,
+              "column": 12
+            },
+            "end": {
+              "line": 5,
+              "column": 92
+            }
+          },
+          "moduleName": "ghost/templates/settings/navigation.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Save");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child2 = (function () {
       var child0 = (function () {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 3,
-                "column": 8
+                "line": 12,
+                "column": 16
               },
               "end": {
-                "line": 3,
-                "column": 81
-              }
-            },
-            "moduleName": "ghost/templates/settings/navigation.hbs"
-          },
-          isEmpty: false,
-          arity: 0,
-          cachedFragment: null,
-          hasRendered: false,
-          buildFragment: function buildFragment(dom) {
-            var el0 = dom.createDocumentFragment();
-            var el1 = dom.createElement("span");
-            var el2 = dom.createTextNode("Navigation");
-            dom.appendChild(el1, el2);
-            dom.appendChild(el0, el1);
-            return el0;
-          },
-          buildRenderNodes: function buildRenderNodes() {
-            return [];
-          },
-          statements: [],
-          locals: [],
-          templates: []
-        };
-      })();
-      var child1 = (function () {
-        return {
-          meta: {
-            "fragmentReason": false,
-            "revision": "Ember@2.3.0",
-            "loc": {
-              "source": null,
-              "start": {
-                "line": 5,
-                "column": 12
-              },
-              "end": {
-                "line": 5,
-                "column": 92
-              }
-            },
-            "moduleName": "ghost/templates/settings/navigation.hbs"
-          },
-          isEmpty: false,
-          arity: 0,
-          cachedFragment: null,
-          hasRendered: false,
-          buildFragment: function buildFragment(dom) {
-            var el0 = dom.createDocumentFragment();
-            var el1 = dom.createTextNode("Save");
-            dom.appendChild(el0, el1);
-            return el0;
-          },
-          buildRenderNodes: function buildRenderNodes() {
-            return [];
-          },
-          statements: [],
-          locals: [],
-          templates: []
-        };
-      })();
-      var child2 = (function () {
-        return {
-          meta: {
-            "fragmentReason": false,
-            "revision": "Ember@2.3.0",
-            "loc": {
-              "source": null,
-              "start": {
-                "line": 11,
-                "column": 12
-              },
-              "end": {
-                "line": 13,
-                "column": 12
+                "line": 14,
+                "column": 16
               }
             },
             "moduleName": "ghost/templates/settings/navigation.hbs"
@@ -26057,7 +26440,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
           hasRendered: false,
           buildFragment: function buildFragment(dom) {
             var el0 = dom.createDocumentFragment();
-            var el1 = dom.createTextNode("                ");
+            var el1 = dom.createTextNode("                    ");
             dom.appendChild(el0, el1);
             var el1 = dom.createComment("");
             dom.appendChild(el0, el1);
@@ -26070,103 +26453,56 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
             morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
             return morphs;
           },
-          statements: [["inline", "gh-navitem", [], ["navItem", ["subexpr", "@mut", [["get", "navItem", ["loc", [null, [12, 37], [12, 44]]]]], [], []], "baseUrl", ["subexpr", "@mut", [["get", "blogUrl", ["loc", [null, [12, 53], [12, 60]]]]], [], []], "addItem", "addItem", "deleteItem", "deleteItem", "updateUrl", "updateUrl"], ["loc", [null, [12, 16], [12, 126]]]]],
+          statements: [["inline", "gh-navitem", [], ["navItem", ["subexpr", "@mut", [["get", "navItem", ["loc", [null, [13, 41], [13, 48]]]]], [], []], "baseUrl", ["subexpr", "@mut", [["get", "blogUrl", ["loc", [null, [13, 57], [13, 64]]]]], [], []], "addItem", "addItem", "deleteItem", "deleteItem", "updateUrl", "updateUrl", "group", ["subexpr", "@mut", [["get", "group", ["loc", [null, [13, 135], [13, 140]]]]], [], []]], ["loc", [null, [13, 20], [13, 142]]]]],
           locals: ["navItem"],
           templates: []
         };
       })();
       return {
         meta: {
-          "fragmentReason": {
-            "name": "missing-wrapper",
-            "problems": ["multiple-nodes"]
-          },
-          "revision": "Ember@2.3.0",
+          "fragmentReason": false,
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 1,
-              "column": 0
+              "line": 11,
+              "column": 12
             },
             "end": {
-              "line": 16,
-              "column": 0
+              "line": 15,
+              "column": 12
             }
           },
           "moduleName": "ghost/templates/settings/navigation.hbs"
         },
         isEmpty: false,
-        arity: 0,
+        arity: 1,
         cachedFragment: null,
         hasRendered: false,
         buildFragment: function buildFragment(dom) {
           var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("    ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("header");
-          dom.setAttribute(el1, "class", "view-header");
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createElement("section");
-          dom.setAttribute(el2, "class", "view-actions");
-          var el3 = dom.createTextNode("\n            ");
-          dom.appendChild(el2, el3);
-          var el3 = dom.createComment("");
-          dom.appendChild(el2, el3);
-          var el3 = dom.createTextNode("\n        ");
-          dom.appendChild(el2, el3);
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n    ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n\n    ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("section");
-          dom.setAttribute(el1, "class", "view-container");
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createElement("form");
-          dom.setAttribute(el2, "id", "settings-navigation");
-          dom.setAttribute(el2, "class", "gh-blognav js-gh-blognav");
-          dom.setAttribute(el2, "novalidate", "novalidate");
-          var el3 = dom.createTextNode("\n");
-          dom.appendChild(el2, el3);
-          var el3 = dom.createComment("");
-          dom.appendChild(el2, el3);
-          var el3 = dom.createTextNode("        ");
-          dom.appendChild(el2, el3);
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n    ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
+          var el1 = dom.createComment("");
           dom.appendChild(el0, el1);
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element0 = dom.childAt(fragment, [1]);
-          var morphs = new Array(3);
-          morphs[0] = dom.createMorphAt(element0, 1, 1);
-          morphs[1] = dom.createMorphAt(dom.childAt(element0, [3]), 1, 1);
-          morphs[2] = dom.createMorphAt(dom.childAt(fragment, [3, 1]), 1, 1);
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 99]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [5, 76], [5, 86]]]]], [], []]], 1, null, ["loc", [null, [5, 12], [5, 111]]]], ["block", "each", [["get", "navigationItems", ["loc", [null, [11, 20], [11, 35]]]]], [], 2, null, ["loc", [null, [11, 12], [13, 21]]]]],
-        locals: [],
-        templates: [child0, child1, child2]
+        statements: [["block", "each", [["get", "navigationItems", ["loc", [null, [12, 24], [12, 39]]]]], [], 0, null, ["loc", [null, [12, 16], [14, 25]]]]],
+        locals: ["group"],
+        templates: [child0]
       };
     })();
     return {
       meta: {
         "fragmentReason": {
-          "name": "missing-wrapper",
-          "problems": ["wrong-type"]
+          "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -26174,7 +26510,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 17,
+            "line": 20,
             "column": 0
           }
         },
@@ -26186,20 +26522,75 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
       hasRendered: false,
       buildFragment: function buildFragment(dom) {
         var el0 = dom.createDocumentFragment();
-        var el1 = dom.createComment("");
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1, "class", "gh-view");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("header");
+        dom.setAttribute(el2, "class", "view-header");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("section");
+        dom.setAttribute(el3, "class", "view-actions");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("section");
+        dom.setAttribute(el2, "class", "view-container");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("form");
+        dom.setAttribute(el3, "id", "settings-navigation");
+        dom.setAttribute(el3, "class", "gh-blognav");
+        dom.setAttribute(el3, "novalidate", "novalidate");
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
         dom.appendChild(el0, el1);
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var morphs = new Array(1);
-        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
-        dom.insertBoundary(fragment, 0);
-        dom.insertBoundary(fragment, null);
+        var element0 = dom.childAt(fragment, [0]);
+        var element1 = dom.childAt(element0, [1]);
+        var element2 = dom.childAt(element0, [3, 1]);
+        var morphs = new Array(4);
+        morphs[0] = dom.createMorphAt(element1, 1, 1);
+        morphs[1] = dom.createMorphAt(dom.childAt(element1, [3]), 1, 1);
+        morphs[2] = dom.createMorphAt(element2, 1, 1);
+        morphs[3] = dom.createMorphAt(element2, 3, 3);
         return morphs;
       },
-      statements: [["block", "gh-navigation", [], ["moveItem", "moveItem"], 0, null, ["loc", [null, [1, 0], [16, 18]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 99]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [5, 76], [5, 86]]]]], [], []]], 1, null, ["loc", [null, [5, 12], [5, 111]]]], ["block", "sortable-group", [], ["onChange", ["subexpr", "action", ["reorderItems"], [], ["loc", [null, [11, 39], [11, 62]]]]], 2, null, ["loc", [null, [11, 12], [15, 31]]]], ["inline", "gh-navitem", [], ["navItem", ["subexpr", "@mut", [["get", "newNavItem", ["loc", [null, [16, 33], [16, 43]]]]], [], []], "baseUrl", ["subexpr", "@mut", [["get", "blogUrl", ["loc", [null, [16, 52], [16, 59]]]]], [], []], "addItem", "addItem", "updateUrl", "updateUrl"], ["loc", [null, [16, 12], [16, 101]]]]],
       locals: [],
-      templates: [child0]
+      templates: [child0, child1, child2]
     };
   })());
 });
@@ -26209,7 +26600,7 @@ define("ghost/templates/settings/tags/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26251,7 +26642,7 @@ define("ghost/templates/settings/tags/index", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -26314,7 +26705,7 @@ define("ghost/templates/settings/tags/tag", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26358,7 +26749,7 @@ define("ghost/templates/settings/tags/tag", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -26406,7 +26797,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26444,7 +26835,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26479,89 +26870,18 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
     var child2 = (function () {
       var child0 = (function () {
         var child0 = (function () {
-          var child0 = (function () {
-            return {
-              meta: {
-                "fragmentReason": false,
-                "revision": "Ember@2.3.0",
-                "loc": {
-                  "source": null,
-                  "start": {
-                    "line": 19,
-                    "column": 24
-                  },
-                  "end": {
-                    "line": 24,
-                    "column": 24
-                  }
-                },
-                "moduleName": "ghost/templates/settings/tags.hbs"
-              },
-              isEmpty: false,
-              arity: 0,
-              cachedFragment: null,
-              hasRendered: false,
-              buildFragment: function buildFragment(dom) {
-                var el0 = dom.createDocumentFragment();
-                var el1 = dom.createTextNode("                            ");
-                dom.appendChild(el0, el1);
-                var el1 = dom.createElement("span");
-                dom.setAttribute(el1, "class", "tag-title");
-                var el2 = dom.createComment("");
-                dom.appendChild(el1, el2);
-                dom.appendChild(el0, el1);
-                var el1 = dom.createTextNode("\n                            ");
-                dom.appendChild(el0, el1);
-                var el1 = dom.createElement("span");
-                dom.setAttribute(el1, "class", "label label-default");
-                var el2 = dom.createTextNode("/");
-                dom.appendChild(el1, el2);
-                var el2 = dom.createComment("");
-                dom.appendChild(el1, el2);
-                dom.appendChild(el0, el1);
-                var el1 = dom.createTextNode("\n                            ");
-                dom.appendChild(el0, el1);
-                var el1 = dom.createElement("p");
-                dom.setAttribute(el1, "class", "tag-description");
-                var el2 = dom.createComment("");
-                dom.appendChild(el1, el2);
-                dom.appendChild(el0, el1);
-                var el1 = dom.createTextNode("\n                            ");
-                dom.appendChild(el0, el1);
-                var el1 = dom.createElement("span");
-                dom.setAttribute(el1, "class", "tags-count");
-                var el2 = dom.createComment("");
-                dom.appendChild(el1, el2);
-                dom.appendChild(el0, el1);
-                var el1 = dom.createTextNode("\n");
-                dom.appendChild(el0, el1);
-                return el0;
-              },
-              buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-                var morphs = new Array(4);
-                morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
-                morphs[1] = dom.createMorphAt(dom.childAt(fragment, [3]), 1, 1);
-                morphs[2] = dom.createMorphAt(dom.childAt(fragment, [5]), 0, 0);
-                morphs[3] = dom.createMorphAt(dom.childAt(fragment, [7]), 0, 0);
-                return morphs;
-              },
-              statements: [["content", "tag.name", ["loc", [null, [20, 52], [20, 64]]]], ["content", "tag.slug", ["loc", [null, [21, 63], [21, 75]]]], ["content", "tag.description", ["loc", [null, [22, 55], [22, 74]]]], ["content", "tag.count.posts", ["loc", [null, [23, 53], [23, 72]]]]],
-              locals: [],
-              templates: []
-            };
-          })();
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
-                  "line": 17,
+                  "line": 18,
                   "column": 16
                 },
                 "end": {
-                  "line": 26,
+                  "line": 20,
                   "column": 16
                 }
               },
@@ -26575,14 +26895,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
               var el0 = dom.createDocumentFragment();
               var el1 = dom.createTextNode("                    ");
               dom.appendChild(el0, el1);
-              var el1 = dom.createElement("div");
-              dom.setAttribute(el1, "class", "settings-tag");
-              var el2 = dom.createTextNode("\n");
-              dom.appendChild(el1, el2);
-              var el2 = dom.createComment("");
-              dom.appendChild(el1, el2);
-              var el2 = dom.createTextNode("                    ");
-              dom.appendChild(el1, el2);
+              var el1 = dom.createComment("");
               dom.appendChild(el0, el1);
               var el1 = dom.createTextNode("\n");
               dom.appendChild(el0, el1);
@@ -26590,18 +26903,18 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
             },
             buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
               var morphs = new Array(1);
-              morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
+              morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
               return morphs;
             },
-            statements: [["block", "link-to", ["settings.tags.tag", ["get", "tag", ["loc", [null, [19, 55], [19, 58]]]]], ["class", "tag-edit-button"], 0, null, ["loc", [null, [19, 24], [24, 36]]]]],
+            statements: [["inline", "gh-tag", [], ["tag", ["subexpr", "@mut", [["get", "tag", ["loc", [null, [19, 33], [19, 36]]]]], [], []], "onDelete", ["subexpr", "action", [["get", "checkScroll", ["loc", [null, [19, 54], [19, 65]]]]], [], ["loc", [null, [19, 46], [19, 66]]]]], ["loc", [null, [19, 20], [19, 68]]]]],
             locals: ["tag"],
-            templates: [child0]
+            templates: []
           };
         })();
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -26609,14 +26922,14 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
                 "column": 8
               },
               "end": {
-                "line": 28,
+                "line": 22,
                 "column": 8
               }
             },
             "moduleName": "ghost/templates/settings/tags.hbs"
           },
           isEmpty: false,
-          arity: 0,
+          arity: 1,
           cachedFragment: null,
           hasRendered: false,
           buildFragment: function buildFragment(dom) {
@@ -26642,15 +26955,15 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
             morphs[1] = dom.createMorphAt(element0, 1, 1);
             return morphs;
           },
-          statements: [["attribute", "class", ["concat", ["tag-list-content settings-tags ", ["subexpr", "if", [["get", "tagListFocused", ["loc", [null, [16, 64], [16, 78]]]], "keyboard-focused"], [], ["loc", [null, [16, 59], [16, 99]]]]]]], ["block", "each", [["get", "tags", ["loc", [null, [17, 24], [17, 28]]]]], [], 0, null, ["loc", [null, [17, 16], [26, 25]]]]],
-          locals: [],
+          statements: [["attribute", "class", ["concat", ["tag-list-content settings-tags ", ["subexpr", "if", [["get", "tagListFocused", ["loc", [null, [17, 64], [17, 78]]]], "keyboard-focused"], [], ["loc", [null, [17, 59], [17, 99]]]]]]], ["block", "each", [["get", "tags", ["loc", [null, [18, 24], [18, 28]]]]], [], 0, null, ["loc", [null, [18, 16], [20, 25]]]]],
+          locals: ["checkScroll"],
           templates: [child0]
         };
       })();
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26658,7 +26971,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
               "column": 4
             },
             "end": {
-              "line": 32,
+              "line": 26,
               "column": 4
             }
           },
@@ -26695,7 +27008,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
           dom.insertBoundary(fragment, 0);
           return morphs;
         },
-        statements: [["block", "gh-infinite-scroll", [], ["fetch", "loadNextPage", "isLoading", ["subexpr", "@mut", [["get", "isLoading", ["loc", [null, [13, 22], [13, 31]]]]], [], []], "classNames", "tag-list"], 0, null, ["loc", [null, [11, 8], [28, 31]]]], ["attribute", "class", ["concat", ["settings-menu-container tag-settings ", ["subexpr", "if", [["get", "tagContentFocused", ["loc", [null, [29, 66], [29, 83]]]], "keyboard-focused"], [], ["loc", [null, [29, 61], [29, 104]]]], " ", ["subexpr", "if", [["get", "container.displaySettingsPane", ["loc", [null, [29, 110], [29, 139]]]], "tag-settings-in"], [], ["loc", [null, [29, 105], [29, 159]]]]]]], ["content", "outlet", ["loc", [null, [30, 12], [30, 22]]]]],
+        statements: [["block", "gh-infinite-scroll", [], ["fetch", "loadNextPage", "isLoading", ["subexpr", "@mut", [["get", "isLoading", ["loc", [null, [13, 22], [13, 31]]]]], [], []], "classNames", "tag-list"], 0, null, ["loc", [null, [11, 8], [22, 31]]]], ["attribute", "class", ["concat", ["settings-menu-container tag-settings ", ["subexpr", "if", [["get", "tagContentFocused", ["loc", [null, [23, 66], [23, 83]]]], "keyboard-focused"], [], ["loc", [null, [23, 61], [23, 104]]]], " ", ["subexpr", "if", [["get", "container.displaySettingsPane", ["loc", [null, [23, 110], [23, 139]]]], "tag-settings-in"], [], ["loc", [null, [23, 105], [23, 159]]]]]]], ["content", "outlet", ["loc", [null, [24, 12], [24, 22]]]]],
         locals: ["container"],
         templates: [child0]
       };
@@ -26705,7 +27018,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -26713,7 +27026,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 34,
+            "line": 28,
             "column": 0
           }
         },
@@ -26769,7 +27082,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
         morphs[2] = dom.createMorphAt(element2, 3, 3);
         return morphs;
       },
-      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 93]]]], ["block", "link-to", ["settings.tags.new"], ["class", "btn btn-green", "title", "New Tag"], 1, null, ["loc", [null, [5, 12], [5, 101]]]], ["block", "gh-tags-management-container", [], ["tags", ["subexpr", "@mut", [["get", "tags", ["loc", [null, [10, 41], [10, 45]]]]], [], []], "selectedTag", ["subexpr", "@mut", [["get", "selectedTag", ["loc", [null, [10, 58], [10, 69]]]]], [], []], "enteredMobile", "enteredMobile", "leftMobile", "leftMobile"], 2, null, ["loc", [null, [10, 4], [32, 37]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 93]]]], ["block", "link-to", ["settings.tags.new"], ["class", "btn btn-green", "title", "New Tag"], 1, null, ["loc", [null, [5, 12], [5, 101]]]], ["block", "gh-tags-management-container", [], ["tags", ["subexpr", "@mut", [["get", "tags", ["loc", [null, [10, 41], [10, 45]]]]], [], []], "selectedTag", ["subexpr", "@mut", [["get", "selectedTag", ["loc", [null, [10, 58], [10, 69]]]]], [], []], "enteredMobile", "enteredMobile", "leftMobile", "leftMobile"], 2, null, ["loc", [null, [10, 4], [26, 37]]]]],
       locals: [],
       templates: [child0, child1, child2]
     };
@@ -26781,7 +27094,7 @@ define("ghost/templates/setup/one", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26824,7 +27137,7 @@ define("ghost/templates/setup/one", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -26911,7 +27224,7 @@ define("ghost/templates/setup/three", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -26963,7 +27276,7 @@ define("ghost/templates/setup/three", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27005,7 +27318,7 @@ define("ghost/templates/setup/three", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -27098,7 +27411,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27159,7 +27472,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27220,7 +27533,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27281,7 +27594,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27342,7 +27655,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27385,7 +27698,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -27489,7 +27802,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -27527,7 +27840,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27569,7 +27882,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27615,7 +27928,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27661,7 +27974,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27708,7 +28021,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -27825,7 +28138,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27875,7 +28188,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -27910,7 +28223,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -27965,7 +28278,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28002,7 +28315,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -28094,7 +28407,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28155,7 +28468,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28216,7 +28529,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28277,7 +28590,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28314,7 +28627,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -28442,7 +28755,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28481,7 +28794,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -28522,7 +28835,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -28584,7 +28897,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.3.0",
+                    "revision": "Ember@2.3.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -28627,7 +28940,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.3.0",
+                    "revision": "Ember@2.3.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -28676,7 +28989,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.3.0",
+                    "revision": "Ember@2.3.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -28718,7 +29031,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.3.0",
+                    "revision": "Ember@2.3.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -28774,7 +29087,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
               return {
                 meta: {
                   "fragmentReason": false,
-                  "revision": "Ember@2.3.0",
+                  "revision": "Ember@2.3.1",
                   "loc": {
                     "source": null,
                     "start": {
@@ -28860,7 +29173,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -28899,7 +29212,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -28954,7 +29267,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -28997,7 +29310,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
               return {
                 meta: {
                   "fragmentReason": false,
-                  "revision": "Ember@2.3.0",
+                  "revision": "Ember@2.3.1",
                   "loc": {
                     "source": null,
                     "start": {
@@ -29038,7 +29351,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29077,7 +29390,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29118,7 +29431,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29162,7 +29475,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29201,7 +29514,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -29240,7 +29553,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -29301,7 +29614,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -29368,7 +29681,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -29423,7 +29736,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -29473,7 +29786,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29514,7 +29827,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29572,7 +29885,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.3.0",
+                "revision": "Ember@2.3.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29613,7 +29926,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.3.0",
+              "revision": "Ember@2.3.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29670,7 +29983,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -29712,7 +30025,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -29765,7 +30078,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -29801,7 +30114,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -29843,7 +30156,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -29886,7 +30199,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -29928,7 +30241,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -29969,7 +30282,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30022,7 +30335,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30090,7 +30403,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -30137,7 +30450,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -30180,7 +30493,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30235,7 +30548,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30305,7 +30618,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30365,7 +30678,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30425,7 +30738,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30491,7 +30804,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.3.0",
+            "revision": "Ember@2.3.1",
             "loc": {
               "source": null,
               "start": {
@@ -30546,7 +30859,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.3.0",
+          "revision": "Ember@2.3.1",
           "loc": {
             "source": null,
             "start": {
@@ -30651,7 +30964,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.3.0",
+        "revision": "Ember@2.3.1",
         "loc": {
           "source": null,
           "start": {
@@ -31379,6 +31692,8 @@ define("ghost/transitions/scale", ["exports", "liquid-fire"], function (exports,
   }
 });
 define("ghost/transitions/scroll-then", ["exports", "ember", "liquid-fire/is-browser"], function (exports, _ember, _liquidFireIsBrowser) {
+  function _typeof(obj) { return obj && obj.constructor === Symbol ? "symbol" : typeof obj; }
+
   exports["default"] = function (nextTransitionName, options) {
     for (var _len = arguments.length, rest = Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
       rest[_key - 2] = arguments[_key];
@@ -31395,7 +31710,7 @@ define("ghost/transitions/scroll-then", ["exports", "ember", "liquid-fire/is-bro
         options = {};
       }
 
-      _ember["default"].assert("The second argument to scrollThen is passed to Velocity's scroll function and must be an object", 'object' === typeof options);
+      _ember["default"].assert("The second argument to scrollThen is passed to Velocity's scroll function and must be an object", 'object' === (typeof options === "undefined" ? "undefined" : _typeof(options)));
 
       // set scroll options via: this.use('scrollThen', 'ToLeft', {easing: 'spring'})
       options = _ember["default"].merge({ duration: 500, offset: 0 }, options);
@@ -31447,6 +31762,19 @@ define("ghost/transitions/to-right", ["exports", "ghost/transitions/move-over"],
 define("ghost/transitions/to-up", ["exports", "ghost/transitions/move-over"], function (exports, _ghostTransitionsMoveOver) {
   exports["default"] = function (opts) {
     return _ghostTransitionsMoveOver["default"].call(this, 'y', -1, opts);
+  };
+});
+define('ghost/transitions/wait', ['exports', 'ember'], function (exports, _ember) {
+  exports['default'] = function (ms) {
+    var _this = this;
+
+    var opts = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+    return new _ember['default'].RSVP.Promise(function (resolve) {
+      setTimeout(function () {
+        resolve(_this.lookup(opts.then || 'default').call(_this));
+      }, ms);
+    });
   };
 });
 define('ghost/transitions', ['exports', 'liquid-tether'], function (exports, _liquidTether) {
@@ -31796,7 +32124,7 @@ define('ghost/utils/ghost-paths', ['exports'], function (exports) {
             apiRoot: apiRoot,
             subdir: subdir,
             blogRoot: subdir + '/',
-            count: 'https://ghost.org/count/',
+            count: 'https://count.ghost.org/',
 
             url: {
                 admin: function admin() {
@@ -31835,12 +32163,14 @@ define("ghost/utils/isFinite", ["exports"], function (exports) {
     };
 });
 define('ghost/utils/isNumber', ['exports'], function (exports) {
+  function _typeof(obj) { return obj && obj.constructor === Symbol ? 'symbol' : typeof obj; }
+
   // isNumber function from lodash
 
   var toString = Object.prototype.toString;
 
   exports['default'] = function (value) {
-    return typeof value === 'number' || value && typeof value === 'object' && toString.call(value) === '[object Number]' || false;
+    return typeof value === 'number' || value && (typeof value === 'undefined' ? 'undefined' : _typeof(value)) === 'object' && toString.call(value) === '[object Number]' || false;
   };
 });
 define('ghost/utils/link-component', ['exports', 'ember'], function (exports, _ember) {
@@ -32007,10 +32337,6 @@ define('ghost/validators/nav-item', ['exports', 'ghost/validators/base'], functi
             var label = model.get('label');
             var hasValidated = model.get('hasValidated');
 
-            if (this.canBeIgnored(model)) {
-                return;
-            }
-
             if (validator.empty(label)) {
                 model.get('errors').add('label', 'You must specify a label');
                 this.invalidate();
@@ -32027,10 +32353,6 @@ define('ghost/validators/nav-item', ['exports', 'ghost/validators/base'], functi
             /* jscs:enable requireCamelCaseOrUpperCaseIdentifiers */
             var urlRegex = new RegExp(/^(\/|#|[a-zA-Z0-9\-]+:)/);
 
-            if (this.canBeIgnored(model)) {
-                return;
-            }
-
             if (validator.empty(url)) {
                 model.get('errors').add('url', 'You must specify a URL or relative path');
                 this.invalidate();
@@ -32040,20 +32362,6 @@ define('ghost/validators/nav-item', ['exports', 'ghost/validators/base'], functi
             }
 
             hasValidated.addObject('url');
-        },
-
-        canBeIgnored: function canBeIgnored(model) {
-            var label = model.get('label');
-            var url = model.get('url');
-            var isLast = model.get('last');
-
-            // if nav item is last and completely blank, mark it valid and skip
-            if (isLast && (validator.empty(url) || url === '/') && validator.empty(label)) {
-                model.get('errors').clear();
-                return true;
-            }
-
-            return false;
         }
     });
 });
@@ -32111,19 +32419,19 @@ define('ghost/validators/post', ['exports', 'ghost/validators/base'], function (
         },
 
         metaTitle: function metaTitle(model) {
-            var metaTitle = model.get('meta_title');
+            var metaTitle = model.get('metaTitle');
 
             if (!validator.isLength(metaTitle, 0, 150)) {
-                model.get('errors').add('meta_title', 'Meta Title cannot be longer than 150 characters.');
+                model.get('errors').add('metaTitle', 'Meta Title cannot be longer than 150 characters.');
                 this.invalidate();
             }
         },
 
         metaDescription: function metaDescription(model) {
-            var metaDescription = model.get('meta_description');
+            var metaDescription = model.get('metaDescription');
 
             if (!validator.isLength(metaDescription, 0, 200)) {
-                model.get('errors').add('meta_description', 'Meta Description cannot be longer than 200 characters.');
+                model.get('errors').add('metaDescription', 'Meta Description cannot be longer than 200 characters.');
                 this.invalidate();
             }
         }
@@ -32300,19 +32608,19 @@ define('ghost/validators/tag-settings', ['exports', 'ghost/validators/base'], fu
         },
 
         metaTitle: function metaTitle(model) {
-            var metaTitle = model.get('meta_title');
+            var metaTitle = model.get('metaTitle');
 
             if (!validator.isLength(metaTitle, 0, 150)) {
-                model.get('errors').add('meta_title', 'Meta Title cannot be longer than 150 characters.');
+                model.get('errors').add('metaTitle', 'Meta Title cannot be longer than 150 characters.');
                 this.invalidate();
             }
         },
 
         metaDescription: function metaDescription(model) {
-            var metaDescription = model.get('meta_description');
+            var metaDescription = model.get('metaDescription');
 
             if (!validator.isLength(metaDescription, 0, 200)) {
-                model.get('errors').add('meta_description', 'Meta Description cannot be longer than 200 characters.');
+                model.get('errors').add('metaDescription', 'Meta Description cannot be longer than 200 characters.');
                 this.invalidate();
             }
         }
@@ -32423,7 +32731,7 @@ catch(err) {
 });
 
 if (!runningTests) {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.6"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.8"});
 }
 
 /* jshint ignore:end */
