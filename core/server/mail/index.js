@@ -4,32 +4,19 @@ var _          = require('lodash'),
     Promise    = require('bluebird'),
     nodemailer = require('nodemailer'),
     validator  = require('validator'),
-    config     = require('../config');
+    config     = require('../config'),
+    i18n       = require('../i18n');
 
-function GhostMailer(opts) {
-    opts = opts || {};
-    this.transport = opts.transport || null;
+function GhostMailer() {
+    var transport = config.mail && config.mail.transport || 'direct',
+        options = config.mail && _.clone(config.mail.options) || {};
+
+    this.state = {};
+
+    this.transport = nodemailer.createTransport(transport, options);
+
+    this.state.usingDirect = transport === 'direct';
 }
-
-// ## Email transport setup
-// *This promise should always resolve to avoid halting Ghost::init*.
-GhostMailer.prototype.init = function () {
-    var self = this;
-    self.state = {};
-    if (config.mail && config.mail.transport) {
-        this.createTransport();
-        return Promise.resolve();
-    }
-
-    self.transport = nodemailer.createTransport('direct');
-    self.state.usingDirect = true;
-
-    return Promise.resolve();
-};
-
-GhostMailer.prototype.createTransport = function () {
-    this.transport = nodemailer.createTransport(config.mail.transport, _.clone(config.mail.options) || {});
-};
 
 GhostMailer.prototype.from = function () {
     var from = config.mail && (config.mail.from || config.mail.fromaddress);
@@ -43,7 +30,7 @@ GhostMailer.prototype.from = function () {
     // If we do have a from address, and it's just an email
     if (validator.isEmail(from)) {
         if (!config.theme.title) {
-            config.theme.title = 'Ghost at ' + this.getDomain();
+            config.theme.title = i18n.t('common.mail.title', {domain: this.getDomain()});
         }
         from = '"' + config.theme.title + '" <' + from + '>';
     }
@@ -61,19 +48,15 @@ GhostMailer.prototype.getDomain = function () {
 // This assumes that api.settings.read('email') was already done on the API level
 GhostMailer.prototype.send = function (message) {
     var self = this,
-        to,
-        sendMail;
+        to;
 
-    message = message || {};
+    // important to clone message as we modify it
+    message = _.clone(message) || {};
     to = message.to || false;
 
-    if (!this.transport) {
-        return Promise.reject(new Error('Error: No email transport configured.'));
-    }
     if (!(message && message.subject && message.html && message.to)) {
-        return Promise.reject(new Error('Error: Incomplete message data.'));
+        return Promise.reject(new Error(i18n.t('errors.mail.incompleteMessageData.error')));
     }
-    sendMail = Promise.promisify(self.transport.sendMail.bind(self.transport));
 
     message = _.extend(message, {
         from: self.from(),
@@ -83,7 +66,7 @@ GhostMailer.prototype.send = function (message) {
     });
 
     return new Promise(function (resolve, reject) {
-        sendMail(message, function (error, response) {
+        self.transport.sendMail(message, function (error, response) {
             if (error) {
                 return reject(new Error(error));
             }
@@ -93,30 +76,30 @@ GhostMailer.prototype.send = function (message) {
             }
 
             response.statusHandler.once('failed', function (data) {
-                var reason = 'Error: Failed to send email';
+                var reason = i18n.t('errors.mail.failedSendingEmail.error');
 
                 if (data.error && data.error.errno === 'ENOTFOUND') {
-                    reason += ' - no mail server found at ' + data.domain;
+                    reason += i18n.t('errors.mail.noMailServerAtAddress.error', {domain: data.domain});
                 }
                 reason += '.';
                 return reject(new Error(reason));
             });
 
             response.statusHandler.once('requeue', function (data) {
-                var errorMessage = 'Error: Message could not be sent';
+                var errorMessage = i18n.t('errors.mail.messageNotSent.error');
 
                 if (data.error && data.error.message) {
-                    errorMessage += '\nMore info: ' + data.error.message;
+                    errorMessage += i18n.t('errors.general.moreInfo', {info: data.error.message});
                 }
 
                 return reject(new Error(errorMessage));
             });
 
             response.statusHandler.once('sent', function () {
-                return resolve('Message sent. Double check inbox and spam folder!');
+                return resolve(i18n.t('notices.mail.messageSent'));
             });
         });
     });
 };
 
-module.exports = new GhostMailer();
+module.exports = GhostMailer;

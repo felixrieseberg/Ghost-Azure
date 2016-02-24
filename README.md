@@ -1,4 +1,4 @@
-# [Ghost (0.7.4)](https://github.com/TryGhost/Ghost) [![Deploy to Azure](http://azuredeploy.net/deploybutton.png)](https://azuredeploy.net/)
+# [Ghost (0.7.8)](https://github.com/TryGhost/Ghost) [![Deploy to Azure](http://azuredeploy.net/deploybutton.png)](https://azuredeploy.net/)
 
 Want to install Ghost on Azure? Just click the 'Deploy to Azure' button and you're well on your way to have a Ghost Blog running within a minute or two. Made with :heart: for Ghost by Microsoft DX.
 
@@ -34,3 +34,4 @@ If you copied the files in this repository manually, you can still update with e
 ## Copyright & License
 
 Ghost is Copyright (c) 2013-2015 Ghost Foundation - Released under the [MIT license](LICENSE).
+

@@ -8,6 +8,7 @@
 var _          = require('lodash'),
     bookshelf  = require('bookshelf'),
     config     = require('../../config'),
+    db         = require('../../data/db'),
     errors     = require('../../errors'),
     filters    = require('../../filters'),
     moment     = require('moment'),
@@ -18,13 +19,14 @@ var _          = require('lodash'),
     uuid       = require('node-uuid'),
     validation = require('../../data/validation'),
     plugins    = require('../plugins'),
+    i18n       = require('../../i18n'),
 
     ghostBookshelf,
     proto;
 
 // ### ghostBookshelf
 // Initializes a new Bookshelf instance called ghostBookshelf, for reference elsewhere in Ghost.
-ghostBookshelf = bookshelf(config.database.knex);
+ghostBookshelf = bookshelf(db.knex);
 
 // Load the Bookshelf registry plugin, which helps us avoid circular dependencies
 ghostBookshelf.plugin('registry');
@@ -139,7 +141,7 @@ ghostBookshelf.Model = ghostBookshelf.Model.extend({
         } else if (options.context && options.context.internal) {
             return 1;
         } else {
-            errors.logAndThrowError(new Error('missing context'));
+            errors.logAndThrowError(new Error(i18n.t('errors.models.base.index.missingContext')));
         }
     },
 
