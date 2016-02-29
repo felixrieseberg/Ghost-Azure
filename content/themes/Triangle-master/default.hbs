@@ -1,0 +1,46 @@
+<!doctype html>
+<!--[if lt IE 7]><html lang="en-US" class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html lang="en-US" class="no-js lt-ie9 lt-ie8"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html lang="en-US" class="no-js lt-ie9"><![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en-US">
+<!--<![endif]-->
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<title>{{meta_title}}</title>
+<meta name="description" content="{{meta_description}}">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="index,follow">
+<link rel="icon" href="{{asset "/favicon.ico"}}">
+<link rel="apple-touch-icon" href="{{asset "/apple-icon-touch.png"}}">
+<link rel="alternate" href="{{@blog.url}}/rss/" title="{{@blog.title}} » Feed" type="application/rss+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Montserrat:700,400" type="text/css">
+<link rel="stylesheet" href="{{asset "css/uikit.min.css"}}" id="base-stylesheet-css" type="text/css">
+<link rel="stylesheet" href="{{asset "css/custom.css"}}" id="custom-stylesheet-css" type="text/css">
+<!--[if IE]><link rel="shortcut icon" href="{{asset "/favicon.ico"}}"><![endif]-->
+<!--[if lt IE 9]>
+<script type="text/javascript" src="{{asset "js/fallback/html5shiv.js"}}"></script>
+<script type="text/javascript" src="{{asset "js/fallback/css3-mediaqueries.js"}}"></script>
+<script type="text/javascript" src="{{asset "js/fallback/selectivizr-min.js"}}"></script>
+<![endif]-->
+{{ghost_head}}
+</head>
+
+<body class="{{body_class}}">
+{{navigation}}
+{{{body}}}
+{{> footer}}
+{{ghost_foot}}
+
+<script type="text/javascript" src="{{asset "js/jquery.js"}}"></script>
+<script type="text/javascript" src="{{asset "js/uikit.min.js"}}"></script>
+<!-- <script type="text/javascript" src="{{asset "js/scripts.js"}}"></script> -->
+
+{{! Optional Scripts - Refer to notes and use judiciously }}
+<!-- <script type="text/javascript" src="{{asset "js/fitvids.js"}}" async defer></script> -->
+<!-- <script type="text/javascript" src="{{asset "js/analytics.js"}}" async defer></script> -->
+</body>
+</html>

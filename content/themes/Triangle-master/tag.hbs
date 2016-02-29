@@ -1,0 +1,22 @@
+
+{{!< default}}
+
+<div class="uk-width-1-1 uk-cover-background postcover uk-clearfix" style="background: url('{{tag.image}}') no-repeat fixed 50% 0 / 100% auto">
+	<div class="uk-overlay-background uk-flex uk-flex-column uk-flex-center uk-flex-middle uk-text-center uk-contrast uk-padding-remove">
+    	<h1 class="uk-margin-small">{{tag.name}}</h1>
+		<h2 class="uk-margin-remove uk-h3">{{tag.description}}</h2>
+    </div>
+</div>
+
+<div class="uk-width-1-1 uk-navbar uk-navbar-attached uk-clearfix">
+	<i class="uk-width-1-1 uk-icon-caret-down uk-icon-mini uk-text-center uk-text-muted uk-margin-small uk-animation-fade"></i>
+</div>
+
+<div class="uk-clearfix shade1">
+	<div class="uk-width-1-1 uk-width-small-9-10 uk-width-medium-8-10 uk-width-large-7-10 uk-container uk-container-center uk-margin-large-top uk-margin uk-article" role="main">
+
+{{> "loop"}}
+
+	</div>
+</div> 
+    

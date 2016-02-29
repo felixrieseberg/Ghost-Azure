@@ -1,0 +1,21 @@
+
+{{#foreach posts}}
+<article class="uk-article {{post_class}}">
+
+{{#if featured}}
+<i class="uk-align-right uk-icon-bookmark uk-icon-mini uk-text-primary" data-uk-scrollspy="{cls:'uk-animation-fade'}"></i>
+{{/if}}
+
+    <h3 class="uk-article-title uk-margin-small-bottom">{{title}}</h3>    
+    <hr class="uk-article-divider uk-margin-small" />
+
+	<p class="uk-article-meta uk-margin-small-top">
+	<span>By: <span class="author">{{author.name}}</span></span> on
+	<time content="{{date published_at format='YYYY-MM-DD'}}" datetime="{{date published_at format='YYYY-MM-DD'}}">{{date published_at format='MM/DD/YYYY'}}</time>
+	</p>
+	<p class="uk-margin-bottom">{{excerpt words="120"}}&hellip;</p>
+	<a href="{{@blog_url}}{{url}}" title="{{title}}" class="uk-align-right uk-button uk-button-large uk-animation-hover">Continue Reading<i class="uk-icon-chevron-right uk-margin-left uk-animation-reverse uk-animation-scale"></i></a>
+</article>
+{{/foreach}}
+
+{{pagination}}

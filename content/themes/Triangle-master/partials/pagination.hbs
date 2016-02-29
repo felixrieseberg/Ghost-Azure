@@ -1,0 +1,17 @@
+
+<div class="uk-width-1-1 uk-margin-top uk-clearfix">
+<hr class="uk-article-divider" />
+	<div class="uk-article-meta uk-text-center uk-margin-small">Page {{page}} of {{pages}}</div>
+	<ul class="uk-pagination uk-margin-remove">
+    {{#if prev}}
+    <li class="uk-pagination-previous">
+    	<a href="{{page_url prev}}" title="Newer Post" data-uk-scrollspy="{cls:'uk-animation-fade'}"><i class="uk-icon-chevron-left uk-margin-right"></i>Newer</a>
+    </li>
+    {{/if}}
+    {{#if next}}
+    <li class="uk-pagination-next">
+    	<a href="{{page_url next}}" title="Older Post" data-uk-scrollspy="{cls:'uk-animation-fade'}">Older<i class="uk-icon-chevron-right uk-margin-left"></i></a>
+    </li>
+    {{/if}}
+	</ul>
+</div>

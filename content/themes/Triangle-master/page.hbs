@@ -1,0 +1,47 @@
+{{!< default}}
+{{#post}}
+
+{{#if image}}
+<div class="uk-width-1-1 uk-cover-background postcover uk-clearfix" style="background: url('{{image}}') no-repeat fixed 50% 0 / 100% auto">
+	<div class="uk-overlay-background uk-flex uk-flex-bottom uk-padding-remove">
+	<div class="uk-width-8-10 uk-width-small-7-10 uk-width-medium-6-10 uk-container uk-container-center uk-overlay-bottom uk-contrast uk-margin-bottom uk-animation-slide-bottom">
+		<h1 class="uk-article-title uk-margin-top uk-margin-small">{{title}}</h1><hr class="uk-article-divider uk-margin-small" />
+		<p class="uk-article-meta uk-margin-small-top uk-margin-bottom">Written on
+			<time datetime="{{date published_at format='YYYY-MM-DD'}}" content="{{date published_at format='YYYY-MM-DD'}}">
+			{{date published_at format='MMMM, DD YYYY'}}
+			</time>
+		</p>
+	</div>
+	</div>
+</div>	
+{{/if}}	
+
+<div class="uk-clearfix shade1">
+<article class="uk-width-8-10 uk-width-small-7-10 uk-width-medium-6-10 uk-container uk-container-center uk-margin-large-top uk-margin-large uk-article {{post_class}}" role="main">
+
+	{{^if image}}
+		<h1 class="uk-article-title uk-margin-small">{{title}}</h1><hr class="uk-article-divider uk-margin-small" />
+		<p class="uk-article-meta uk-margin uk-margin-small-top">Written on
+		  <time datetime="{{date published_at format='YYYY-MM-DD'}}" content="{{date published_at format='YYYY-MM-DD'}}">
+		    {{date published_at format='MMMM, DD YYYY'}}
+		  </time>
+		</p>		
+	{{/if}}	
+
+	<div class="dropcap uk-article-lead">
+	{{content}}
+	</div>              
+	
+	<hr class="uk-article-divider" />
+
+	<section class="uk-text-center uk-margin-large-bottom">
+		<div class="uk-h6 uk-text-muted uk-margin uk-margin-large-top" data-uk-scrollspy="{cls:'uk-animation-fade',delay:600}">Share This Post</div>
+			<a href="http://twitter.com/share?text={{encode title}}&amp;url={{url absolute="true"}}" onclick="window.open(this.href, 'twitter-share', 'width=550,height=235');return false;" title="Share on Twitter" class="uk-animation-hover uk-margin-right" target="_blank" rel="nofollow"><i class="uk-icon-twitter uk-icon-large uk-animation-reverse uk-animation-scale"></i><span class="uk-hidden">Twitter</span></a>
+		<a href="https://plus.google.com/share?url={{url absolute="true"}}" onclick="window.open(this.href, 'google-plus-share', 'width=490,height=530');return false;" title="Share on Google+" class="uk-animation-hover uk-margin-right" target="_blank" rel="nofollow"><i class="uk-icon-google-plus uk-icon-large uk-animation-reverse uk-animation-scale"></i><span class="uk-hidden">Google+</span></a>
+		<a href="http://pinterest.com/pin/create/button/?url={{url absolute="true"}}&amp;media={{encode image}}&amp;description={{encode description}}" title="Share on Pinterest" class="pin-it-button uk-animation-hover uk-margin-right" target="_blank" rel="nofollow"><i class="uk-icon-pinterest uk-icon-large uk-animation-reverse uk-animation-scale"></i><span class="uk-hidden">Pinterest</span></a>		
+		<a href="https://www.facebook.com/sharer/sharer.php?u={{url absolute="true"}}" onclick="window.open(this.href, 'facebook-share','width=580,height=296');return false;" title="Share on Facebook" class="uk-animation-hover" target="_blank" rel="nofollow"><i class="uk-icon-facebook uk-icon-large uk-animation-reverse uk-animation-scale"></i><span class="uk-hidden">Facebook</span></a>
+	</section>			
+</article>
+</div>
+
+{{/post}}

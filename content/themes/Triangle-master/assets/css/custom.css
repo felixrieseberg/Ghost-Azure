@@ -1,0 +1,162 @@
+	
+/* -- Standard Adjustments -- */
+
+/* Primary Color - Base */
+h1, h2, h3, h4, h5, h6, .uk-h1, .uk-h2, .uk-h3, .uk-h4, .uk-h5, .uk-h6, .uk-nav-header, .uk-article-title, .uk-pagination > li > a, .home-template .uk-panel-title, .uk-nav-navbar > li > a { 
+	color: #3d4549;
+}
+
+/* Secondary Color - Highlights */
+.additional li .uk-overlay-hover .uk-h3 {
+	color: #53a2c3;
+}
+
+/* Tertiary Color - Lowlights */
+.uk-article .uk-article-meta time,
+.uk-article .uk-article-meta,
+.uk-article .uk-button {
+    color: #6f7c82;	
+}
+
+/* Header Font - Insert Preferred Google Font Here */
+.uk-navbar-brand, .uk-article-title, .uk-article-meta, .uk-modal-caption, .uk-button, input.uk-button, .uk-pagination > li > a, .uk-thumbnav .uk-overlay-panel .uk-h4, .dropcap:first-letter, .dropcap p:first-child:first-letter { 
+	letter-spacing: -0.01em;
+	font-family: 'Montserrat', arial, verdana, sans-serif;
+}
+
+/* Header */
+.postcover {
+	margin:0;
+	width:100%;
+   	min-height: 240px;
+	max-height: 300px;
+	background-origin: border-box;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.1); 
+	box-shadow: 0 1px 1px -1px rgba(0, 0, 0, 0.1) inset, 0 0 1px -2px rgba(0, 0, 0, 0.4) inset;
+}
+.postcover .uk-overlay-background {
+   	min-height: 240px;
+	max-height: 300px;
+}
+.postcover .uk-overlay-background .uk-overlay-panel {
+	padding-left: 15%;
+	padding-right: 15%;
+}
+.postcover p, .postcover p a, .postcover h2 {
+	font-size: 14px;
+	color: rgba(255,255,255,0.8);
+	font-weight: 400;
+}
+
+/* Dropcap Letter */
+p.dropcap:first-letter, .dropcap > p:first-child:first-letter {
+	display: block;
+	margin: 6px 6px 0px 0px;
+	float: left;
+	font-size: 280%;
+	font-weight: 700;
+}
+
+/* Thumbnav */
+article ul.uk-thumbnav li .uk-overlay-panel {
+	font-size: 1em;
+	line-height: 1.3em;
+	text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+/* Background Gradients */
+.shade1 {
+	border-radius: 0;
+	border-top: 1px solid rgba(0,0,0,0.05);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+	background: #d2d2d2;
+	background: linear-gradient(to right, #d2d2d2 0%,#eaeaea 20%,#eaeaea 80%,#d2d2d2 100%);
+}
+.shade2 {
+	border-radius: 0;
+	border-top: 1px solid rgba(0,0,0,0.1);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+	text-shadow: -1px -1px 0px rgba(255,255,255,0.1);
+	background: linear-gradient(to right, #cacaca 0%,#dedede 20%,#dedede 80%,#cacaca 100%);
+}
+.shade3 {
+	border-radius: 0;
+	border-top: 1px solid rgba(0,0,0,0.15);
+	text-shadow: -1px -1px 1px rgba(255, 255, 255, 0.4);
+	background: linear-gradient(to right, #b5b5b5 0%,#c2c2c2 20%,#c2c2c2 80%,#b5b5b5 100%);
+}
+.shade4 {
+	border-radius: 0;
+	background: linear-gradient(to right, #53a3c8 0%,#68bde6 20%,#68bde6 80%,#53a3c8 100%);
+}
+.shadeup {
+	background: linear-gradient(to bottom, #b5b5b5 0%,#c2c2c2 100%);
+}
+.shadedown {
+	background: linear-gradient(to bottom, #c2c2c2 0%,#b5b5b5 100%);
+}
+
+/* iFrame Tweak */
+.flexmedia iframe {
+	min-height: 240px;
+	width: 100%;
+}
+
+/* Custom */
+#comments, .post .uk-button, .uk-article .uk-button, .uk-pagination > li > a, .author-template .uk-panel-box, .commentme, .featured .uk-panel-box, .author-template .uk-article {
+	border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+
+
+/* Size Based Adjustments */
+
+@media (min-width:1220px){
+.postcover, .postcover .uk-overlay-background {
+   	min-height: 300px;
+	max-height: 340px;
+}
+.postcover .uk-overlay-background .uk-overlay-panel {
+	padding-left: 25%;
+	padding-right: 25%;
+}
+}
+
+@media (max-width:767px){
+.postcover, .postcover .uk-overlay-background {
+   	min-height: 120px;
+	max-height: 220px;
+}
+.postcover .uk-overlay-background .uk-overlay-panel {
+	padding-left: 5%;
+	padding-right: 5%;
+}
+.postcover h1 {
+    font-size: 20px;
+    line-height: 24px;
+}
+.postcover h2 {
+    font-size: 11px;
+    line-height: 14px;
+}
+article ul.uk-thumbnav li .uk-overlay-panel {
+	font-size: 0.9em;
+	line-height: 1.2em;
+	padding: 10px;
+}
+article ul.uk-thumbnav li .uk-overlay-panel i {
+	margin-top: -2px;
+}
+article ul.uk-thumbnav li .uk-overlay-panel p {
+	margin-top: 4px;
+}
+
+.author-template  .uk-panel-space {
+	background: none !important;
+}
+.author-template figcaption.uk-overlay-background > * {
+	font-size: 0.9em;
+	line-height: 1.1em;
+}
+}
+

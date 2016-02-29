@@ -1,0 +1,47 @@
+
+{{!< default}}
+{{#author}}
+
+{{#if cover}}
+<div class="uk-panel-space uk-overlay-grayscale" {{#if cover}}style="background: url('{{cover}}') no-repeat fixed 50% 0 / 100% auto"{{/if}}>
+	<section class="uk-panel uk-panel-box uk-article uk-text-center uk-container-center uk-width-9-10 uk-width-small-6-10 uk-width-medium-4-10 uk-width-large-3-10" role="main">
+	
+		{{#if image}}
+			<figure class="uk-overlay">
+			<img src="{{image}}" alt="{{name}} - Profile Picture" title="{{name}} - Profile Picture" class="uk-width-1-1 uk-thumbnail" />  
+			<figcaption class="uk-overlay-panel uk-overlay-background uk-overlay-bottom uk-animation-slide-bottom uk-text-left"><h1 class="uk-h3 uk-margin-remove">{{name}}</h1><h2 class="uk-text-muted uk-h6 uk-margin-remove uk-display-inline-block">{{location}}</h2></figcaption>
+			</figure>
+		{{else}}
+			<h1 class="uk-h3 uk-margin-remove">{{name}}</h1>
+			<h2 class="uk-text-muted uk-h6 uk-margin-remove uk-display-inline-block">{{location}}</h2>
+		{{/if}}
+
+		<p class="uk-margin-small-left uk-margin-small-right">{{bio}}</p><hr class="uk-article-divider uk-margin-small-top uk-margin" />
+		<a href="{{website}}" title="Website - {{name}}" target="_blank" class="uk-button uk-button-small uk-margin-small-right"><i class="uk-icon-link uk-margin-small-right uk-text-muted uk-hidden-small"></i>Website</a><a class="uk-button uk-button-small" href="{{url}}rss/" title="RSS Feed" target="_blank"><i class="uk-icon-rss uk-margin-small-right uk-text-muted uk-hidden-small"></i>{{plural ../pagination.total empty='No posts' singular='% post' plural='% posts'}} Follow</a>
+	</section>
+</div>
+{{else}}
+	
+<div class="uk-clearfix shade2">
+	<section class="uk-width-3-4 uk-width-small-2-3 uk-width-medium-1-2 uk-width-large-3-10 uk-container-center uk-text-center uk-margin-large" role="main">
+		<div class="uk-panel uk-panel-box uk-text-large uk-article uk-margin-large-top">
+
+		{{#if image}}
+			<div class="uk-panel-teaser">
+			<img src="{{image}}" alt="{{name}} - Profile Picture" title="{{name}} - Profile Picture" class="uk-width-1-1" />  
+			</div>
+		{{/if}}
+
+		<h1 class="uk-h2 uk-margin-top">{{name}}</h1>
+		<hr class="uk-article-divider uk-margin-small" />
+		<i class="uk-icon-map-marker uk-icon-mini uk-margin-right uk-text-muted uk-animation-fade"></i>
+		<h2 class="uk-text-muted uk-h4 uk-margin-small uk-display-inline-block">{{location}}</h2>
+		<hr class="uk-article-divider uk-margin-small" />
+		<p class="uk-padding-top-remove uk-panel-space">{{bio}}</p>
+		<p class="uk-text-muted"><a href="{{website}}" title="Website - {{name}}" target="_blank" class="uk-button uk-button-small uk-margin-small-right"><i class="uk-icon-link uk-margin-small-right uk-text-muted uk-hidden-small"></i>Website</a><a class="uk-button uk-button-small" href="{{url}}rss/" title="RSS Feed" target="_blank"><i class="uk-icon-rss uk-margin-small-right uk-text-muted uk-hidden-small"></i>{{plural ../pagination.total empty='No posts' singular='% post' plural='% posts'}} Follow</a></p>
+		</div>
+	</section> 
+</div>
+{{/if}}
+
+{{/author}}

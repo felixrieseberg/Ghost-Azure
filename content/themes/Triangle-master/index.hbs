@@ -1,0 +1,33 @@
+{{!< default}}
+
+{{#if @blog.cover}}
+<div class="uk-overlay uk-cover-background uk-clearfix postcover" style="background: url('{{@blog.cover}}') no-repeat fixed 50% 0 / 100% auto">
+<div class="uk-overlay-background">
+	<div class="uk-overlay-panel uk-flex uk-flex-center uk-flex-middle uk-flex-column uk-text-center">
+		<h1 class="uk-article-title uk-margin-small">{{@blog.title}}</h1>
+		<h2 class="uk-article-meta uk-margin-small-top uk-margin-bottom">
+		{{@blog.description}}
+		</h2>
+	</div>
+</div>	
+</div>
+{{/if}}	
+
+<div class="uk-width-1-1 uk-navbar uk-navbar-attached uk-clearfix">
+	<i class="uk-width-1-1 uk-icon-caret-down uk-icon-mini uk-text-center uk-text-muted uk-margin-small uk-animation-fade"></i>
+</div>
+	
+<div class="uk-clearfix shade1">
+	<div class="uk-width-1-1 uk-width-small-9-10 uk-width-medium-8-10 uk-width-large-7-10 uk-container uk-container-center uk-margin-large-top uk-margin uk-article" role="main">
+
+	{{^if @blog.cover}}
+		<h1 class="uk-article-title uk-margin-small">{{@blog.title}}</h1><hr class="uk-article-divider uk-margin-small" />
+		<p class="uk-article-meta uk-margin uk-margin-small-top">
+		{{@blog.description}}
+		</p>	
+	{{/if}}	
+
+	{{> "loop"}}
+	
+	</div>
+</div>

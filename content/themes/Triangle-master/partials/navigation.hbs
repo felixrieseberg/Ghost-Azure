@@ -1,0 +1,27 @@
+
+<nav class="uk-navbar uk-navbar-attached" data-uk-sticky>
+{{#if @blog.logo}}
+<a href="{{@blog.url}}" title="{{@blog.title}}">
+	<img src="{{@blog.logo}}" alt="{{@blog.title}} Logo" title="{{@blog.title}} Logo" class="uk-navbar-brand" />
+</a>
+{{else}}
+	<a href="{{@blog.url}}" title="{{@blog.title}}" class="uk-navbar-brand">{{@blog.title}}</a>
+{{/if}}
+<div class="uk-navbar-flip">	
+	<ul class="uk-navbar-nav">
+	{{#foreach navigation}}
+    	<li class="{{#if current}} uk-active{{/if}} uk-hidden-small" role="presentation"><a href="{{url absolute="true"}}" title="{{label}}">{{label}}</a></li>
+	{{/foreach}}
+		<li class="uk-parent uk-visible-small" data-uk-dropdown>
+		<a class="uk-animation-hover" data-uk-dropdown="{mode:'click'}"><i class="uk-icon-bars uk-animation-reverse uk-animation-scale uk-text-muted"></i></a>
+		<div class="uk-dropdown uk-dropdown-navbar">
+		<ul class="uk-nav uk-nav-navbar uk-text-center">    
+		{{#foreach navigation}}
+		<li role="presentation"><a href="{{url absolute="true"}}" title="{{label}}">{{label}}</a></li>
+		{{/foreach}}
+		</ul>
+		</div>
+		</li>	
+	</ul>
+</div>
+</nav>
