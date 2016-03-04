@@ -19,7 +19,7 @@ config = {
     // ### Development **(default)**
     development: {
         // The url to use when providing links to the site, E.g. in RSS and email.
-        url: websiteUrl,
+        url: 'http://127.0.0.1:2368',
 
         // Visit http://support.ghost.org/mail for instructions
          mail: {
@@ -44,7 +44,7 @@ config = {
             // Host to be passed to node's `net.Server#listen()`
             host: '127.0.0.1',
             // Port to be passed to node's `net.Server#listen()`, for iisnode set this to `process.env.PORT`
-            port: process.env.PORT
+            port: '2368'
         },
         paths: {
             contentPath: path.join(__dirname, '/content/')
