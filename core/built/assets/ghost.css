@@ -1302,18 +1302,15 @@ img {
 /* Forms
 /* ---------------------------------------------------------- */
 
-form * {
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-  user-select: text;
-}
-
 form label {
   display: block;
   color: #242628;
   font-size: 1.3rem;
   font-weight: bold;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
 }
 
 form .word-count {
@@ -1325,6 +1322,10 @@ fieldset {
   margin: 0 0 3em 0;
   padding: 0;
   border: none;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
 }
 
 legend {
@@ -1335,6 +1336,10 @@ legend {
   color: #b1b1b1;
   font-size: 1.2em;
   line-height: 2.0em;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
 }
 
 input {
@@ -1356,6 +1361,10 @@ input {
   margin-bottom: 1.6em;
   max-width: 500px;
   width: 100%;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
 }
 
 .form-group p {
@@ -1434,6 +1443,11 @@ select {
   -webkit-appearance: none;
 }
 
+.gh-select,
+select {
+  cursor: pointer;
+}
+
 .gh-input.error,
 .error .gh-input,
 .gh-select.error,
@@ -1470,17 +1484,19 @@ textarea {
 .for-checkbox label {
   display: block;
   padding-bottom: 4px;
+  cursor: pointer;
 }
 
 .for-radio label p,
 .for-checkbox label p {
+  overflow: auto;
   color: #000;
   font-weight: normal;
 }
 
-.for-radio label:hover input:not(:checked) + .input-toggle-component,
-.for-checkbox label:hover input:not(:checked) + .input-toggle-component {
-  border-color: #dfe1e3;
+.for-radio label:hover p,
+.for-checkbox label:hover p {
+  color: #7d878a;
 }
 
 .for-radio input,
@@ -1505,11 +1521,9 @@ textarea {
   background: #f7f7f7;
 }
 
-.for-radio p,
-.for-checkbox p {
-  overflow: auto;
-  color: #b3b2a8;
-  font-weight: normal;
+.for-checkbox label:hover input:not(:checked) + .input-toggle-component,
+.for-radio label:hover input:not(:checked) + .input-toggle-component {
+  border-color: #e2edf2;
 }
 
 .for-checkbox .input-toggle-component {
@@ -2143,47 +2157,25 @@ table td,
 /* Modals
 /* ---------------------------------------------------------- */
 
-/* Full screen container
+/* Fullscreen Modal
 /* ---------------------------------------------------------- */
 
-.modal-container {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1040;
-  display: none;
-  overflow-x: auto;
-  overflow-y: scroll;
-  padding-right: 10px;
-  padding-left: 10px;
-  transition: all 0.15s linear 0s;
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
+.fullscreen-modal-liquid-target {
+  overflow-y: auto;
+  height: 100vh;
 }
 
-.modal-background {
+.fullscreen-modal-background {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 1030;
-  display: none;
+  z-index: 0;
   background: rgba(0, 0, 0, 0.6);
 }
 
-/* The modal
-/* ---------------------------------------------------------- */
-
-.modal,
-.modal-action {
-  right: auto;
-  left: 50%;
-  z-index: 1050;
-  margin-right: auto;
-  margin-left: auto;
+.fullscreen-modal {
   padding-top: 30px;
   padding-bottom: 30px;
   max-width: 550px;
@@ -2192,32 +2184,40 @@ table td,
 }
 
 @media (max-width: 900px) {
-  .modal,
-  .modal-action {
+  .fullscreen-modal {
     padding: 10px;
   }
 }
 
-.modal button,
-.modal-action button {
-  min-width: 100px;
+/* Modifiers
+/* ---------------------------------------------------------- */
+
+.fullscreen-modal-wide {
+  width: 550px;
 }
 
-.modal .image-uploader,
-.modal .pre-image-uploader,
-.modal-action .image-uploader,
-.modal-action .pre-image-uploader {
-  margin: 0;
+@media (max-width: 900px) {
+  .fullscreen-modal-wide {
+    width: 100%;
+  }
 }
 
-.modal-action {
+.fullscreen-modal-action {
   padding: 60px 0 30px;
 }
 
 @media (max-width: 900px) {
-  .modal-action {
+  .fullscreen-modal-action {
     padding: 30px 0;
   }
+}
+
+/* The modal
+/* ---------------------------------------------------------- */
+
+.fullscreen-modal .image-uploader,
+.fullscreen-modal .pre-image-uploader {
+  margin: 0;
 }
 
 /* Modal content
@@ -2296,6 +2296,7 @@ table td,
 
 .modal-footer button {
   margin-left: 8px;
+  min-width: 100px;
   text-align: center;
 }
 
@@ -2303,22 +2304,8 @@ table td,
   margin-left: 0;
 }
 
-/* Modifiers
+/* Content Modifiers
 /* ---------------------------------------------------------- */
-
-.modal-style-wide {
-  width: 550px;
-}
-
-@media (max-width: 900px) {
-  .modal-style-wide {
-    width: 100%;
-  }
-}
-
-.modal-style-centered {
-  text-align: center;
-}
 
 /* Login styles */
 
@@ -2360,32 +2347,6 @@ table td,
     -ms-flex: 1;
     flex: 1;
   }
-}
-
-/* Open States
-/* ---------------------------------------------------------- */
-
-.modal-container.open,
-.modal-container.open > .modal,
-.modal-container.open > .modal-action {
-  display: block;
-}
-
-.modal-background.open {
-  display: block;
-}
-
-/* Animations
-/* ---------------------------------------------------------- */
-
-.modal-container.fade-out {
-  -webkit-animation-duration: 0.08s;
-  animation-duration: 0.08s;
-}
-
-.modal-background.fade-out {
-  -webkit-animation-duration: 0.15s;
-  animation-duration: 0.15s;
 }
 
 /* Notifications
@@ -3913,9 +3874,13 @@ a.badge:focus {
   Ember's app container, set height so that .gh-app and .gh-viewport
   don't need to use 100vh where bottom of screen gets covered by iOS menus
   http://nicolas-hoizey.com/2015/02/viewport-height-is-taller-than-the-visible-part-of-the-document-in-some-mobile-browsers.html
+
+  TODO: Once we have routable components it should be possible to remove this
+  by moving the gh-app component functionality into the application component
+  which would remove the extra div that this targets.
 */
 
-body > .ember-view {
+body > .ember-view:not(.liquid-target-container) {
   height: 100%;
 }
 
@@ -3996,6 +3961,7 @@ body > .ember-view {
   -ms-flex-align: center;
   align-items: center;
   padding: 15px;
+  cursor: pointer;
 }
 
 .gh-nav-menu i {
@@ -4004,10 +3970,11 @@ body > .ember-view {
   height: 11px;
   font-size: 11px;
   line-height: 11px;
+  transition: margin-top 0.2s ease;
 }
 
-.gh-nav-menu:hover {
-  cursor: pointer;
+.gh-nav-menu:hover i {
+  margin-top: 5px;
 }
 
 .gh-nav-menu-icon {
@@ -5057,6 +5024,7 @@ body > .ember-view {
 
 .gh-flow-content .gh-flow-faces {
   margin-bottom: 2vw;
+  width: 100%;
 }
 
 .gh-flow-content textarea {
@@ -5360,7 +5328,6 @@ body > .ember-view {
   padding: 5%;
   word-break: break-word;
   -webkit-hyphens: auto;
-  -moz-hyphens: auto;
   -ms-hyphens: auto;
   hyphens: auto;
 }
@@ -5393,6 +5360,10 @@ body > .ember-view {
   padding-right: 0;
   border: none;
   font-size: 18px;
+}
+
+.content-preview .post-controls .post-edit:hover {
+  color: #242628;
 }
 
 .content-preview img {
@@ -5680,7 +5651,6 @@ body > .ember-view {
   padding: 19px 20px 37px 20px;
   word-break: break-word;
   -webkit-hyphens: auto;
-  -moz-hyphens: auto;
   -ms-hyphens: auto;
   hyphens: auto;
   cursor: default;
@@ -5898,11 +5868,12 @@ body > .ember-view {
 /* Markdown Help Icon + Modal
 /* ---------------------------------------------------------- */
 
-.markdown-help {
+.markdown-help-icon {
   font-size: 16px;
 }
 
-.markdown-help:hover {
+.markdown-help-icon:hover,
+.markdown-help-label:hover {
   cursor: help;
 }
 
@@ -6014,13 +5985,9 @@ body > .ember-view {
   background: rgb(133, 159, 65);
 }
 
-.gh-blognav-item:last-child {
+.gh-blognav-item:not(.gh-blognav-item--sortable) {
   padding-left: 36px;
   /* icon-grab + nav-item padding) */
-}
-
-.gh-blognav-item:last-child .gh-blognav-grab {
-  display: none;
 }
 
 /* Remove space between inputs on smaller screens */
@@ -6693,10 +6660,6 @@ a.user-list-item {
 
 .settings-tag .tag-edit-button.active {
   border-left: 3px solid;
-}
-
-.settings-tag:last-of-type:hover .tag-edit-button {
-  box-shadow: inset 0 -1px 0 #dfe1e3;
 }
 
 .settings-tag .label {
