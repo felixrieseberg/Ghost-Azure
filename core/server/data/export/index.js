@@ -1,11 +1,12 @@
 var _           = require('lodash'),
     Promise     = require('bluebird'),
-    versioning  = require('../versioning'),
-    config      = require('../../config'),
-    utils       = require('../utils'),
+    db          = require('../../data/db'),
+    commands    = require('../schema').commands,
+    versioning  = require('../schema').versioning,
     serverUtils = require('../../utils'),
     errors      = require('../../errors'),
     settings    = require('../../api/settings'),
+    i18n        = require('../../i18n'),
 
     excludedTables = ['accesstokens', 'refreshtokens', 'clients'],
     exporter,
@@ -27,12 +28,12 @@ exportFileName = function () {
 };
 
 exporter = function () {
-    return Promise.join(versioning.getDatabaseVersion(), utils.getTables()).then(function (results) {
+    return Promise.join(versioning.getDatabaseVersion(), commands.getTables()).then(function (results) {
         var version = results[0],
             tables = results[1],
             selectOps = _.map(tables, function (name) {
                 if (excludedTables.indexOf(name) < 0) {
-                    return config.database.knex(name).select();
+                    return db.knex(name).select();
                 }
             });
 
@@ -53,7 +54,7 @@ exporter = function () {
 
             return exportData;
         }).catch(function (err) {
-            errors.logAndThrowError(err, 'Error exporting data', '');
+            errors.logAndThrowError(err, i18n.t('errors.data.export.errorExportingData'), '');
         });
     });
 };

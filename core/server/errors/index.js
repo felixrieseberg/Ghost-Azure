@@ -17,6 +17,7 @@ var _                          = require('lodash'),
     EmailError                 = require('./email-error'),
     DataImportError            = require('./data-import-error'),
     TooManyRequestsError       = require('./too-many-requests-error'),
+    i18n                       = require('../i18n'),
     config,
     errors,
 
@@ -33,6 +34,29 @@ function getConfigModule() {
     return config;
 }
 
+function isValidErrorStatus(status) {
+    return _.isNumber(status) && status >= 400 && status < 600;
+}
+
+function getStatusCode(error) {
+    if (error.statusCode) {
+        return error.statusCode;
+    }
+
+    if (error.status && isValidErrorStatus(error.status)) {
+        error.statusCode = error.status;
+        return error.statusCode;
+    }
+
+    if (error.code && isValidErrorStatus(error.code)) {
+        error.statusCode = error.code;
+        return error.statusCode;
+    }
+
+    error.statusCode = 500;
+    return error.statusCode;
+}
+
 /**
  * Basic error handling helpers
  */
@@ -43,7 +67,7 @@ errors = {
 
     throwError: function (err) {
         if (!err) {
-            err = new Error('An error occurred');
+            err = new Error(i18n.t('errors.errors.anErrorOccurred'));
         }
 
         if (_.isString(err)) {
@@ -71,8 +95,8 @@ errors = {
         if ((process.env.NODE_ENV === 'development' ||
             process.env.NODE_ENV === 'staging' ||
             process.env.NODE_ENV === 'production')) {
-            warn = warn || 'no message supplied';
-            var msgs = [chalk.yellow('\nWarning:', warn), '\n'];
+            warn = warn || i18n.t('errors.errors.noMessageSupplied');
+            var msgs = [chalk.yellow(i18n.t('errors.errors.warning'), warn), '\n'];
 
             if (context) {
                 msgs.push(chalk.white(context), '\n');
@@ -109,22 +133,22 @@ errors = {
             if (_.isObject(err) && _.isString(err.message)) {
                 err = err.message;
             } else {
-                err = 'An unknown error occurred.';
+                err = i18n.t('errors.errors.unknownErrorOccurred');
             }
         }
 
         // Overwrite error to provide information that this is probably a permission problem
         // TODO: https://github.com/TryGhost/Ghost/issues/3687
         if (err.indexOf('SQLITE_READONLY') !== -1) {
-            context = 'Your database is in read only mode. Visitors can read your blog, but you can\'t log in or add posts.';
-            help = 'Check your database file and make sure that file owner and permissions are correct.';
+            context = i18n.t('errors.errors.databaseIsReadOnly');
+            help = i18n.t('errors.errors.checkDatabase');
         }
         // TODO: Logging framework hookup
         // Eventually we'll have better logging which will know about envs
         if ((process.env.NODE_ENV === 'development' ||
             process.env.NODE_ENV === 'staging' ||
             process.env.NODE_ENV === 'production')) {
-            msgs = [chalk.red('\nERROR:', err), '\n'];
+            msgs = [chalk.red(i18n.t('errors.errors.error'), err), '\n'];
 
             if (context) {
                 msgs.push(chalk.white(context), '\n');
@@ -196,10 +220,10 @@ errors = {
             var errorContent = {};
 
             // TODO: add logic to set the correct status code
-            statusCode = errorItem.code || 500;
+            statusCode = getStatusCode(errorItem);
 
             errorContent.message = _.isString(errorItem) ? errorItem :
-                (_.isObject(errorItem) ? errorItem.message : 'Unknown API Error');
+                (_.isObject(errorItem) ? errorItem.message : i18n.t('errors.errors.unknownApiError'));
             errorContent.errorType = errorItem.errorType || 'InternalServerError';
             errors.push(errorContent);
         });
@@ -210,7 +234,7 @@ errors = {
     formatAndRejectAPIError: function (error, permsMessage) {
         if (!error) {
             return this.rejectError(
-                new this.NoPermissionError(permsMessage || 'You do not have permission to perform this action')
+                new this.NoPermissionError(permsMessage || i18n.t('errors.errors.notEnoughPermission'))
             );
         }
 
@@ -226,7 +250,7 @@ errors = {
         if (error.code && (error.errno || error.detail)) {
             error.db_error_code = error.code;
             error.errorType = 'DatabaseError';
-            error.code = 500;
+            error.statusCode = 500;
 
             return this.rejectError(error);
         }
@@ -242,7 +266,7 @@ errors = {
         res.status(httpErrors.statusCode).json({errors: httpErrors.errors});
     },
 
-    renderErrorPage: function (code, err, req, res, next) {
+    renderErrorPage: function (statusCode, err, req, res, next) {
         /*jshint unused:false*/
         var self = this,
             defaultErrorTemplatePath = path.resolve(getConfigModule().paths.adminViews, 'user-error.hbs');
@@ -280,35 +304,40 @@ errors = {
         function renderErrorInt(errorView) {
             var stack = null;
 
-            if (code !== 404 && process.env.NODE_ENV !== 'production' && err.stack) {
+            if (statusCode !== 404 && process.env.NODE_ENV !== 'production' && err.stack) {
                 stack = parseStack(err.stack);
             }
 
-            res.status(code).render((errorView || 'error'), {
+            res.status(statusCode).render((errorView || 'error'), {
                 message: err.message || err,
-                code: code,
+                // We have to use code here, as it's the variable passed to the template
+                // And error templates can be customised... therefore this constitutes API
+                // In future I recommend we make this be used for a combo-version of statusCode & errorCode
+                code: statusCode,
+                // Adding this as being distinctly, the status code, as opposed to any other code see #6526
+                statusCode: statusCode,
                 stack: stack
             }, function (templateErr, html) {
                 if (!templateErr) {
-                    return res.status(code).send(html);
+                    return res.status(statusCode).send(html);
                 }
                 // There was an error trying to render the error page, output the error
-                self.logError(templateErr, 'Error whilst rendering error page', 'Error template has an error');
+                self.logError(templateErr, i18n.t('errors.errors.errorWhilstRenderingError'), i18n.t('errors.errors.errorTemplateHasError'));
 
                 // And then try to explain things to the user...
                 // Cheat and output the error using handlebars escapeExpression
                 return res.status(500).send(
-                    '<h1>Oops, seems there is an error in the error template.</h1>' +
-                    '<p>Encountered the error: </p>' +
+                    '<h1>' + i18n.t('errors.errors.oopsErrorTemplateHasError') + '</h1>' +
+                    '<p>' + i18n.t('errors.errors.encounteredError') + '</p>' +
                     '<pre>' + hbs.handlebars.Utils.escapeExpression(templateErr.message || templateErr) + '</pre>' +
-                    '<br ><p>whilst trying to render an error page for the error: </p>' +
-                    code + ' ' + '<pre>'  + hbs.handlebars.Utils.escapeExpression(err.message || err) + '</pre>'
+                    '<br ><p>' + i18n.t('errors.errors.whilstTryingToRender') + '</p>' +
+                    statusCode + ' ' + '<pre>'  + hbs.handlebars.Utils.escapeExpression(err.message || err) + '</pre>'
                 );
             });
         }
 
-        if (code >= 500) {
-            this.logError(err, 'Rendering Error Page', 'Ghost caught a processing error in the middleware layer.');
+        if (statusCode >= 500) {
+            this.logError(err, i18n.t('errors.errors.renderingErrorPage'), i18n.t('errors.errors.caughtProcessingError'));
         }
 
         // Are we admin? If so, don't worry about the user template
@@ -321,7 +350,7 @@ errors = {
     },
 
     error404: function (req, res, next) {
-        var message = 'Page not found';
+        var message = i18n.t('errors.errors.pageNotFound');
 
         // do not cache 404 error
         res.set({'Cache-Control': 'no-cache, private, no-store, must-revalidate, max-stale=0, post-check=0, pre-check=0'});
@@ -333,10 +362,13 @@ errors = {
     },
 
     error500: function (err, req, res, next) {
+        var statusCode = getStatusCode(err),
+            returnErrors = [];
+
         // 500 errors should never be cached
         res.set({'Cache-Control': 'no-cache, private, no-store, must-revalidate, max-stale=0, post-check=0, pre-check=0'});
 
-        if (err.status === 404 || err.code === 404) {
+        if (statusCode === 404) {
             return this.error404(req, res, next);
         }
 
@@ -344,11 +376,8 @@ errors = {
             if (!err || !(err instanceof Error)) {
                 next();
             }
-            errors.renderErrorPage(err.status || err.code || 500, err, req, res, next);
+            errors.renderErrorPage(statusCode, err, req, res, next);
         } else {
-            var statusCode = 500,
-                returnErrors = [];
-
             if (!_.isArray(err)) {
                 err = [].concat(err);
             }
@@ -356,10 +385,8 @@ errors = {
             _.each(err, function (errorItem) {
                 var errorContent = {};
 
-                statusCode = errorItem.code || 500;
-
                 errorContent.message = _.isString(errorItem) ? errorItem :
-                    (_.isObject(errorItem) ? errorItem.message : 'Unknown Error');
+                    (_.isObject(errorItem) ? errorItem.message : i18n.t('errors.errors.unknownError'));
                 errorContent.errorType = errorItem.errorType || 'InternalServerError';
                 returnErrors.push(errorContent);
             });

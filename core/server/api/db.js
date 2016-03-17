@@ -4,10 +4,12 @@ var _                = require('lodash'),
     Promise          = require('bluebird'),
     dataExport       = require('../data/export'),
     importer         = require('../data/importer'),
+    backupDatabase   = require('../data/migration').backupDatabase,
     models           = require('../models'),
     errors           = require('../errors'),
     utils            = require('./utils'),
     pipeline         = require('../utils/pipeline'),
+    i18n             = require('../i18n'),
 
     api              = {},
     docName      = 'db',
@@ -66,13 +68,13 @@ db = {
         function validate(options) {
             // Check if a file was provided
             if (!utils.checkFileExists(options, 'importfile')) {
-                return Promise.reject(new errors.ValidationError('Please select a file to import.'));
+                return Promise.reject(new errors.ValidationError(i18n.t('errors.api.db.selectFileToImport')));
             }
 
             // Check if the file is valid
             if (!utils.checkFileIsValid(options.importfile, importer.getTypes(), importer.getExtensions())) {
                 return Promise.reject(new errors.UnsupportedMediaTypeError(
-                    'Unsupported file. Please try any of the following formats: ' +
+                    i18n.t('errors.api.db.unsupportedFile') +
                         _.reduce(importer.getExtensions(), function (memo, ext) {
                             return memo ? memo + ', ' + ext : ext;
                         })
@@ -84,7 +86,9 @@ db = {
 
         function importContent(options) {
             return importer.importFromFile(options.importfile)
-                .then(api.settings.updateSettingsCache)
+                .then(function () {
+                    api.settings.updateSettingsCache();
+                })
                 .return({db: []});
         }
 
@@ -119,6 +123,7 @@ db = {
 
         tasks = [
             utils.handlePermissions(docName, 'deleteAllContent'),
+            backupDatabase,
             deleteContent
         ];
 
