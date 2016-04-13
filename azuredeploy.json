@@ -77,8 +77,31 @@
         },
         "properties": {
             "serverFarmId": "[parameters('hostingPlanName')]",
-            "siteConfig": {
-              "appSettings": [{
+        },
+        "resources": [{
+            "apiVersion": "2015-08-01",
+            "name": "web",
+            "type": "sourcecontrols",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"
+            ],
+            "properties": {
+                "RepoUrl": "[parameters('repoUrl')]",
+                "branch": "[parameters('branch')]",
+                "IsManualIntegration": true
+            }
+        },
+        { 
+           "apiVersion": "2014-04-01", 
+           "type": "config", 
+           "name": "web", 
+           "dependsOn": [
+             "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]",
+             "[concat('Microsoft.Web/Sites/', parameters('siteName'), '/sourcecontrols/web')]" 
+           ], 
+           "properties": { 
+             "webSocketsEnabled": true,
+             "appSettings": [{
                   "name": "websiteUrl",
                   "value": ""
               }, {
@@ -93,21 +116,10 @@
               }, {
                   "name": "siteName",
                   "value": "[parameters('siteName')]"
-              }]
-            },
-        },
-        "resources": [{
-            "apiVersion": "2015-08-01",
-            "name": "web",
-            "type": "sourcecontrols",
-            "dependsOn": [
-                "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"
-            ],
-            "properties": {
-                "RepoUrl": "[parameters('repoUrl')]",
-                "branch": "[parameters('branch')]",
-                "IsManualIntegration": true
-            }
-        }]
+              }],
+            "requestTracingEnabled": false,
+            "httpLoggingEnabled": false
+           }
+       }]
     }]
 }
