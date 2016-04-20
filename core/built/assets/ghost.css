@@ -784,14 +784,19 @@ img {
   border: 0;
 }
 
-.sr-only:active,
-.sr-only:focus {
-  position: static;
+.sr-only-focusable:focus {
+  z-index: 900;
   overflow: visible;
   clip: auto;
   margin: 0;
+  padding: 0 10px;
   width: auto;
   height: auto;
+  background-color: #f5f5f5;
+  color: #333;
+  text-decoration: none;
+  line-height: 49px;
+  font-weight: bold;
 }
 
 .right {
@@ -984,7 +989,6 @@ img {
   line-height: 1;
   font-weight: normal !important;
   font-style: normal !important;
-  -webkit-font-feature-settings: normal,;
   font-feature-settings: normal,;
   font-variant: normal !important;
   speak: none;
@@ -999,7 +1003,6 @@ img {
   line-height: 1;
   font-weight: normal !important;
   font-style: normal !important;
-  -webkit-font-feature-settings: normal,;
   font-feature-settings: normal,;
   font-variant: normal !important;
   speak: none;
@@ -1614,7 +1617,6 @@ textarea {
   line-height: 1;
   font-weight: normal !important;
   font-style: normal !important;
-  -webkit-font-feature-settings: normal,;
   font-feature-settings: normal,;
   font-variant: normal !important;
   pointer-events: none;
@@ -5829,6 +5831,7 @@ body > .ember-view:not(.liquid-target-container) {
 }
 
 .post-view-link i {
+  display: inline;
   font-size: 10px;
 }
 
@@ -5928,10 +5931,6 @@ body > .ember-view:not(.liquid-target-container) {
   text-indent: -4px;
   font-size: 16px;
   cursor: move;
-}
-
-.gh-blognav-url .fake-placeholder {
-  color: #c1c1c1;
 }
 
 .gh-blognav-line {

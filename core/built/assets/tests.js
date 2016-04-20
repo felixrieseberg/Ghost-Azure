@@ -735,8 +735,6 @@ define('ghost/tests/acceptance/settings/navigation-test', ['exports', 'mocha', '
 
                 andThen(function () {
                     (0, _chai.expect)(find('.gh-blognav-label:last .response').is(':visible'), 'blank label has validation error').to.be['true'];
-
-                    (0, _chai.expect)(find('.gh-blognav-url:last .response').is(':visible'), 'blank url has validation error').to.be['true'];
                 });
 
                 fillIn('.gh-blognav-label:last input', 'New');
@@ -744,8 +742,6 @@ define('ghost/tests/acceptance/settings/navigation-test', ['exports', 'mocha', '
 
                 andThen(function () {
                     (0, _chai.expect)(find('.gh-blognav-label:last .response').is(':visible'), 'label validation is visible after typing').to.be['false'];
-
-                    (0, _chai.expect)(find('.gh-blognav-url:last .response').is(':visible'), 'blank url still has validation error').to.be['true'];
                 });
 
                 fillIn('.gh-blognav-url:last input', '/new');
@@ -1931,23 +1927,23 @@ define('ghost/tests/helpers/module-for-acceptance', ['exports', 'qunit', 'ghost/
                 this.application = (0, _ghostTestsHelpersStartApp['default'])();
 
                 if (options.beforeEach) {
-                    options.beforeEach.apply(this, arguments);
+                    options.beforeEach.apply(options, arguments);
                 }
             },
 
             afterEach: function afterEach() {
-                (0, _ghostTestsHelpersDestroyApp['default'])(this.application);
-
                 if (options.afterEach) {
-                    options.afterEach.apply(this, arguments);
+                    options.afterEach.apply(options, arguments);
                 }
+
+                (0, _ghostTestsHelpersDestroyApp['default'])(this.application);
             }
         });
     };
 });
-define('ghost/tests/helpers/resolver', ['exports', 'ember-resolver', 'ghost/config/environment'], function (exports, _emberResolver, _ghostConfigEnvironment) {
+define('ghost/tests/helpers/resolver', ['exports', 'ghost/resolver', 'ghost/config/environment'], function (exports, _ghostResolver, _ghostConfigEnvironment) {
 
-    var resolver = _emberResolver['default'].create();
+    var resolver = _ghostResolver['default'].create();
 
     resolver.namespace = {
         modulePrefix: _ghostConfigEnvironment['default'].modulePrefix,
@@ -2125,7 +2121,7 @@ define('ghost/tests/integration/components/gh-alert-test', ['exports', 'chai', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2177,7 +2173,7 @@ define('ghost/tests/integration/components/gh-alert-test', ['exports', 'chai', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2256,7 +2252,7 @@ define('ghost/tests/integration/components/gh-alerts-test', ['exports', 'chai', 
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2313,7 +2309,7 @@ define('ghost/tests/integration/components/gh-alerts-test', ['exports', 'chai', 
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2374,7 +2370,7 @@ define('ghost/tests/integration/components/gh-cm-editor-test', ['exports', 'chai
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2491,7 +2487,7 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2543,7 +2539,7 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2598,7 +2594,7 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2653,7 +2649,7 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2716,7 +2712,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             'fragmentReason': {
                                 'name': 'triple-curlies'
                             },
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -2758,7 +2754,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2823,7 +2819,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             return {
                                 meta: {
                                     'fragmentReason': false,
-                                    'revision': 'Ember@2.3.1',
+                                    'revision': 'Ember@2.4.4',
                                     'loc': {
                                         'source': null,
                                         'start': {
@@ -2864,7 +2860,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                         return {
                             meta: {
                                 'fragmentReason': false,
-                                'revision': 'Ember@2.3.1',
+                                'revision': 'Ember@2.4.4',
                                 'loc': {
                                     'source': null,
                                     'start': {
@@ -2917,7 +2913,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -3001,7 +2997,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3059,7 +3055,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3109,7 +3105,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3168,7 +3164,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3223,7 +3219,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3278,7 +3274,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3329,7 +3325,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3403,7 +3399,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3456,7 +3452,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3510,7 +3506,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3572,7 +3568,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3629,7 +3625,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3689,7 +3685,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3749,7 +3745,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3815,7 +3811,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3878,7 +3874,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3924,62 +3920,6 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
             (0, _chai.expect)($input.val()).to.equal(currentUrl + ' /test');
         });
 
-        (0, _emberMocha.it)('toggles .fake-placeholder on focus', function () {
-            this.set('isNew', true);
-            this.render(_ember['default'].HTMLBars.template((function () {
-                return {
-                    meta: {
-                        'fragmentReason': {
-                            'name': 'missing-wrapper',
-                            'problems': ['wrong-type']
-                        },
-                        'revision': 'Ember@2.3.1',
-                        'loc': {
-                            'source': null,
-                            'start': {
-                                'line': 1,
-                                'column': 0
-                            },
-                            'end': {
-                                'line': 3,
-                                'column': 12
-                            }
-                        }
-                    },
-                    isEmpty: false,
-                    arity: 0,
-                    cachedFragment: null,
-                    hasRendered: false,
-                    buildFragment: function buildFragment(dom) {
-                        var el0 = dom.createDocumentFragment();
-                        var el1 = dom.createTextNode('\n                ');
-                        dom.appendChild(el0, el1);
-                        var el1 = dom.createComment('');
-                        dom.appendChild(el0, el1);
-                        var el1 = dom.createTextNode('\n            ');
-                        dom.appendChild(el0, el1);
-                        return el0;
-                    },
-                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-                        var morphs = new Array(1);
-                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
-                        return morphs;
-                    },
-                    statements: [['inline', 'gh-navitem-url-input', [], ['baseUrl', ['subexpr', '@mut', [['get', 'baseUrl', ['loc', [null, [2, 47], [2, 54]]]]], [], []], 'url', ['subexpr', '@mut', [['get', 'url', ['loc', [null, [2, 59], [2, 62]]]]], [], []], 'isNew', ['subexpr', '@mut', [['get', 'isNew', ['loc', [null, [2, 69], [2, 74]]]]], [], []], 'change', 'updateUrl', 'clearErrors', ['subexpr', 'action', ['clearErrors'], [], ['loc', [null, [2, 106], [2, 128]]]]], ['loc', [null, [2, 16], [2, 130]]]]],
-                    locals: [],
-                    templates: []
-                };
-            })()));
-            var $input = this.$('input');
-
-            (0, _chai.expect)($input.hasClass('fake-placeholder')).to.be['true'];
-
-            run(function () {
-                $input.trigger('focus');
-            });
-            (0, _chai.expect)($input.hasClass('fake-placeholder')).to.be['false'];
-        });
-
         (0, _emberMocha.it)('triggers "change" action on blur', function () {
             var changeActionCallCount = 0;
             this.on('updateUrl', function () {
@@ -3993,7 +3933,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4050,7 +3990,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4112,7 +4052,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4176,7 +4116,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4250,7 +4190,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4320,7 +4260,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4380,7 +4320,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4447,7 +4387,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4516,7 +4456,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4590,7 +4530,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4658,7 +4598,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4737,7 +4677,7 @@ define('ghost/tests/integration/components/gh-notification-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4790,7 +4730,7 @@ define('ghost/tests/integration/components/gh-notification-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4867,7 +4807,7 @@ define('ghost/tests/integration/components/gh-notifications-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4944,7 +4884,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4995,7 +4935,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5048,7 +4988,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5104,7 +5044,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5212,7 +5152,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5260,7 +5200,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5311,7 +5251,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5367,7 +5307,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5437,7 +5377,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5508,7 +5448,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5603,7 +5543,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5669,7 +5609,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5724,7 +5664,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5785,7 +5725,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5841,7 +5781,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5902,7 +5842,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5966,7 +5906,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6019,7 +5959,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6083,7 +6023,7 @@ define('ghost/tests/integration/components/gh-tags-management-container-test', [
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6119,7 +6059,7 @@ define('ghost/tests/integration/components/gh-tags-management-container-test', [
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6181,7 +6121,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6217,7 +6157,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6267,7 +6207,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6303,7 +6243,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6354,7 +6294,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6390,7 +6330,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6440,7 +6380,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.3.1',
+                            'revision': 'Ember@2.4.4',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6476,7 +6416,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.3.1',
+                        'revision': 'Ember@2.4.4',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6518,8 +6458,78 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
     });
 });
 /* jshint expr:true */
-define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-mocha', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _pretender, _emberTestHelpersWait) {
-    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+define('ghost/tests/integration/components/transfer-owner-test', ['exports', 'chai', 'ember-mocha', 'ember', 'sinon'], function (exports, _chai, _emberMocha, _ember, _sinon) {
+    var RSVP = _ember['default'].RSVP;
+    var run = _ember['default'].run;
+
+    (0, _emberMocha.describeComponent)('transfer-owner', 'Integration: Component: modals/transfer-owner', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('triggers confirm action', function () {
+            var _this = this;
+
+            var confirm = _sinon['default'].stub();
+            var closeModal = _sinon['default'].spy();
+
+            confirm.returns(RSVP.resolve({}));
+
+            this.on('confirm', confirm);
+            this.on('closeModal', closeModal);
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.4.4',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 85
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'modals/transfer-owner', [], ['confirm', ['subexpr', 'action', ['confirm'], [], ['loc', [null, [1, 32], [1, 50]]]], 'closeModal', ['subexpr', 'action', ['closeModal'], [], ['loc', [null, [1, 62], [1, 83]]]]], ['loc', [null, [1, 0], [1, 85]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            run(function () {
+                _this.$('.btn.btn-red').click();
+            });
+
+            (0, _chai.expect)(confirm.calledOnce, 'confirm called').to.be['true'];
+            (0, _chai.expect)(closeModal.calledOnce, 'closeModal called').to.be['true'];
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-mocha', 'pretender', 'ember-ajax/errors'], function (exports, _chai, _emberMocha, _pretender, _emberAjaxErrors) {
 
     function stubAjaxEndpoint(server, response) {
         server.get('/test/', function () {
@@ -6582,7 +6592,7 @@ define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-
             });
         });
 
-        (0, _emberMocha.it)('correctly returns default error message if no error text provided', function (done) {
+        (0, _emberMocha.it)('returns default error object for non built-in error', function (done) {
             stubAjaxEndpoint(server, {});
 
             var ajax = this.subject();
@@ -6590,17 +6600,29 @@ define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-
             ajax.request('/test/').then(function () {
                 (0, _chai.expect)(false).to.be['true'];
             })['catch'](function (error) {
-                var _error$errors = _slicedToArray(error.errors, 1);
+                (0, _chai.expect)(error).to.be.instanceOf(_emberAjaxErrors.AjaxError);
+                done();
+            });
+        });
 
-                var defaultError = _error$errors[0];
+        (0, _emberMocha.it)('returns known error object for built-in errors', function (done) {
+            server.get('/test/', function () {
+                return [401, { 'Content-Type': 'application/json' }, ''];
+            });
 
-                (0, _chai.expect)(defaultError.detail).to.equal('Ajax operation failed');
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true'];
+            })['catch'](function (error) {
+                (0, _chai.expect)(error).to.be.instanceOf(_emberAjaxErrors.UnauthorizedError);
                 done();
             });
         });
     });
 });
 define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha', 'pretender', 'ember-test-helpers/wait', 'ghost/services/feature', 'ember', 'ghost/tests/helpers/adapter-error'], function (exports, _emberMocha, _pretender, _emberTestHelpersWait, _ghostServicesFeature, _ember, _ghostTestsHelpersAdapterError) {
+    var RSVP = _ember['default'].RSVP;
     var merge = _ember['default'].merge;
     var run = _ember['default'].run;
 
@@ -6668,6 +6690,19 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
 
             service.get('labs').then(function (labs) {
                 expect(labs.testFlag).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('caches the labs promise', function (done) {
+            stubSettings(server, { testFlag: true });
+
+            var service = this.subject();
+            var calls = [service.get('labs'), service.get('labs'), service.get('labs')];
+
+            RSVP.all(calls).then(function () {
+                expect(server.handledRequests.length, 'requests after 3 calls').to.equal(1);
+
                 done();
             });
         });
