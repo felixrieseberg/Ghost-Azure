@@ -2,6 +2,8 @@
 
 Want to install Ghost on Azure? Just click the 'Deploy to Azure' button and you're well on your way to have a Ghost Blog running within a minute or two. Made with :heart: for Ghost by Microsoft DX.
 
+**Note: The deployment will most likely fail if you're running in a Free or Shared App Service Plan.  This is due to NPM using more resources than the Azure [sandbox](https://github.com/projectkudu/kudu/wiki/Azure-Web-App-sandbox) allows.  To work around this, deploy into a Basic or higher plan and then scale down if needed.  More information in [#30](https://github.com/felixrieseberg/Ghost-Azure/issues/30#issuecomment-217028469) and [npm/npm#7200](https://github.com/npm/npm/issues/7200).** 
+
 **Note: After deployment, Ghost will continue setup - resulting in your brand new website staying blank on the very first load. Please give your website a solid minute of time. It will appear like the site isn't loading, but in reality, it's just creating your database in the background. This only happens the very first time you load your website - simply refresh, you'll see that everything worked well!**
 
 If you're interested in hosting your blog's images on Azure Blob Storage, check out Tommy Parnell's [ghost-azure-storage module](https://github.com/tparnell8/ghost-azurestorage) that plugs directly into Ghost.
