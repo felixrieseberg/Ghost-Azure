@@ -255,270 +255,6 @@ define('ghost/app', ['exports', 'ember', 'ghost/resolver', 'ember-load-initializ
 
     exports['default'] = App;
 });
-define('ghost/assets/lib/uploader', ['exports', 'ember', 'ghost/utils/ghost-paths'], function (exports, _ember, _ghostUtilsGhostPaths) {
-    var $ = _ember['default'].$;
-
-    var Ghost = (0, _ghostUtilsGhostPaths['default'])();
-
-    var UploadUi = function UploadUi($dropzone, settings) {
-        var _this = this;
-
-        var $url = '<div class="js-url"><input class="url js-upload-url gh-input" type="url" placeholder="http://"/></div>';
-        var $cancel = '<a class="image-cancel icon-trash js-cancel" title="Delete"><span class="hidden">Delete</span></a>';
-        var $progress = $('<div />', {
-            'class': 'js-upload-progress progress progress-success active',
-            role: 'progressbar',
-            'aria-valuemin': '0',
-            'aria-valuemax': '100'
-        }).append($('<div />', {
-            'class': 'js-upload-progress-bar bar',
-            style: 'width:0%'
-        }));
-
-        $.extend(this, {
-            complete: function complete(result) {
-                var showImage = function showImage(width, height) {
-                    $dropzone.find('img.js-upload-target').attr({ width: width, height: height }).css({ display: 'block' });
-                    $dropzone.find('.fileupload-loading').remove();
-                    $dropzone.css({ height: 'auto' });
-                    $dropzone.delay(250).animate({ opacity: 100 }, 1000, function () {
-                        $('.js-button-accept').prop('disabled', false);
-                        _this.init();
-                    });
-                };
-
-                var animateDropzone = function animateDropzone($img) {
-                    $dropzone.animate({ opacity: 0 }, 250, function () {
-                        $dropzone.removeClass('image-uploader').addClass('pre-image-uploader');
-                        _this.removeExtras();
-                        $dropzone.animate({ height: $img.height() }, 250, function () {
-                            showImage($img.width(), $img.height());
-                        });
-                    });
-                };
-
-                var preLoadImage = function preLoadImage() {
-                    var $img = $dropzone.find('img.js-upload-target').attr({ src: '', width: 'auto', height: 'auto' });
-
-                    $progress.animate({ opacity: 0 }, 250, function () {
-                        $dropzone.find('span.media').after('<img class="fileupload-loading" src="' + Ghost.subdir + '/ghost/img/loadingcat.gif" />');
-                    });
-                    $img.one('load', function () {
-                        $dropzone.trigger('uploadsuccess', [result]);
-                        animateDropzone($img);
-                    }).attr('src', result);
-                };
-                preLoadImage();
-            },
-
-            bindFileUpload: function bindFileUpload() {
-                var _this2 = this;
-
-                $dropzone.find('.js-fileupload').fileupload().fileupload('option', {
-                    url: Ghost.apiRoot + '/uploads/',
-                    add: function add(e, data) {
-                        /*jshint unused:false*/
-                        $('.js-button-accept').prop('disabled', true);
-                        $dropzone.find('.js-fileupload').removeClass('right');
-                        $dropzone.find('.js-url').remove();
-                        $progress.find('.js-upload-progress-bar').removeClass('fail');
-                        $dropzone.trigger('uploadstart', [$dropzone.attr('id')]);
-                        $dropzone.find('span.media, div.description, a.image-url, a.image-webcam').animate({ opacity: 0 }, 250, function () {
-                            $dropzone.find('div.description').hide().css({ opacity: 100 });
-                            if (settings.progressbar) {
-                                $dropzone.find('div.js-fail').after($progress);
-                                $progress.animate({ opacity: 100 }, 250);
-                            }
-                            data.submit();
-                        });
-                    },
-                    dropZone: settings.fileStorage ? $dropzone : null,
-                    progressall: function progressall(e, data) {
-                        /*jshint unused:false*/
-                        var progress = parseInt(data.loaded / data.total * 100, 10);
-                        if (settings.progressbar) {
-                            $dropzone.trigger('uploadprogress', [progress, data]);
-                            $progress.find('.js-upload-progress-bar').css('width', progress + '%');
-                        }
-                    },
-                    fail: function fail(e, data) {
-                        /*jshint unused:false*/
-                        $('.js-button-accept').prop('disabled', false);
-                        $dropzone.trigger('uploadfailure', [data.result]);
-                        $dropzone.find('.js-upload-progress-bar').addClass('fail');
-                        if (data.jqXHR.status === 413) {
-                            $dropzone.find('div.js-fail').text('The image you uploaded was larger than the maximum file size your server allows.');
-                        } else if (data.jqXHR.status === 415) {
-                            $dropzone.find('div.js-fail').text('The image type you uploaded is not supported. Please use .PNG, .JPG, .GIF, .SVG.');
-                        } else {
-                            $dropzone.find('div.js-fail').text('Something went wrong :(');
-                        }
-                        $dropzone.find('div.js-fail, button.js-fail').fadeIn(1500);
-                        $dropzone.find('button.js-fail').on('click', function () {
-                            $dropzone.css({ minHeight: 0 });
-                            $dropzone.find('div.description').show();
-                            _this2.removeExtras();
-                            _this2.init();
-                        });
-                    },
-                    done: function done(e, data) {
-                        /*jshint unused:false*/
-                        _this2.complete(data.result);
-                    }
-                });
-            },
-
-            buildExtras: function buildExtras() {
-                if (!$dropzone.find('span.media')[0]) {
-                    $dropzone.prepend('<span class="media"><span class="hidden">Image Upload</span></span>');
-                }
-                if (!$dropzone.find('div.description')[0]) {
-                    $dropzone.append('<div class="description">Add image</div>');
-                }
-                if (!$dropzone.find('div.js-fail')[0]) {
-                    $dropzone.append('<div class="js-fail failed" style="display: none">Something went wrong :(</div>');
-                }
-                if (!$dropzone.find('button.js-fail')[0]) {
-                    $dropzone.append('<button class="js-fail btn btn-green" style="display: none">Try Again</button>');
-                }
-                if (!$dropzone.find('a.image-url')[0]) {
-                    $dropzone.append('<a class="image-url" title="Add image from URL"><i class="icon-link"><span class="hidden">URL</span></i></a>');
-                }
-                // if (!$dropzone.find('a.image-webcam')[0]) {
-                //     $dropzone.append('<a class="image-webcam" title="Add image from webcam"><span class="hidden">Webcam</span></a>');
-                // }
-            },
-
-            removeExtras: function removeExtras() {
-                $dropzone.find('span.media, div.js-upload-progress, a.image-url, a.image-upload, a.image-webcam, div.js-fail, button.js-fail, a.js-cancel, button.js-button-accept').remove();
-            },
-
-            initWithDropzone: function initWithDropzone() {
-                var _this3 = this;
-
-                // This is the start point if no image exists
-                $dropzone.find('img.js-upload-target').css({ display: 'none' });
-                $dropzone.find('div.description').show();
-                $dropzone.removeClass('pre-image-uploader image-uploader-url').addClass('image-uploader');
-                this.removeExtras();
-                this.buildExtras();
-                this.bindFileUpload();
-                if (!settings.fileStorage) {
-                    this.initUrl();
-                    return;
-                }
-                $dropzone.find('a.image-url').on('click', function () {
-                    _this3.initUrl();
-                });
-            },
-            initUrl: function initUrl() {
-                var _this4 = this;
-
-                this.removeExtras();
-                $dropzone.addClass('image-uploader-url').removeClass('pre-image-uploader');
-                $dropzone.find('.js-fileupload').addClass('right');
-                $dropzone.find('.js-cancel').on('click', function () {
-                    $dropzone.find('.js-url').remove();
-                    $dropzone.find('.js-fileupload').removeClass('right');
-                    $dropzone.trigger('imagecleared');
-                    _this4.removeExtras();
-                    _this4.initWithDropzone();
-                });
-
-                if (!$dropzone.find('.js-url')[0]) {
-                    $dropzone.find('div.description').before($url);
-                }
-
-                if (settings.editor) {
-                    $dropzone.find('div.js-url').append('<button class="btn btn-blue js-button-accept gh-input">Save</button>');
-                    $dropzone.find('div.description').hide();
-                }
-
-                $dropzone.find('.js-button-accept').on('click', function () {
-                    var val = $dropzone.find('.js-upload-url').val();
-
-                    $dropzone.find('div.description').hide();
-                    $dropzone.find('.js-fileupload').removeClass('right');
-                    $dropzone.find('.js-url').remove();
-                    if (val === '') {
-                        $dropzone.trigger('uploadsuccess', 'http://');
-                        _this4.initWithDropzone();
-                    } else {
-                        _this4.complete(val);
-                    }
-                });
-
-                // Only show the toggle icon if there is a dropzone mode to go back to
-                if (settings.fileStorage !== false) {
-                    $dropzone.append('<a class="image-upload icon-photos" title="Add image"><span class="hidden">Upload</span></a>');
-                }
-
-                $dropzone.find('a.image-upload').on('click', function () {
-                    $dropzone.find('.js-url').remove();
-                    $dropzone.find('.js-fileupload').removeClass('right');
-                    _this4.initWithDropzone();
-                });
-            },
-
-            initWithImage: function initWithImage() {
-                var _this5 = this;
-
-                // This is the start point if an image already exists
-                this.removeExtras();
-                $dropzone.removeClass('image-uploader image-uploader-url').addClass('pre-image-uploader');
-                $dropzone.find('div.description').hide();
-                $dropzone.find('img.js-upload-target').show();
-                $dropzone.append($cancel);
-                $dropzone.find('.js-cancel').on('click', function () {
-                    $dropzone.find('img.js-upload-target').attr({ src: '' });
-                    $dropzone.find('div.description').show();
-                    $dropzone.trigger('imagecleared');
-
-                    $dropzone.trigger('uploadsuccess', 'http://');
-                    _this5.initWithDropzone();
-                });
-            },
-
-            init: function init() {
-                var imageTarget = $dropzone.find('img.js-upload-target');
-                // First check if field image is defined by checking for js-upload-target class
-                if (!imageTarget[0]) {
-                    // This ensures there is an image we can hook into to display uploaded image
-                    $dropzone.prepend('<img class="js-upload-target" style="display: none"  src="" />');
-                }
-                $('.js-button-accept').prop('disabled', false);
-                if (imageTarget.attr('src') === '' || imageTarget.attr('src') === undefined) {
-                    this.initWithDropzone();
-                } else {
-                    this.initWithImage();
-                }
-            },
-
-            reset: function reset() {
-                $dropzone.find('.js-url').remove();
-                $dropzone.find('.js-fileupload').removeClass('right');
-                this.removeExtras();
-                this.initWithDropzone();
-            }
-        });
-    };
-
-    exports['default'] = function (options) {
-        var settings = $.extend({
-            progressbar: true,
-            editor: false,
-            fileStorage: true
-        }, options);
-
-        return this.each(function () {
-            var $dropzone = $(this);
-            var ui = new UploadUi($dropzone, settings);
-            $(this).attr('data-uploaderui', true);
-            this.uploaderUi = ui;
-            ui.init();
-        });
-    };
-});
 define('ghost/authenticators/oauth2', ['exports', 'ember', 'ember-simple-auth/authenticators/oauth2-password-grant'], function (exports, _ember, _emberSimpleAuthAuthenticatorsOauth2PasswordGrant) {
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
@@ -556,8 +292,24 @@ define('ghost/components/app-version', ['exports', 'ember-cli-app-version/compon
     name: name
   });
 });
+define('ghost/components/basic-dropdown', ['exports', 'ember-basic-dropdown/components/basic-dropdown'], function (exports, _emberBasicDropdownComponentsBasicDropdown) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberBasicDropdownComponentsBasicDropdown['default'];
+    }
+  });
+});
 define('ghost/components/ember-selectize', ['exports', 'ember-cli-selectize/components/ember-selectize'], function (exports, _emberCliSelectizeComponentsEmberSelectize) {
   exports['default'] = _emberCliSelectizeComponentsEmberSelectize['default'];
+});
+define('ghost/components/ember-wormhole', ['exports', 'ember-wormhole/components/ember-wormhole'], function (exports, _emberWormholeComponentsEmberWormhole) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberWormholeComponentsEmberWormhole['default'];
+    }
+  });
 });
 define('ghost/components/gh-activating-list-item', ['exports', 'ember'], function (exports, _ember) {
     var Component = _ember['default'].Component;
@@ -770,7 +522,7 @@ define('ghost/components/gh-content-view-container', ['exports', 'ember'], funct
         previewIsHidden: computed.reads('mediaQueries.maxWidth900')
     });
 });
-define('ghost/components/gh-datetime-input', ['exports', 'ember', 'ghost/mixins/text-input', 'ghost/utils/bound-one-way', 'ghost/utils/date-formatting'], function (exports, _ember, _ghostMixinsTextInput, _ghostUtilsBoundOneWay, _ghostUtilsDateFormatting) {
+define('ghost/components/gh-datetime-input', ['exports', 'ember', 'ghost/mixins/text-input', 'ghost/utils/bound-one-way', 'ghost/utils/date-formatting', 'ember-invoke-action'], function (exports, _ember, _ghostMixinsTextInput, _ghostUtilsBoundOneWay, _ghostUtilsDateFormatting, _emberInvokeAction) {
     var Component = _ember['default'].Component;
     exports['default'] = Component.extend(_ghostMixinsTextInput['default'], {
         tagName: 'span',
@@ -794,7 +546,7 @@ define('ghost/components/gh-datetime-input', ['exports', 'ember', 'ghost/mixins/
         focusOut: function focusOut() {
             var datetime = this.get('datetime');
 
-            this.get('update')(datetime);
+            (0, _emberInvokeAction.invokeAction)(this, 'update', datetime);
         }
     });
 });
@@ -915,7 +667,7 @@ define('ghost/components/gh-dropdown', ['exports', 'ember', 'ghost/mixins/dropdo
         }
     });
 });
-define('ghost/components/gh-ed-editor', ['exports', 'ember', 'ghost/mixins/ed-editor-api', 'ghost/mixins/ed-editor-shortcuts', 'ghost/mixins/ed-editor-scroll'], function (exports, _ember, _ghostMixinsEdEditorApi, _ghostMixinsEdEditorShortcuts, _ghostMixinsEdEditorScroll) {
+define('ghost/components/gh-ed-editor', ['exports', 'ember', 'ghost/mixins/ed-editor-api', 'ghost/mixins/ed-editor-shortcuts', 'ghost/mixins/ed-editor-scroll', 'ember-invoke-action'], function (exports, _ember, _ghostMixinsEdEditorApi, _ghostMixinsEdEditorShortcuts, _ghostMixinsEdEditorScroll, _emberInvokeAction) {
     var TextArea = _ember['default'].TextArea;
     var run = _ember['default'].run;
     exports['default'] = TextArea.extend(_ghostMixinsEdEditorApi['default'], _ghostMixinsEdEditorShortcuts['default'], _ghostMixinsEdEditorScroll['default'], {
@@ -945,7 +697,7 @@ define('ghost/components/gh-ed-editor', ['exports', 'ember', 'ghost/mixins/ed-ed
 
             this.setFocus();
 
-            this.get('setEditor')(this);
+            (0, _emberInvokeAction.invokeAction)(this, 'setEditor', this);
 
             run.scheduleOnce('afterRender', this, this.afterRenderEvent);
         },
@@ -958,26 +710,32 @@ define('ghost/components/gh-ed-editor', ['exports', 'ember', 'ghost/mixins/ed-ed
 
         actions: {
             toggleCopyHTMLModal: function toggleCopyHTMLModal(generatedHTML) {
-                this.get('toggleCopyHTMLModal')(generatedHTML);
+                (0, _emberInvokeAction.invokeAction)(this, 'toggleCopyHTMLModal', generatedHTML);
             }
         }
     });
 });
-define('ghost/components/gh-ed-preview', ['exports', 'ember', 'ghost/assets/lib/uploader'], function (exports, _ember, _ghostAssetsLibUploader) {
-    var $ = _ember['default'].$;
-    var Component = _ember['default'].Component;
-    var service = _ember['default'].inject.service;
-    var run = _ember['default'].run;
-    exports['default'] = Component.extend({
-        config: service(),
+define('ghost/components/gh-ed-preview', ['exports', 'ember', 'ghost/helpers/gh-format-markdown'], function (exports, _ember, _ghostHelpersGhFormatMarkdown) {
+    function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) arr2[i] = arr[i]; return arr2; } else { return Array.from(arr); } }
 
+    var Component = _ember['default'].Component;
+    var run = _ember['default'].run;
+    var uuid = _ember['default'].uuid;
+    exports['default'] = Component.extend({
         _scrollWrapper: null,
+
+        previewHTML: '',
+
+        init: function init() {
+            this._super.apply(this, arguments);
+            this.set('imageUploadComponents', _ember['default'].A([]));
+            this.buildPreviewHTML();
+        },
 
         didInsertElement: function didInsertElement() {
             this._super.apply(this, arguments);
             this._scrollWrapper = this.$().closest('.entry-preview-content');
             this.adjustScrollPosition(this.get('scrollPosition'));
-            run.scheduleOnce('afterRender', this, this.dropzoneHandler);
         },
 
         didReceiveAttrs: function didReceiveAttrs(attrs) {
@@ -992,7 +750,7 @@ define('ghost/components/gh-ed-preview', ['exports', 'ember', 'ghost/assets/lib/
             }
 
             if (attrs.newAttrs.markdown.value !== attrs.oldAttrs.markdown.value) {
-                run.scheduleOnce('afterRender', this, this.dropzoneHandler);
+                run.throttle(this, this.buildPreviewHTML, 30, false);
             }
         },
 
@@ -1004,22 +762,65 @@ define('ghost/components/gh-ed-preview', ['exports', 'ember', 'ghost/assets/lib/
             }
         },
 
-        dropzoneHandler: function dropzoneHandler() {
-            var dropzones = $('.js-drop-zone[data-uploaderui!="true"]');
+        buildPreviewHTML: function buildPreviewHTML() {
+            var _this = this;
 
-            if (dropzones.length) {
-                _ghostAssetsLibUploader['default'].call(dropzones, {
-                    editor: true,
-                    fileStorage: this.get('config.fileStorage')
-                });
+            var markdown = this.get('markdown');
+            var html = (0, _ghostHelpersGhFormatMarkdown.formatMarkdown)([markdown]).string;
+            var template = document.createElement('template');
+            template.innerHTML = html;
+            var fragment = template.content;
+            var dropzones = fragment.querySelectorAll('.js-drop-zone');
+            var components = this.get('imageUploadComponents');
 
-                dropzones.on('uploadstart', run.bind(this, 'sendAction', 'uploadStarted'));
-                dropzones.on('uploadfailure', run.bind(this, 'sendAction', 'uploadFinished'));
-                dropzones.on('uploadsuccess', run.bind(this, 'sendAction', 'uploadFinished'));
-                dropzones.on('uploadsuccess', run.bind(this, 'sendAction', 'uploadSuccess'));
+            if (dropzones.length !== components.length) {
+                components = _ember['default'].A([]);
+                this.set('imageUploadComponents', components);
+            }
 
-                // Set the current height so we can listen
-                this.sendAction('updateHeight', this.$().height());
+            [].concat(_toConsumableArray(dropzones)).forEach(function (oldEl, i) {
+                var el = oldEl.cloneNode(true);
+                var component = components[i];
+                var uploadTarget = el.querySelector('.js-upload-target');
+                var id = uuid();
+                var destinationElementId = 'image-uploader-' + id;
+                var src = undefined;
+
+                if (uploadTarget) {
+                    src = uploadTarget.getAttribute('src');
+                }
+
+                if (component) {
+                    component.set('destinationElementId', destinationElementId);
+                    component.set('src', src);
+                } else {
+                    var imageUpload = _ember['default'].Object.create({
+                        destinationElementId: destinationElementId,
+                        id: id,
+                        src: src,
+                        index: i
+                    });
+
+                    _this.get('imageUploadComponents').pushObject(imageUpload);
+                }
+
+                el.id = destinationElementId;
+                el.innerHTML = '';
+                el.classList.remove('image-uploader');
+
+                oldEl.parentNode.replaceChild(el, oldEl);
+            });
+
+            this.set('previewHTML', fragment);
+        },
+
+        actions: {
+            updateImageSrc: function updateImageSrc(index, url) {
+                this.attrs.updateImageSrc(index, url);
+            },
+
+            updateHeight: function updateHeight() {
+                this.attrs.updateHeight(this.$().height());
             }
         }
     });
@@ -1074,7 +875,7 @@ define('ghost/components/gh-editor-save-button', ['exports', 'ember'], function 
         }
     });
 });
-define('ghost/components/gh-editor', ['exports', 'ember', 'ghost/mixins/shortcuts', 'ghost/utils/ed-image-manager', 'ghost/utils/editor-shortcuts'], function (exports, _ember, _ghostMixinsShortcuts, _ghostUtilsEdImageManager, _ghostUtilsEditorShortcuts) {
+define('ghost/components/gh-editor', ['exports', 'ember', 'ghost/mixins/shortcuts', 'ghost/utils/ed-image-manager', 'ghost/utils/editor-shortcuts', 'ember-invoke-action'], function (exports, _ember, _ghostMixinsShortcuts, _ghostUtilsEdImageManager, _ghostUtilsEditorShortcuts, _emberInvokeAction) {
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
     var run = _ember['default'].run;
@@ -1127,9 +928,8 @@ define('ghost/components/gh-editor', ['exports', 'ember', 'ghost/mixins/shortcut
         },
 
         willDestroyElement: function willDestroyElement() {
-            if (this.get('onTeardown')) {
-                this.get('onTeardown')();
-            }
+            (0, _emberInvokeAction.invokeAction)(this, 'onTeardown');
+
             this.removeShortcuts();
         },
 
@@ -1175,18 +975,18 @@ define('ghost/components/gh-editor', ['exports', 'ember', 'ghost/mixins/shortcut
 
             // Match the uploaded file to a line in the editor, and update that line with a path reference
             // ensuring that everything ends up in the correct place and format.
-            handleImgUpload: function handleImgUpload(e, resultSrc) {
+            handleImgUpload: function handleImgUpload(imageIndex, newSrc) {
                 var editor = this.get('editor');
                 var editorValue = editor.getValue();
-                var replacement = _ghostUtilsEdImageManager['default'].getSrcRange(editorValue, e.target);
+                var replacement = _ghostUtilsEdImageManager['default'].getSrcRange(editorValue, imageIndex);
                 var cursorPosition = undefined;
 
                 if (replacement) {
-                    cursorPosition = replacement.start + resultSrc.length + 1;
+                    cursorPosition = replacement.start + newSrc.length + 1;
                     if (replacement.needsParens) {
-                        resultSrc = '(' + resultSrc + ')';
+                        newSrc = '(' + newSrc + ')';
                     }
-                    editor.replaceSelection(resultSrc, replacement.start, replacement.end, cursorPosition);
+                    editor.replaceSelection(newSrc, replacement.start, replacement.end, cursorPosition);
                 }
             },
 
@@ -1248,16 +1048,10 @@ define('ghost/components/gh-feature-flag', ['exports', 'ember'], function (expor
 
         feature: service(),
 
-        isVisible: computed.notEmpty('_flagValue'),
-
         init: function init() {
-            var _this = this;
-
             this._super.apply(this, arguments);
 
-            this.get('feature.' + this.get('flag')).then(function (flagValue) {
-                _this.set('_flagValue', flagValue);
-            });
+            this.set('_flagValue', this.get('feature.' + this.get('flag')));
         },
 
         value: computed('_flagValue', {
@@ -1272,6 +1066,7 @@ define('ghost/components/gh-feature-flag', ['exports', 'ember'], function (expor
         'for': computed('flag', function () {
             return 'labs-' + this.get('flag');
         }),
+
         name: computed('flag', function () {
             return 'labs[' + this.get('flag') + ']';
         })
@@ -1319,12 +1114,171 @@ define('ghost/components/gh-file-upload', ['exports', 'ember'], function (export
         }
     });
 });
+define('ghost/components/gh-file-uploader', ['exports', 'ember', 'ember-invoke-action', 'ghost/services/ajax'], function (exports, _ember, _emberInvokeAction, _ghostServicesAjax) {
+    function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
+
+    var Component = _ember['default'].Component;
+    var computed = _ember['default'].computed;
+    var service = _ember['default'].inject.service;
+    var isBlank = _ember['default'].isBlank;
+    var run = _ember['default'].run;
+    exports['default'] = Component.extend({
+        tagName: 'section',
+        classNames: ['gh-image-uploader'],
+        classNameBindings: ['dragClass'],
+
+        labelText: 'Select or drag-and-drop a file',
+        url: null,
+        paramName: 'file',
+
+        file: null,
+        response: null,
+
+        dragClass: null,
+        failureMessage: null,
+        uploadPercentage: 0,
+
+        ajax: service(),
+
+        formData: computed('file', function () {
+            var paramName = this.get('paramName');
+            var file = this.get('file');
+            var formData = new FormData();
+
+            formData.append(paramName, file);
+
+            return formData;
+        }),
+
+        progressStyle: computed('uploadPercentage', function () {
+            var percentage = this.get('uploadPercentage');
+            var width = '';
+
+            if (percentage > 0) {
+                width = percentage + '%';
+            } else {
+                width = '0';
+            }
+
+            return _ember['default'].String.htmlSafe('width: ' + width);
+        }),
+
+        dragOver: function dragOver(event) {
+            if (!event.dataTransfer) {
+                return;
+            }
+
+            // this is needed to work around inconsistencies with dropping files
+            // from Chrome's downloads bar
+            var eA = event.dataTransfer.effectAllowed;
+            event.dataTransfer.dropEffect = eA === 'move' || eA === 'linkMove' ? 'move' : 'copy';
+
+            event.stopPropagation();
+            event.preventDefault();
+
+            this.set('dragClass', '--drag-over');
+        },
+
+        dragLeave: function dragLeave(event) {
+            event.preventDefault();
+            this.set('dragClass', null);
+        },
+
+        drop: function drop(event) {
+            event.preventDefault();
+            this.set('dragClass', null);
+            if (event.dataTransfer.files) {
+                (0, _emberInvokeAction.invoke)(this, 'fileSelected', event.dataTransfer.files);
+            }
+        },
+
+        generateRequest: function generateRequest() {
+            var _this = this;
+
+            var ajax = this.get('ajax');
+            var formData = this.get('formData');
+            var url = this.get('url');
+
+            (0, _emberInvokeAction.invokeAction)(this, 'uploadStarted');
+
+            ajax.post(url, {
+                data: formData,
+                processData: false,
+                contentType: false,
+                dataType: 'text',
+                xhr: function xhr() {
+                    var xhr = new window.XMLHttpRequest();
+
+                    xhr.upload.addEventListener('progress', function (event) {
+                        _this._uploadProgress(event);
+                    }, false);
+
+                    return xhr;
+                }
+            }).then(function (response) {
+                _this._uploadSuccess(JSON.parse(response));
+            })['catch'](function (error) {
+                _this._uploadFailed(error);
+            })['finally'](function () {
+                (0, _emberInvokeAction.invokeAction)(_this, 'uploadFinished');
+            });
+        },
+
+        _uploadProgress: function _uploadProgress(event) {
+            var _this2 = this;
+
+            if (event.lengthComputable) {
+                run(function () {
+                    var percentage = Math.round(event.loaded / event.total * 100);
+                    _this2.set('uploadPercentage', percentage);
+                });
+            }
+        },
+
+        _uploadSuccess: function _uploadSuccess(response) {
+            (0, _emberInvokeAction.invokeAction)(this, 'uploadSuccess', response);
+            (0, _emberInvokeAction.invoke)(this, 'reset');
+        },
+
+        _uploadFailed: function _uploadFailed(error) {
+            var message = undefined;
+
+            if (_instanceof(error, _ghostServicesAjax.UnsupportedMediaTypeError)) {
+                message = 'The file type you uploaded is not supported.';
+            } else if (_instanceof(error, _ghostServicesAjax.RequestEntityTooLargeError)) {
+                message = 'The file you uploaded was larger than the maximum file size your server allows.';
+            } else if (error.errors && !isBlank(error.errors[0].message)) {
+                message = error.errors[0].message;
+            } else {
+                message = 'Something went wrong :(';
+            }
+
+            this.set('failureMessage', message);
+            (0, _emberInvokeAction.invokeAction)(this, 'uploadFailed', error);
+        },
+
+        actions: {
+            fileSelected: function fileSelected(fileList) {
+                this.set('file', fileList[0]);
+                run.schedule('actions', this, function () {
+                    this.generateRequest();
+                });
+            },
+
+            reset: function reset() {
+                this.set('file', null);
+                this.set('uploadPercentage', 0);
+                this.set('failureMessage', null);
+            }
+        }
+    });
+});
 define('ghost/components/gh-form-group', ['exports', 'ghost/components/gh-validation-status-container'], function (exports, _ghostComponentsGhValidationStatusContainer) {
     exports['default'] = _ghostComponentsGhValidationStatusContainer['default'].extend({
         classNames: 'form-group'
     });
 });
-define('ghost/components/gh-fullscreen-modal', ['exports', 'ember', 'liquid-tether/components/liquid-tether'], function (exports, _ember, _liquidTetherComponentsLiquidTether) {
+define('ghost/components/gh-fullscreen-modal', ['exports', 'ember', 'liquid-tether/components/liquid-tether', 'ember-invoke-action'], function (exports, _ember, _liquidTetherComponentsLiquidTether, _emberInvokeAction) {
     var Promise = _ember['default'].RSVP.Promise;
     var service = _ember['default'].inject.service;
     var isBlank = _ember['default'].isBlank;
@@ -1373,8 +1327,10 @@ define('ghost/components/gh-fullscreen-modal', ['exports', 'ember', 'liquid-teth
 
         actions: {
             close: function close() {
+                // Because we return the promise from invokeAction, we have
+                // to check if "close" exists first
                 if (this.get('close')) {
-                    return this.get('close')();
+                    return (0, _emberInvokeAction.invokeAction)(this, 'close');
                 }
 
                 return new Promise(function (resolve) {
@@ -1384,7 +1340,7 @@ define('ghost/components/gh-fullscreen-modal', ['exports', 'ember', 'liquid-teth
 
             confirm: function confirm() {
                 if (this.get('confirm')) {
-                    return this.get('confirm')();
+                    return (0, _emberInvokeAction.invokeAction)(this, 'confirm');
                 }
 
                 return new Promise(function (resolve) {
@@ -1404,6 +1360,279 @@ define('ghost/components/gh-fullscreen-modal', ['exports', 'ember', 'liquid-teth
 
     exports['default'] = FullScreenModalComponent;
 });
+define('ghost/components/gh-image-uploader-with-preview', ['exports', 'ember'], function (exports, _ember) {
+    var Component = _ember['default'].Component;
+    exports['default'] = Component.extend({
+        actions: {
+            update: function update() {
+                if (typeof this.attrs.update === 'function') {
+                    var _attrs;
+
+                    (_attrs = this.attrs).update.apply(_attrs, arguments);
+                }
+            },
+
+            onInput: function onInput() {
+                if (typeof this.attrs.onInput === 'function') {
+                    var _attrs2;
+
+                    (_attrs2 = this.attrs).onInput.apply(_attrs2, arguments);
+                }
+            },
+
+            uploadStarted: function uploadStarted() {
+                if (typeof this.attrs.uploadStarted === 'function') {
+                    var _attrs3;
+
+                    (_attrs3 = this.attrs).uploadStarted.apply(_attrs3, arguments);
+                }
+            },
+
+            uploadFinished: function uploadFinished() {
+                if (typeof this.attrs.uploadFinished === 'function') {
+                    var _attrs4;
+
+                    (_attrs4 = this.attrs).uploadFinished.apply(_attrs4, arguments);
+                }
+            },
+
+            formChanged: function formChanged() {
+                if (typeof this.attrs.formChanged === 'function') {
+                    var _attrs5;
+
+                    (_attrs5 = this.attrs).formChanged.apply(_attrs5, arguments);
+                }
+            }
+        }
+    });
+});
+define('ghost/components/gh-image-uploader', ['exports', 'ember', 'ghost/utils/ghost-paths', 'ghost/services/ajax'], function (exports, _ember, _ghostUtilsGhostPaths, _ghostServicesAjax) {
+    function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
+
+    var Component = _ember['default'].Component;
+    var computed = _ember['default'].computed;
+    var service = _ember['default'].inject.service;
+    var isBlank = _ember['default'].isBlank;
+    var run = _ember['default'].run;
+    exports['default'] = Component.extend({
+        tagName: 'section',
+        classNames: ['gh-image-uploader'],
+        classNameBindings: ['dragClass'],
+
+        image: null,
+        text: 'Upload an image',
+        saveButton: true,
+
+        dragClass: null,
+        failureMessage: null,
+        file: null,
+        formType: 'upload',
+        url: null,
+        uploadPercentage: 0,
+
+        ajax: service(),
+        config: service(),
+
+        // TODO: this wouldn't be necessary if the server could accept direct
+        // file uploads
+        formData: computed('file', function () {
+            var file = this.get('file');
+            var formData = new FormData();
+
+            formData.append('uploadimage', file);
+
+            return formData;
+        }),
+
+        progressStyle: computed('uploadPercentage', function () {
+            var percentage = this.get('uploadPercentage');
+            var width = '';
+
+            if (percentage > 0) {
+                width = percentage + '%';
+            } else {
+                width = '0';
+            }
+
+            return _ember['default'].String.htmlSafe('width: ' + width);
+        }),
+
+        canShowUploadForm: computed('config.fileStorage', function () {
+            return this.get('config.fileStorage') !== false;
+        }),
+
+        showUploadForm: computed('formType', function () {
+            var canShowUploadForm = this.get('canShowUploadForm');
+            var formType = this.get('formType');
+
+            return formType === 'upload' && canShowUploadForm;
+        }),
+
+        didReceiveAttrs: function didReceiveAttrs() {
+            var image = this.get('image');
+            this.set('url', image);
+        },
+
+        dragOver: function dragOver(event) {
+            var showUploadForm = this.get('showUploadForm');
+
+            if (!event.dataTransfer) {
+                return;
+            }
+
+            // this is needed to work around inconsistencies with dropping files
+            // from Chrome's downloads bar
+            var eA = event.dataTransfer.effectAllowed;
+            event.dataTransfer.dropEffect = eA === 'move' || eA === 'linkMove' ? 'move' : 'copy';
+
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (showUploadForm) {
+                this.set('dragClass', '--drag-over');
+            }
+        },
+
+        dragLeave: function dragLeave(event) {
+            var showUploadForm = this.get('showUploadForm');
+
+            event.preventDefault();
+
+            if (showUploadForm) {
+                this.set('dragClass', null);
+            }
+        },
+
+        drop: function drop(event) {
+            var showUploadForm = this.get('showUploadForm');
+
+            event.preventDefault();
+
+            this.set('dragClass', null);
+
+            if (showUploadForm) {
+                if (event.dataTransfer.files) {
+                    this.send('fileSelected', event.dataTransfer.files);
+                }
+            }
+        },
+
+        uploadStarted: function uploadStarted() {
+            if (typeof this.attrs.uploadStarted === 'function') {
+                this.attrs.uploadStarted();
+            }
+        },
+
+        uploadProgress: function uploadProgress(event) {
+            var _this = this;
+
+            if (event.lengthComputable) {
+                run(function () {
+                    var percentage = Math.round(event.loaded / event.total * 100);
+                    _this.set('uploadPercentage', percentage);
+                });
+            }
+        },
+
+        uploadFinished: function uploadFinished() {
+            if (typeof this.attrs.uploadFinished === 'function') {
+                this.attrs.uploadFinished();
+            }
+        },
+
+        uploadSuccess: function uploadSuccess(response) {
+            this.set('url', response);
+            this.send('saveUrl');
+            this.send('reset');
+        },
+
+        uploadFailed: function uploadFailed(error) {
+            var message = undefined;
+
+            if (_instanceof(error, _ghostServicesAjax.UnsupportedMediaTypeError)) {
+                message = 'The image type you uploaded is not supported. Please use .PNG, .JPG, .GIF, .SVG.';
+            } else if (_instanceof(error, _ghostServicesAjax.RequestEntityTooLargeError)) {
+                message = 'The image you uploaded was larger than the maximum file size your server allows.';
+            } else if (error.errors && !isBlank(error.errors[0].message)) {
+                message = error.errors[0].message;
+            } else {
+                message = 'Something went wrong :(';
+            }
+
+            this.set('failureMessage', message);
+        },
+
+        generateRequest: function generateRequest() {
+            var _this2 = this;
+
+            var ajax = this.get('ajax');
+            var formData = this.get('formData');
+            var url = (0, _ghostUtilsGhostPaths['default'])().apiRoot + '/uploads/';
+
+            this.uploadStarted();
+
+            ajax.post(url, {
+                data: formData,
+                processData: false,
+                contentType: false,
+                dataType: 'text',
+                xhr: function xhr() {
+                    var xhr = new window.XMLHttpRequest();
+
+                    xhr.upload.addEventListener('progress', function (event) {
+                        _this2.uploadProgress(event);
+                    }, false);
+
+                    return xhr;
+                }
+            }).then(function (response) {
+                var url = JSON.parse(response);
+                _this2.uploadSuccess(url);
+            })['catch'](function (error) {
+                _this2.uploadFailed(error);
+            })['finally'](function () {
+                _this2.uploadFinished();
+            });
+        },
+
+        actions: {
+            fileSelected: function fileSelected(fileList) {
+                this.set('file', fileList[0]);
+                run.schedule('actions', this, function () {
+                    this.generateRequest();
+                });
+            },
+
+            onInput: function onInput(url) {
+                this.set('url', url);
+
+                if (typeof this.attrs.onInput === 'function') {
+                    this.attrs.onInput(url);
+                }
+            },
+
+            reset: function reset() {
+                this.set('file', null);
+                this.set('uploadPercentage', 0);
+            },
+
+            switchForm: function switchForm(formType) {
+                this.set('formType', formType);
+
+                if (typeof this.attrs.formChanged === 'function') {
+                    run.scheduleOnce('afterRender', this, function () {
+                        this.attrs.formChanged(formType);
+                    });
+                }
+            },
+
+            saveUrl: function saveUrl() {
+                var url = this.get('url');
+                this.attrs.update(url);
+            }
+        }
+    });
+});
 define('ghost/components/gh-infinite-scroll', ['exports', 'ember', 'ghost/mixins/infinite-scroll'], function (exports, _ember, _ghostMixinsInfiniteScroll) {
     var Component = _ember['default'].Component;
     exports['default'] = Component.extend(_ghostMixinsInfiniteScroll['default'], {
@@ -1418,6 +1647,32 @@ define('ghost/components/gh-input', ['exports', 'ember', 'ghost/mixins/text-inpu
     var TextField = _ember['default'].TextField;
     exports['default'] = TextField.extend(_ghostMixinsTextInput['default'], {
         classNames: 'gh-input'
+    });
+});
+define('ghost/components/gh-light-table', ['exports', 'ember', 'ember-light-table/components/light-table'], function (exports, _ember, _emberLightTableComponentsLightTable) {
+    var $ = _ember['default'].$;
+    var run = _ember['default'].run;
+    exports['default'] = _emberLightTableComponentsLightTable['default'].extend({
+
+        // HACK: infinite pagination was not triggering when scrolling very fast
+        // as the throttle triggers before scrolling into the buffer area but
+        // the scroll finishes before the throttle timeout. Adding a debounce that
+        // does the same thing means that we are guaranteed a final trigger when
+        // scrolling stops
+        //
+        // An issue has been opened upstream, this can be removed if it gets fixed
+        // https://github.com/offirgolan/ember-light-table/issues/15
+
+        _setupScrollEvents: function _setupScrollEvents() {
+            $(this.get('touchMoveContainer')).on('touchmove.light-table', run.bind(this, this._scrollHandler, '_touchmoveTimer'));
+            $(this.get('scrollContainer')).on('scroll.light-table', run.bind(this, this._scrollHandler, '_scrollTimer'));
+            $(this.get('scrollContainer')).on('scroll.light-table', run.bind(this, this._scrollHandler, '_scrollDebounce'));
+        },
+
+        _scrollHandler: function _scrollHandler(timer) {
+            this.set(timer, run.debounce(this, this._onScroll, 100));
+            this.set(timer, run.throttle(this, this._onScroll, 100));
+        }
     });
 });
 define('ghost/components/gh-main', ['exports', 'ember'], function (exports, _ember) {
@@ -1492,6 +1747,7 @@ define('ghost/components/gh-nav-menu', ['exports', 'ember'], function (exports, 
         config: service(),
         session: service(),
         ghostPaths: service(),
+        feature: service(),
 
         mouseEnter: function mouseEnter() {
             this.sendAction('onMouseEnter');
@@ -1555,7 +1811,7 @@ define('ghost/components/gh-navigation', ['exports', 'ember'], function (exports
         }
     });
 });
-define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (exports, _ember) {
+define('ghost/components/gh-navitem-url-input', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
     var TextField = _ember['default'].TextField;
     var computed = _ember['default'].computed;
     var run = _ember['default'].run;
@@ -1625,7 +1881,7 @@ define('ghost/components/gh-navitem-url-input', ['exports', 'ember'], function (
         },
 
         keyPress: function keyPress(event) {
-            this.get('clearErrors')();
+            (0, _emberInvokeAction.invokeAction)(this, 'clearErrors');
 
             // enter key
             if (event.keyCode === 13) {
@@ -1855,7 +2111,7 @@ define('ghost/components/gh-popover', ['exports', 'ember', 'ghost/components/gh-
         dropdown: service()
     });
 });
-define('ghost/components/gh-posts-list-item', ['exports', 'ember', 'ghost/mixins/active-link-wrapper'], function (exports, _ember, _ghostMixinsActiveLinkWrapper) {
+define('ghost/components/gh-posts-list-item', ['exports', 'ember', 'ghost/mixins/active-link-wrapper', 'ember-invoke-action'], function (exports, _ember, _ghostMixinsActiveLinkWrapper, _emberInvokeAction) {
     var $ = _ember['default'].$;
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
@@ -1904,7 +2160,7 @@ define('ghost/components/gh-posts-list-item', ['exports', 'ember', 'ghost/mixins
             this._super.apply(this, arguments);
             this.removeObserver('active', this, this.scrollIntoView);
             if (this.get('post.isDeleted') && this.get('onDelete')) {
-                this.get('onDelete')();
+                (0, _emberInvokeAction.invokeAction)(this, 'onDelete');
             }
         },
 
@@ -1938,10 +2194,13 @@ define('ghost/components/gh-posts-list-item', ['exports', 'ember', 'ghost/mixins
         }
     });
 });
-define('ghost/components/gh-profile-image', ['exports', 'ember'], function (exports, _ember) {
+define('ghost/components/gh-profile-image', ['exports', 'ember', 'ember-ajax/services/ajax', 'ghost/services/ajax'], function (exports, _ember, _emberAjaxServicesAjax, _ghostServicesAjax) {
+    function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
+
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
+    var isBlank = _ember['default'].isBlank;
     var run = _ember['default'].run;
     var notEmpty = computed.notEmpty;
 
@@ -1967,6 +2226,8 @@ define('ghost/components/gh-profile-image', ['exports', 'ember'], function (expo
         validEmail: '',
         hasUploadedImage: false,
         fileStorage: true,
+        ajax: _emberAjaxServicesAjax['default'].create(),
+        config: service(),
 
         ghostPaths: service(),
         displayGravatar: notEmpty('validEmail'),
@@ -1996,13 +2257,26 @@ define('ghost/components/gh-profile-image', ['exports', 'ember'], function (expo
         },
 
         imageBackground: computed('validEmail', 'size', function () {
+            var _this = this;
+
             var email = this.get('validEmail');
             var size = this.get('size');
-
             var style = '';
-            if (email) {
-                var url = '//www.gravatar.com/avatar/' + window.md5(email) + '?s=' + size + '&d=blank';
-                style = 'background-image: url(' + url + ')';
+
+            if (!isBlank(email)) {
+                var gravatarUrl = '//www.gravatar.com/avatar/' + window.md5(email) + '?s=' + size + '&d=404';
+
+                this.get('ajax').request(gravatarUrl)['catch'](function (error) {
+                    var defaultImageUrl = 'url("' + _this.get('ghostPaths.subdir') + '/ghost/img/user-image.png")';
+
+                    if (_instanceof(error, _ghostServicesAjax.NotFoundError)) {
+                        _this.$('.placeholder-img')[0].style.backgroundImage = _ember['default'].String.htmlSafe(defaultImageUrl);
+                    } else {
+                        _this.$('.placeholder-img')[0].style.backgroundImage = 'url()';
+                    }
+                });
+
+                style = 'background-image: url(' + gravatarUrl + ')';
             }
             return _ember['default'].String.htmlSafe(style);
         }),
@@ -2058,14 +2332,75 @@ define('ghost/components/gh-profile-image', ['exports', 'ember'], function (expo
         }
     });
 });
+define('ghost/components/gh-search-input/trigger', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
+    var run = _ember['default'].run;
+    var isBlank = _ember['default'].isBlank;
+    var Component = _ember['default'].Component;
+    exports['default'] = Component.extend({
+        open: function open() {
+            this.get('select.actions').open();
+        },
+
+        close: function close() {
+            this.get('select.actions').close();
+        },
+
+        actions: {
+            captureMouseDown: function captureMouseDown(e) {
+                e.stopPropagation();
+            },
+
+            search: function search(term) {
+                if (isBlank(term) === this.get('select.isOpen')) {
+                    run.scheduleOnce('afterRender', this, isBlank(term) ? this.close : this.open);
+                }
+
+                (0, _emberInvokeAction.invokeAction)(this, 'select.actions.search', term);
+            },
+
+            focusInput: function focusInput() {
+                this.$('input')[0].focus();
+            },
+
+            resetInput: function resetInput() {
+                this.$('input').val('');
+            },
+
+            handleKeydown: function handleKeydown(e) {
+                var select = this.get('select');
+                if (!select.isOpen) {
+                    e.stopPropagation();
+                }
+            }
+        }
+    });
+});
 define('ghost/components/gh-search-input', ['exports', 'ember'], function (exports, _ember) {
-    var $ = _ember['default'].$;
+    exports.computedGroup = computedGroup;
     var Component = _ember['default'].Component;
     var RSVP = _ember['default'].RSVP;
     var computed = _ember['default'].computed;
+    var run = _ember['default'].run;
     var service = _ember['default'].inject.service;
-    var observer = _ember['default'].observer;
-    var filterBy = computed.filterBy;
+    var isBlank = _ember['default'].isBlank;
+    var isEmpty = _ember['default'].isEmpty;
+
+    function computedGroup(category) {
+        return computed('content', 'currentSearch', function () {
+            var _this = this;
+
+            if (!this.get('currentSearch') || !this.get('content')) {
+                return [];
+            }
+
+            return this.get('content').filter(function (item) {
+                var search = new RegExp(_this.get('currentSearch'), 'ig');
+
+                return item.category === category && item.title.match(search);
+            });
+        });
+    }
+
     exports['default'] = Component.extend({
 
         selection: null,
@@ -2073,22 +2408,19 @@ define('ghost/components/gh-search-input', ['exports', 'ember'], function (expor
         isLoading: false,
         contentExpiry: 10 * 1000,
         contentExpiresAt: false,
+        currentSearch: '',
 
-        posts: filterBy('content', 'category', 'Posts'),
-        pages: filterBy('content', 'category', 'Pages'),
-        users: filterBy('content', 'category', 'Users'),
-        tags: filterBy('content', 'category', 'Tags'),
+        posts: computedGroup('Posts'),
+        pages: computedGroup('Pages'),
+        users: computedGroup('Users'),
+        tags: computedGroup('Tags'),
 
         _store: service('store'),
         _routing: service('-routing'),
         ajax: service(),
 
-        _selectize: computed(function () {
-            return this.$('select')[0].selectize;
-        }),
-
         refreshContent: function refreshContent() {
-            var _this = this;
+            var _this2 = this;
 
             var promises = [];
             var now = new Date();
@@ -2096,7 +2428,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember'], function (expor
             var contentExpiresAt = this.get('contentExpiresAt');
 
             if (this.get('isLoading') || contentExpiresAt > now) {
-                return;
+                return RSVP.resolve();
             }
 
             this.set('isLoading', true);
@@ -2105,11 +2437,33 @@ define('ghost/components/gh-search-input', ['exports', 'ember'], function (expor
             promises.pushObject(this._loadUsers());
             promises.pushObject(this._loadTags());
 
-            RSVP.all(promises).then(function () {})['finally'](function () {
-                _this.set('isLoading', false);
-                _this.set('contentExpiresAt', new Date(now.getTime() + contentExpiry));
+            return RSVP.all(promises).then(function () {})['finally'](function () {
+                _this2.set('isLoading', false);
+                _this2.set('contentExpiresAt', new Date(now.getTime() + contentExpiry));
             });
         },
+
+        groupedContent: computed('posts', 'pages', 'users', 'tags', function () {
+            var groups = [];
+
+            if (!isEmpty(this.get('posts'))) {
+                groups.pushObject({ groupName: 'Posts', options: this.get('posts') });
+            }
+
+            if (!isEmpty(this.get('pages'))) {
+                groups.pushObject({ groupName: 'Pages', options: this.get('pages') });
+            }
+
+            if (!isEmpty(this.get('users'))) {
+                groups.pushObject({ groupName: 'Users', options: this.get('users') });
+            }
+
+            if (!isEmpty(this.get('tags'))) {
+                groups.pushObject({ groupName: 'Tags', options: this.get('tags') });
+            }
+
+            return groups;
+        }),
 
         _loadPosts: function _loadPosts() {
             var store = this.get('_store');
@@ -2118,6 +2472,7 @@ define('ghost/components/gh-search-input', ['exports', 'ember'], function (expor
             var content = this.get('content');
 
             return this.get('ajax').request(postsUrl, { data: postsQuery }).then(function (posts) {
+
                 content.pushObjects(posts.posts.map(function (post) {
                     return {
                         id: 'post.' + post.id,
@@ -2162,11 +2517,19 @@ define('ghost/components/gh-search-input', ['exports', 'ember'], function (expor
             });
         },
 
-        _keepSelectionClear: observer('selection', function () {
-            if (this.get('selection') !== null) {
-                this.set('selection', null);
+        _performSearch: function _performSearch(term, resolve, reject) {
+            var _this3 = this;
+
+            if (isBlank(term)) {
+                return resolve([]);
             }
-        }),
+
+            this.refreshContent().then(function () {
+                _this3.set('currentSearch', term);
+
+                return resolve(_this3.get('groupedContent'));
+            })['catch'](reject);
+        },
 
         _setKeymasterScope: function _setKeymasterScope() {
             key.setScope('search-input');
@@ -2183,70 +2546,40 @@ define('ghost/components/gh-search-input', ['exports', 'ember'], function (expor
 
         actions: {
             openSelected: function openSelected(selected) {
-                var _this2 = this;
-
-                var transition = null;
-
                 if (!selected) {
                     return;
                 }
 
                 if (selected.category === 'Posts' || selected.category === 'Pages') {
                     var id = selected.id.replace('post.', '');
-                    transition = this.get('_routing.router').transitionTo('editor.edit', id);
+                    this.get('_routing.router').transitionTo('editor.edit', id);
                 }
 
                 if (selected.category === 'Users') {
                     var id = selected.id.replace('user.', '');
-                    transition = this.get('_routing.router').transitionTo('team.user', id);
+                    this.get('_routing.router').transitionTo('team.user', id);
                 }
 
                 if (selected.category === 'Tags') {
                     var id = selected.id.replace('tag.', '');
-                    transition = this.get('_routing.router').transitionTo('settings.tags.tag', id);
+                    this.get('_routing.router').transitionTo('settings.tags.tag', id);
                 }
-
-                transition.then(function () {
-                    if (_this2.get('_selectize').$control_input.is(':focus')) {
-                        _this2._setKeymasterScope();
-                    }
-                });
-            },
-
-            focusInput: function focusInput() {
-                this.get('_selectize').focus();
-            },
-
-            onInit: function onInit() {
-                var selectize = this.get('_selectize');
-                var html = '<div class="dropdown-empty-message">Nothing found&hellip;</div>';
-
-                selectize.$empty_results_container = $(html);
-                selectize.$empty_results_container.hide();
-                selectize.$dropdown.append(selectize.$empty_results_container);
             },
 
             onFocus: function onFocus() {
                 this._setKeymasterScope();
-                this.refreshContent();
             },
 
             onBlur: function onBlur() {
-                var selectize = this.get('_selectize');
-
                 this._resetKeymasterScope();
-                selectize.$empty_results_container.hide();
             },
 
-            onType: function onType() {
-                var selectize = this.get('_selectize');
+            search: function search(term) {
+                var _this4 = this;
 
-                if (!selectize.hasOptions) {
-                    selectize.open();
-                    selectize.$empty_results_container.show();
-                } else {
-                    selectize.$empty_results_container.hide();
-                }
+                return new RSVP.Promise(function (resolve, reject) {
+                    run.debounce(_this4, _this4._performSearch, term, resolve, reject, 200);
+                });
             }
         }
 
@@ -2522,6 +2855,23 @@ define('ghost/components/gh-spin-button', ['exports', 'ember'], function (export
         }
     });
 });
+define('ghost/components/gh-subscribers-table', ['exports', 'ember'], function (exports, _ember) {
+    exports['default'] = _ember['default'].Component.extend({
+        classNames: ['subscribers-table'],
+
+        table: null,
+
+        actions: {
+            onScrolledToBottom: function onScrolledToBottom() {
+                var loadNextPage = this.get('loadNextPage');
+
+                if (!this.get('isLoading')) {
+                    loadNextPage();
+                }
+            }
+        }
+    });
+});
 define('ghost/components/gh-tab-pane', ['exports', 'ember'], function (exports, _ember) {
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
@@ -2678,7 +3028,7 @@ define('ghost/components/gh-tabs-manager', ['exports', 'ember'], function (expor
         }
     });
 });
-define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/utils/bound-one-way'], function (exports, _ember, _ghostUtilsBoundOneWay) {
+define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/utils/bound-one-way', 'ember-invoke-action'], function (exports, _ember, _ghostUtilsBoundOneWay, _emberInvokeAction) {
     var Component = _ember['default'].Component;
     var Handlebars = _ember['default'].Handlebars;
     var computed = _ember['default'].computed;
@@ -2782,19 +3132,15 @@ define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/util
 
         actions: {
             setProperty: function setProperty(property, value) {
-                this.get('setProperty')(property, value);
+                (0, _emberInvokeAction.invokeAction)(this, 'setProperty', property, value);
             },
 
             setCoverImage: function setCoverImage(image) {
-                this.get('setProperty')('image', image);
+                (0, _emberInvokeAction.invokeAction)(this, 'setProperty', 'image', image);
             },
 
             clearCoverImage: function clearCoverImage() {
-                this.get('setProperty')('image', '');
-            },
-
-            setUploaderReference: function setUploaderReference() {
-                // noop
+                (0, _emberInvokeAction.invokeAction)(this, 'setProperty', 'image', '');
             },
 
             openMeta: function openMeta() {
@@ -2806,20 +3152,20 @@ define('ghost/components/gh-tag-settings-form', ['exports', 'ember', 'ghost/util
             },
 
             deleteTag: function deleteTag() {
-                this.get('showDeleteTagModal')();
+                (0, _emberInvokeAction.invokeAction)(this, 'showDeleteTagModal');
             }
         }
 
     });
 });
 /* global key */
-define('ghost/components/gh-tag', ['exports', 'ember'], function (exports, _ember) {
+define('ghost/components/gh-tag', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
     exports['default'] = _ember['default'].Component.extend({
         willDestroyElement: function willDestroyElement() {
             this._super.apply(this, arguments);
 
             if (this.get('tag.isDeleted') && this.get('onDelete')) {
-                this.get('onDelete')();
+                (0, _emberInvokeAction.invokeAction)(this, 'onDelete');
             }
         }
     });
@@ -2923,92 +3269,6 @@ define('ghost/components/gh-trim-focus-input', ['exports', 'ember'], function (e
     });
 });
 /*global device*/
-define('ghost/components/gh-uploader', ['exports', 'ember', 'ghost/assets/lib/uploader'], function (exports, _ember, _ghostAssetsLibUploader) {
-    var Component = _ember['default'].Component;
-    var computed = _ember['default'].computed;
-    var get = _ember['default'].get;
-    var service = _ember['default'].inject.service;
-    var isEmpty = _ember['default'].isEmpty;
-    var run = _ember['default'].run;
-    exports['default'] = Component.extend({
-        classNames: ['image-uploader', 'js-post-image-upload'],
-
-        config: service(),
-
-        imageSource: computed('image', function () {
-            return this.get('image') || '';
-        }),
-
-        // removes event listeners from the uploader
-        removeListeners: function removeListeners() {
-            var $this = this.$();
-
-            $this.off();
-            $this.find('.js-cancel').off();
-        },
-
-        // NOTE: because the uploader is sometimes in the same place in the DOM
-        // between transitions Glimmer will re-use the existing elements including
-        // those that arealready decorated by jQuery. The following works around
-        // situations where the image is changed without a full teardown/rebuild
-        didReceiveAttrs: function didReceiveAttrs(attrs) {
-            var oldValue = attrs.oldAttrs && get(attrs.oldAttrs, 'image.value');
-            var newValue = attrs.newAttrs && get(attrs.newAttrs, 'image.value');
-
-            this._super.apply(this, arguments);
-
-            // always reset when we receive a blank image
-            // - handles navigating to populated image from blank image
-            if (isEmpty(newValue) && !isEmpty(oldValue)) {
-                this.$()[0].uploaderUi.reset();
-            }
-
-            // re-init if we receive a new image
-            // - handles back button navigating from blank image to populated image
-            // - handles navigating between populated images
-
-            if (!isEmpty(newValue) && this.$()) {
-                this.$('.js-upload-target').attr('src', '');
-                this.$()[0].uploaderUi.reset();
-                this.$()[0].uploaderUi.initWithImage();
-            }
-        },
-
-        didInsertElement: function didInsertElement() {
-            this._super.apply(this, arguments);
-            this.send('initUploader');
-        },
-
-        willDestroyElement: function willDestroyElement() {
-            this._super.apply(this, arguments);
-            this.removeListeners();
-        },
-
-        actions: {
-            initUploader: function initUploader() {
-                var _this = this;
-
-                var el = this.$();
-                var ref = _ghostAssetsLibUploader['default'].call(el, {
-                    editor: true,
-                    fileStorage: this.get('config.fileStorage')
-                });
-
-                el.on('uploadsuccess', function (event, result) {
-                    if (result && result !== '' && result !== 'http://') {
-                        run(_this, function () {
-                            this.sendAction('uploaded', result);
-                        });
-                    }
-                });
-
-                el.on('imagecleared', run.bind(this, 'sendAction', 'canceled'));
-
-                this.sendAction('initUploader', ref);
-            }
-        }
-    });
-});
 define('ghost/components/gh-url-preview', ['exports', 'ember'], function (exports, _ember) {
     var Component = _ember['default'].Component;
     var computed = _ember['default'].computed;
@@ -3203,6 +3463,14 @@ define('ghost/components/lf-overlay', ['exports', 'ember'], function (exports, _
       if (counter < 2) {
         body.removeClass('lf-modal-open lf-modal-closing');
       }
+    }
+  });
+});
+define('ghost/components/light-table', ['exports', 'ember-light-table/components/light-table'], function (exports, _emberLightTableComponentsLightTable) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLightTable['default'];
     }
   });
 });
@@ -3809,7 +4077,63 @@ define("ghost/components/lm-container", ["exports", "ember", "liquid-fire/tabbab
    Released under The MIT License (MIT)
    Copyright (c) 2014 Instructure, Inc.
 */
-define('ghost/components/modals/base', ['exports', 'ember'], function (exports, _ember) {
+define('ghost/components/lt-body', ['exports', 'ember-light-table/components/lt-body'], function (exports, _emberLightTableComponentsLtBody) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtBody['default'];
+    }
+  });
+});
+define('ghost/components/lt-cell', ['exports', 'ember-light-table/components/lt-cell'], function (exports, _emberLightTableComponentsLtCell) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtCell['default'];
+    }
+  });
+});
+define('ghost/components/lt-column', ['exports', 'ember-light-table/components/lt-column'], function (exports, _emberLightTableComponentsLtColumn) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtColumn['default'];
+    }
+  });
+});
+define('ghost/components/lt-foot', ['exports', 'ember-light-table/components/lt-foot'], function (exports, _emberLightTableComponentsLtFoot) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtFoot['default'];
+    }
+  });
+});
+define('ghost/components/lt-head', ['exports', 'ember-light-table/components/lt-head'], function (exports, _emberLightTableComponentsLtHead) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtHead['default'];
+    }
+  });
+});
+define('ghost/components/lt-row', ['exports', 'ember-light-table/components/lt-row'], function (exports, _emberLightTableComponentsLtRow) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtRow['default'];
+    }
+  });
+});
+define('ghost/components/lt-spanned-row', ['exports', 'ember-light-table/components/lt-spanned-row'], function (exports, _emberLightTableComponentsLtSpannedRow) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberLightTableComponentsLtSpannedRow['default'];
+    }
+  });
+});
+define('ghost/components/modals/base', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
     var Component = _ember['default'].Component;
     var run = _ember['default'].run;
     exports['default'] = Component.extend({
@@ -3860,7 +4184,7 @@ define('ghost/components/modals/base', ['exports', 'ember'], function (exports, 
             },
 
             closeModal: function closeModal() {
-                this.get('closeModal')();
+                (0, _emberInvokeAction.invokeAction)(this, 'closeModal');
             }
         }
     });
@@ -3972,7 +4296,29 @@ define('ghost/components/modals/delete-post', ['exports', 'ember', 'ghost/compon
         }
     });
 });
-define('ghost/components/modals/delete-tag', ['exports', 'ember', 'ghost/components/modals/base'], function (exports, _ember, _ghostComponentsModalsBase) {
+define('ghost/components/modals/delete-subscriber', ['exports', 'ember', 'ghost/components/modals/base', 'ember-invoke-action'], function (exports, _ember, _ghostComponentsModalsBase, _emberInvokeAction) {
+    var computed = _ember['default'].computed;
+    var alias = computed.alias;
+    exports['default'] = _ghostComponentsModalsBase['default'].extend({
+
+        submitting: false,
+
+        subscriber: alias('model'),
+
+        actions: {
+            confirm: function confirm() {
+                var _this = this;
+
+                this.set('submitting', true);
+
+                (0, _emberInvokeAction.invokeAction)(this, 'confirm')['finally'](function () {
+                    _this.set('submitting', false);
+                });
+            }
+        }
+    });
+});
+define('ghost/components/modals/delete-tag', ['exports', 'ember', 'ghost/components/modals/base', 'ember-invoke-action'], function (exports, _ember, _ghostComponentsModalsBase, _emberInvokeAction) {
     var computed = _ember['default'].computed;
     var alias = computed.alias;
     exports['default'] = _ghostComponentsModalsBase['default'].extend({
@@ -3991,14 +4337,14 @@ define('ghost/components/modals/delete-tag', ['exports', 'ember', 'ghost/compone
 
                 this.set('submitting', true);
 
-                this.get('confirm')()['finally'](function () {
+                (0, _emberInvokeAction.invokeAction)(this, 'confirm')['finally'](function () {
                     _this.send('closeModal');
                 });
             }
         }
     });
 });
-define('ghost/components/modals/delete-user', ['exports', 'ghost/components/modals/base'], function (exports, _ghostComponentsModalsBase) {
+define('ghost/components/modals/delete-user', ['exports', 'ghost/components/modals/base', 'ember-invoke-action'], function (exports, _ghostComponentsModalsBase, _emberInvokeAction) {
     exports['default'] = _ghostComponentsModalsBase['default'].extend({
 
         submitting: false,
@@ -4011,9 +4357,48 @@ define('ghost/components/modals/delete-user', ['exports', 'ghost/components/moda
 
                 this.set('submitting', true);
 
-                this.get('confirm')()['finally'](function () {
+                (0, _emberInvokeAction.invokeAction)(this, 'confirm')['finally'](function () {
                     _this.send('closeModal');
                 });
+            }
+        }
+    });
+});
+define('ghost/components/modals/import-subscribers', ['exports', 'ember', 'ember-invoke-action', 'ghost/components/modals/base', 'ghost/utils/ghost-paths'], function (exports, _ember, _emberInvokeAction, _ghostComponentsModalsBase, _ghostUtilsGhostPaths) {
+    var computed = _ember['default'].computed;
+    exports['default'] = _ghostComponentsModalsBase['default'].extend({
+        labelText: 'Select or drag-and-drop a CSV File',
+
+        response: null,
+        closeDisabled: false,
+
+        uploadUrl: computed(function () {
+            return (0, _ghostUtilsGhostPaths['default'])().apiRoot + '/subscribers/csv/';
+        }),
+
+        actions: {
+            uploadStarted: function uploadStarted() {
+                this.set('closeDisabled', true);
+            },
+
+            uploadFinished: function uploadFinished() {
+                this.set('closeDisabled', false);
+            },
+
+            uploadSuccess: function uploadSuccess(response) {
+                this.set('response', response.meta.stats);
+                // invoke the passed in confirm action
+                (0, _emberInvokeAction.invokeAction)(this, 'confirm');
+            },
+
+            confirm: function confirm() {
+                // noop - we don't want the enter key doing anything
+            },
+
+            closeModal: function closeModal() {
+                if (!this.get('closeDisabled')) {
+                    this._super.apply(this, arguments);
+                }
             }
         }
     });
@@ -4146,13 +4531,13 @@ define('ghost/components/modals/invite-new-user', ['exports', 'ember', 'ghost/co
         }
     });
 });
-define('ghost/components/modals/leave-editor', ['exports', 'ghost/components/modals/base'], function (exports, _ghostComponentsModalsBase) {
+define('ghost/components/modals/leave-editor', ['exports', 'ghost/components/modals/base', 'ember-invoke-action'], function (exports, _ghostComponentsModalsBase, _emberInvokeAction) {
     exports['default'] = _ghostComponentsModalsBase['default'].extend({
         actions: {
             confirm: function confirm() {
                 var _this = this;
 
-                this.get('confirm')()['finally'](function () {
+                (0, _emberInvokeAction.invokeAction)(this, 'confirm')['finally'](function () {
                     _this.send('closeModal');
                 });
             }
@@ -4161,6 +4546,44 @@ define('ghost/components/modals/leave-editor', ['exports', 'ghost/components/mod
 });
 define('ghost/components/modals/markdown-help', ['exports', 'ghost/components/modals/base'], function (exports, _ghostComponentsModalsBase) {
   exports['default'] = _ghostComponentsModalsBase['default'].extend({});
+});
+define('ghost/components/modals/new-subscriber', ['exports', 'ember', 'ghost/components/modals/base'], function (exports, _ember, _ghostComponentsModalsBase) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    exports['default'] = _ghostComponentsModalsBase['default'].extend({
+        actions: {
+            updateEmail: function updateEmail(newEmail) {
+                this.set('model.email', newEmail);
+                this.set('model.hasValidated', _ember['default'].A());
+                this.get('model.errors').clear();
+            },
+
+            confirm: function confirm() {
+                var _this = this;
+
+                var confirmAction = this.get('confirm');
+
+                this.set('submitting', true);
+
+                confirmAction().then(function () {
+                    _this.send('closeModal');
+                })['catch'](function (errors) {
+                    var _errors = _slicedToArray(errors, 1);
+
+                    var error = _errors[0];
+
+                    if (error && error.match(/email/i)) {
+                        _this.get('model.errors').add('email', error);
+                        _this.get('model.hasValidated').pushObject('email');
+                    }
+                })['finally'](function () {
+                    if (!_this.get('isDestroying') && !_this.get('isDestroyed')) {
+                        _this.set('submitting', false);
+                    }
+                });
+            }
+        }
+    });
 });
 define('ghost/components/modals/re-authenticate', ['exports', 'ember', 'ghost/components/modals/base', 'ghost/mixins/validation-engine'], function (exports, _ember, _ghostComponentsModalsBase, _ghostMixinsValidationEngine) {
     var $ = _ember['default'].$;
@@ -4229,7 +4652,7 @@ define('ghost/components/modals/re-authenticate', ['exports', 'ember', 'ghost/co
         }
     });
 });
-define('ghost/components/modals/transfer-owner', ['exports', 'ghost/components/modals/base'], function (exports, _ghostComponentsModalsBase) {
+define('ghost/components/modals/transfer-owner', ['exports', 'ghost/components/modals/base', 'ember-invoke-action'], function (exports, _ghostComponentsModalsBase, _emberInvokeAction) {
     exports['default'] = _ghostComponentsModalsBase['default'].extend({
         user: null,
         submitting: false,
@@ -4240,26 +4663,28 @@ define('ghost/components/modals/transfer-owner', ['exports', 'ghost/components/m
 
                 this.set('submitting', true);
 
-                this.get('confirm')()['finally'](function () {
+                (0, _emberInvokeAction.invokeAction)(this, 'confirm')['finally'](function () {
                     _this.send('closeModal');
                 });
             }
         }
     });
 });
-define('ghost/components/modals/upload-image', ['exports', 'ember', 'ghost/components/modals/base', 'ghost/assets/lib/uploader', 'ghost/utils/caja-sanitizers'], function (exports, _ember, _ghostComponentsModalsBase, _ghostAssetsLibUploader, _ghostUtilsCajaSanitizers) {
+define('ghost/components/modals/upload-image', ['exports', 'ember', 'ghost/components/modals/base', 'ghost/utils/caja-sanitizers'], function (exports, _ember, _ghostComponentsModalsBase, _ghostUtilsCajaSanitizers) {
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
     var isEmpty = _ember['default'].isEmpty;
     exports['default'] = _ghostComponentsModalsBase['default'].extend({
-        acceptEncoding: 'image/*',
         model: null,
         submitting: false,
+
+        url: '',
+        newUrl: '',
 
         config: service(),
         notifications: service(),
 
-        imageUrl: computed('model.model', 'model.imageProperty', {
+        image: computed('model.model', 'model.imageProperty', {
             get: function get() {
                 var imageProperty = this.get('model.imageProperty');
 
@@ -4274,53 +4699,64 @@ define('ghost/components/modals/upload-image', ['exports', 'ember', 'ghost/compo
             }
         }),
 
-        didInsertElement: function didInsertElement() {
-            this._super.apply(this, arguments);
-            _ghostAssetsLibUploader['default'].call(this.$('.js-drop-zone'), {
-                fileStorage: this.get('config.fileStorage')
-            });
+        didReceiveAttrs: function didReceiveAttrs() {
+            var image = this.get('image');
+            this.set('url', image);
+            this.set('newUrl', image);
         },
 
+        // TODO: should validation be handled in the gh-image-uploader component?
+        //  pro - consistency everywhere, simplification here
+        //  con - difficult if the "save" is happening externally as it does here
+        //
+        //  maybe it should be handled at the model level?
+        //      - automatically present everywhere
+        //      - file uploads should always result in valid urls so it should only
+        //        affect the url input form
         keyDown: function keyDown() {
             this._setErrorState(false);
         },
 
         _setErrorState: function _setErrorState(state) {
             if (state) {
-                this.$('.js-upload-url').addClass('error');
+                this.$('.url').addClass('error');
             } else {
-                this.$('.js-upload-url').removeClass('error');
+                this.$('.url').removeClass('error');
             }
         },
 
-        _setImageProperty: function _setImageProperty() {
-            var value = undefined;
-
-            if (this.$('.js-upload-url').val()) {
-                value = this.$('.js-upload-url').val();
-
-                if (!isEmpty(value) && !_ghostUtilsCajaSanitizers['default'].url(value)) {
-                    this._setErrorState(true);
-                    return { message: 'Image URI is not valid' };
-                }
-            } else {
-                value = this.$('.js-upload-target').attr('src');
+        _validateUrl: function _validateUrl(url) {
+            if (!isEmpty(url) && !_ghostUtilsCajaSanitizers['default'].url(url)) {
+                this._setErrorState(true);
+                return { message: 'Image URI is not valid' };
             }
 
-            this.set('imageUrl', value);
             return true;
         },
+        // end validation
 
         actions: {
+            fileUploaded: function fileUploaded(url) {
+                this.set('url', url);
+                this.set('newUrl', url);
+            },
+
+            removeImage: function removeImage() {
+                this.set('url', '');
+                this.set('newUrl', '');
+            },
+
             confirm: function confirm() {
                 var _this = this;
 
                 var model = this.get('model.model');
+                var newUrl = this.get('newUrl');
+                var result = this._validateUrl(newUrl);
                 var notifications = this.get('notifications');
-                var result = this._setImageProperty();
 
-                if (!result.message) {
+                if (result === true) {
                     this.set('submitting', true);
+                    this.set('image', newUrl);
 
                     model.save()['catch'](function (err) {
                         notifications.showAPIError(err, { key: 'image.upload' });
@@ -4332,11 +4768,123 @@ define('ghost/components/modals/upload-image', ['exports', 'ember', 'ghost/compo
         }
     });
 });
+define('ghost/components/one-way-checkbox', ['exports', 'ember-one-way-controls/components/one-way-checkbox'], function (exports, _emberOneWayControlsComponentsOneWayCheckbox) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsComponentsOneWayCheckbox['default'];
+    }
+  });
+});
+define('ghost/components/one-way-input', ['exports', 'ember-one-way-controls/components/one-way-input'], function (exports, _emberOneWayControlsComponentsOneWayInput) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsComponentsOneWayInput['default'];
+    }
+  });
+});
+define('ghost/components/one-way-radio', ['exports', 'ember-one-way-controls/components/one-way-radio'], function (exports, _emberOneWayControlsComponentsOneWayRadio) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsComponentsOneWayRadio['default'];
+    }
+  });
+});
+define('ghost/components/one-way-select/option', ['exports', 'ember-one-way-controls/components/one-way-select/option'], function (exports, _emberOneWayControlsComponentsOneWaySelectOption) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsComponentsOneWaySelectOption['default'];
+    }
+  });
+});
+define('ghost/components/one-way-select', ['exports', 'ember-one-way-controls/components/one-way-select'], function (exports, _emberOneWayControlsComponentsOneWaySelect) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsComponentsOneWaySelect['default'];
+    }
+  });
+});
+define('ghost/components/one-way-textarea', ['exports', 'ember-one-way-controls/components/one-way-textarea'], function (exports, _emberOneWayControlsComponentsOneWayTextarea) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsComponentsOneWayTextarea['default'];
+    }
+  });
+});
+define('ghost/components/power-select/before-options', ['exports', 'ember-power-select/components/power-select/before-options'], function (exports, _emberPowerSelectComponentsPowerSelectBeforeOptions) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelectBeforeOptions['default'];
+    }
+  });
+});
+define('ghost/components/power-select/options', ['exports', 'ember-power-select/components/power-select/options'], function (exports, _emberPowerSelectComponentsPowerSelectOptions) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelectOptions['default'];
+    }
+  });
+});
+define('ghost/components/power-select/trigger', ['exports', 'ember-power-select/components/power-select/trigger'], function (exports, _emberPowerSelectComponentsPowerSelectTrigger) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelectTrigger['default'];
+    }
+  });
+});
+define('ghost/components/power-select-multiple/options', ['exports', 'ember-power-select/components/power-select-multiple/options'], function (exports, _emberPowerSelectComponentsPowerSelectMultipleOptions) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelectMultipleOptions['default'];
+    }
+  });
+});
+define('ghost/components/power-select-multiple/trigger', ['exports', 'ember-power-select/components/power-select-multiple/trigger'], function (exports, _emberPowerSelectComponentsPowerSelectMultipleTrigger) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelectMultipleTrigger['default'];
+    }
+  });
+});
+define('ghost/components/power-select-multiple', ['exports', 'ember-power-select/components/power-select-multiple'], function (exports, _emberPowerSelectComponentsPowerSelectMultiple) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelectMultiple['default'];
+    }
+  });
+});
+define('ghost/components/power-select', ['exports', 'ember-power-select/components/power-select'], function (exports, _emberPowerSelectComponentsPowerSelect) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectComponentsPowerSelect['default'];
+    }
+  });
+});
 define('ghost/components/sortable-group', ['exports', 'ember-sortable/components/sortable-group'], function (exports, _emberSortableComponentsSortableGroup) {
   exports['default'] = _emberSortableComponentsSortableGroup['default'];
 });
 define('ghost/components/sortable-item', ['exports', 'ember-sortable/components/sortable-item'], function (exports, _emberSortableComponentsSortableItem) {
   exports['default'] = _emberSortableComponentsSortableItem['default'];
+});
+define('ghost/components/x-file-input', ['exports', 'emberx-file-input/components/x-file-input'], function (exports, _emberxFileInputComponentsXFileInput) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberxFileInputComponentsXFileInput['default'];
+    }
+  });
 });
 define('ghost/controllers/about', ['exports', 'ember'], function (exports, _ember) {
     var Controller = _ember['default'].Controller;
@@ -4362,8 +4910,11 @@ define('ghost/controllers/application', ['exports', 'ember'], function (exports,
     var service = _ember['default'].inject.service;
     exports['default'] = Controller.extend({
         dropdown: service(),
+        session: service(),
 
-        signedOut: computed.match('currentPath', /(signin|signup|setup|reset)/),
+        showNavMenu: computed('currentPath', 'session.isAuthenticated', function () {
+            return (this.get('currentPath') !== 'error404' || this.get('session.isAuthenticated')) && !this.get('currentPath').match(/(signin|signup|setup|reset)/);
+        }),
 
         topNotificationCount: 0,
         showMobileMenu: false,
@@ -4464,44 +5015,6 @@ define('ghost/controllers/error', ['exports', 'ember'], function (exports, _embe
         })
     });
 });
-define('ghost/controllers/feature', ['exports', 'ember'], function (exports, _ember) {
-    var Controller = _ember['default'].Controller;
-    var PromiseProxyMixin = _ember['default'].PromiseProxyMixin;
-    var computed = _ember['default'].computed;
-    var alias = computed.alias;
-    exports['default'] = Controller.extend(PromiseProxyMixin, {
-
-        setting: alias('content'),
-
-        labs: computed('isSettled', 'setting.labs', function () {
-            var value = {};
-
-            if (this.get('isFulfilled')) {
-                try {
-                    value = JSON.parse(this.get('setting.labs') || {});
-                } catch (err) {
-                    value = {};
-                }
-            }
-
-            return value;
-        }),
-
-        publicAPI: computed('config.publicAPI', 'labs.publicAPI', function () {
-            return this.get('config.publicAPI') || this.get('labs.publicAPI');
-        }),
-
-        init: function init() {
-            this._super.apply(this, arguments);
-
-            var promise = this.store.query('setting', { type: 'blog,theme' }).then(function (settings) {
-                return settings.get('firstObject');
-            });
-
-            this.set('promise', promise);
-        }
-    });
-});
 define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils/date-formatting', 'ghost/mixins/settings-menu-controller', 'ghost/utils/bound-one-way', 'ghost/utils/isNumber'], function (exports, _ember, _ghostUtilsDateFormatting, _ghostMixinsSettingsMenuController, _ghostUtilsBoundOneWay, _ghostUtilsIsNumber) {
     var $ = _ember['default'].$;
     var ArrayProxy = _ember['default'].ArrayProxy;
@@ -4522,7 +5035,6 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
         debounceId: null,
         lastPromise: null,
         selectedAuthor: null,
-        uploaderReference: null,
 
         application: controller(),
         config: service(),
@@ -4920,14 +5432,6 @@ define('ghost/controllers/post-settings-menu', ['exports', 'ember', 'ghost/utils
                 });
             },
 
-            resetUploader: function resetUploader() {
-                var uploader = this.get('uploaderReference');
-
-                if (uploader && uploader[0]) {
-                    uploader[0].uploaderUi.reset();
-                }
-            },
-
             resetPubDate: function resetPubDate() {
                 this.set('publishedAtValue', '');
             },
@@ -5178,6 +5682,91 @@ define('ghost/controllers/reset', ['exports', 'ember', 'ghost/mixins/validation-
         }
     });
 });
+define('ghost/controllers/settings/apps/index', ['exports', 'ember'], function (exports, _ember) {
+    var computed = _ember['default'].computed;
+    var controller = _ember['default'].inject.controller;
+    var alias = computed.alias;
+    exports['default'] = _ember['default'].Controller.extend({
+        appsController: controller('settings.apps'),
+
+        slack: alias('appsController.model.slack.firstObject')
+    });
+});
+define('ghost/controllers/settings/apps/slack', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
+    var Controller = _ember['default'].Controller;
+    var empty = _ember['default'].computed.empty;
+    var service = _ember['default'].inject.service;
+    exports['default'] = Controller.extend({
+        ghostPaths: service(),
+        ajax: service(),
+        notifications: service(),
+
+        // will be set by route
+        settings: null,
+
+        isSaving: false,
+        savePromise: null,
+        isSendingTest: false,
+
+        testNotificationDisabled: empty('model.url'),
+
+        actions: {
+            sendTestNotification: function sendTestNotification() {
+                var _this = this;
+
+                var notifications = this.get('notifications');
+                var slackApi = this.get('ghostPaths.url').api('slack', 'test');
+
+                if (this.get('isSendingTest')) {
+                    return;
+                }
+
+                this.set('isSendingTest', true);
+
+                (0, _emberInvokeAction.invoke)(this, 'save').then(function () {
+                    _this.get('ajax').post(slackApi).then(function () {
+                        notifications.showAlert('Check your slack channel test message.', { type: 'info', key: 'slack-test.send.success' });
+                    })['catch'](function (error) {
+                        notifications.showAPIError(error, { key: 'slack-test:send' });
+                    });
+                })['catch'](function () {
+                    // noop - error already handled in .save
+                })['finally'](function () {
+                    _this.set('isSendingTest', false);
+                });
+            },
+
+            updateURL: function updateURL(value) {
+                this.set('model.url', value);
+                this.get('model.errors').clear();
+            },
+
+            save: function save() {
+                var _this2 = this;
+
+                var slack = this.get('model');
+                var settings = this.get('settings');
+
+                if (this.get('isSaving')) {
+                    return;
+                }
+
+                return slack.validate().then(function () {
+                    settings.get('slack').clear().pushObject(slack);
+
+                    _this2.set('isSaving', true);
+
+                    return settings.save()['catch'](function (err) {
+                        _this2.get('notifications').showErrors(err);
+                        throw err;
+                    })['finally'](function () {
+                        _this2.set('isSaving', false);
+                    });
+                });
+            }
+        }
+    });
+});
 define('ghost/controllers/settings/code-injection', ['exports', 'ember', 'ghost/mixins/settings-save'], function (exports, _ember, _ghostMixinsSettingsSave) {
     var Controller = _ember['default'].Controller;
     var service = _ember['default'].inject.service;
@@ -5194,10 +5783,13 @@ define('ghost/controllers/settings/code-injection', ['exports', 'ember', 'ghost/
     });
 });
 define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/settings-save', 'ghost/utils/random-password'], function (exports, _ember, _ghostMixinsSettingsSave, _ghostUtilsRandomPassword) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
     var Controller = _ember['default'].Controller;
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
     var observer = _ember['default'].observer;
+    var run = _ember['default'].run;
     exports['default'] = Controller.extend(_ghostMixinsSettingsSave['default'], {
 
         showUploadLogoModal: false,
@@ -5205,6 +5797,8 @@ define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/
 
         notifications: service(),
         config: service(),
+        _scratchFacebook: null,
+        _scratchTwitter: null,
 
         selectedTheme: computed('model.activeTheme', 'themes', function () {
             var activeTheme = this.get('model.activeTheme');
@@ -5266,25 +5860,28 @@ define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/
         }),
 
         save: function save() {
+            var _this = this;
+
             var notifications = this.get('notifications');
             var config = this.get('config');
 
             return this.get('model').save().then(function (model) {
                 config.set('blogTitle', model.get('title'));
 
+                // this forces the document title to recompute after
+                // a blog title change
+                _this.send('collectTitleTokens', []);
+
                 return model;
             })['catch'](function (error) {
                 if (error) {
                     notifications.showAPIError(error, { key: 'settings.save' });
                 }
+                throw error;
             });
         },
 
         actions: {
-            validate: function validate(property) {
-                this.get('model').validate({ property: property });
-            },
-
             checkPostsPerPage: function checkPostsPerPage() {
                 var postsPerPage = this.get('model.postsPerPage');
 
@@ -5303,6 +5900,158 @@ define('ghost/controllers/settings/general', ['exports', 'ember', 'ghost/mixins/
 
             toggleUploadLogoModal: function toggleUploadLogoModal() {
                 this.toggleProperty('showUploadLogoModal');
+            },
+
+            validateFacebookUrl: function validateFacebookUrl() {
+                var _this2 = this;
+
+                var newUrl = this.get('_scratchFacebook');
+                var oldUrl = this.get('model.facebook');
+                var errMessage = '';
+
+                if (newUrl === '') {
+                    // Clear out the Facebook url
+                    this.set('model.facebook', '');
+                    this.get('model.errors').remove('facebook');
+                    return;
+                }
+
+                // _scratchFacebook will be null unless the user has input something
+                if (!newUrl) {
+                    newUrl = oldUrl;
+                }
+
+                // If new url didn't change, exit
+                if (newUrl === oldUrl) {
+                    this.get('model.errors').remove('facebook');
+                    return;
+                }
+
+                if (newUrl.match(/(?:facebook\.com\/)(\S+)/) || newUrl.match(/([a-z\d\.]+)/i)) {
+                    var username = [];
+
+                    if (newUrl.match(/(?:facebook\.com\/)(\S+)/)) {
+                        var _newUrl$match = newUrl.match(/(?:facebook\.com\/)(\S+)/);
+
+                        var _newUrl$match2 = _slicedToArray(_newUrl$match, 2);
+
+                        username = _newUrl$match2[1];
+                    } else {
+                        var _newUrl$match3 = newUrl.match(/(?:https\:\/\/|http\:\/\/)?(?:www\.)?(?:\w+\.\w+\/+)?(\S+)/mi);
+
+                        var _newUrl$match32 = _slicedToArray(_newUrl$match3, 2);
+
+                        username = _newUrl$match32[1];
+                    }
+
+                    // check if we have a /page/username or without
+                    if (username.match(/^(?:\/)?(pages?\/\S+)/mi)) {
+                        var _username$match = username.match(/^(?:\/)?(pages?\/\S+)/mi);
+
+                        // we got a page url, now save the username without the / in the beginning
+
+                        var _username$match2 = _slicedToArray(_username$match, 2);
+
+                        username = _username$match2[1];
+                    } else if (username.match(/^(http|www)|(\/)/) || !username.match(/^([a-z\d\.]{5,50})$/mi)) {
+                        errMessage = !username.match(/^([a-z\d\.]{5,50})$/mi) ? 'Your Page name is not a valid Facebook Page name' : 'The URL must be in a format like https://www.facebook.com/yourPage';
+
+                        this.get('model.errors').add('facebook', errMessage);
+                        this.get('model.hasValidated').pushObject('facebook');
+                        return;
+                    }
+
+                    newUrl = 'https://www.facebook.com/' + username;
+                    this.set('model.facebook', newUrl);
+
+                    this.get('model.errors').remove('facebook');
+                    this.get('model.hasValidated').pushObject('facebook');
+
+                    // User input is validated
+                    return this.save().then(function () {
+                        _this2.set('model.facebook', '');
+                        run.schedule('afterRender', _this2, function () {
+                            this.set('model.facebook', newUrl);
+                        });
+                    });
+                } else {
+                    errMessage = 'The URL must be in a format like ' + 'https://www.facebook.com/yourPage';
+                    this.get('model.errors').add('facebook', errMessage);
+                    this.get('model.hasValidated').pushObject('facebook');
+                    return;
+                }
+            },
+
+            validateTwitterUrl: function validateTwitterUrl() {
+                var _this3 = this;
+
+                var newUrl = this.get('_scratchTwitter');
+                var oldUrl = this.get('model.twitter');
+                var errMessage = '';
+
+                if (newUrl === '') {
+                    // Clear out the Twitter url
+                    this.set('model.twitter', '');
+                    this.get('model.errors').remove('twitter');
+                    return;
+                }
+
+                // _scratchTwitter will be null unless the user has input something
+                if (!newUrl) {
+                    newUrl = oldUrl;
+                }
+
+                // If new url didn't change, exit
+                if (newUrl === oldUrl) {
+                    this.get('model.errors').remove('twitter');
+                    return;
+                }
+
+                if (newUrl.match(/(?:twitter\.com\/)(\S+)/) || newUrl.match(/([a-z\d\.]+)/i)) {
+                    var username = [];
+
+                    if (newUrl.match(/(?:twitter\.com\/)(\S+)/)) {
+                        var _newUrl$match4 = newUrl.match(/(?:twitter\.com\/)(\S+)/);
+
+                        var _newUrl$match42 = _slicedToArray(_newUrl$match4, 2);
+
+                        username = _newUrl$match42[1];
+                    } else {
+                        var _newUrl$match5 = newUrl.match(/([^/]+)\/?$/mi);
+
+                        var _newUrl$match52 = _slicedToArray(_newUrl$match5, 1);
+
+                        username = _newUrl$match52[0];
+                    }
+
+                    // check if username starts with http or www and show error if so
+                    if (username.match(/^(http|www)|(\/)/) || !username.match(/^[a-z\d\.\_]{1,15}$/mi)) {
+                        errMessage = !username.match(/^[a-z\d\.\_]{1,15}$/mi) ? 'Your Username is not a valid Twitter Username' : 'The URL must be in a format like https://twitter.com/yourUsername';
+
+                        this.get('model.errors').add('twitter', errMessage);
+                        this.get('model.hasValidated').pushObject('twitter');
+                        return;
+                    }
+
+                    newUrl = 'https://twitter.com/' + username;
+                    this.set('model.twitter', newUrl);
+
+                    this.get('model.errors').remove('twitter');
+                    this.get('model.hasValidated').pushObject('twitter');
+
+                    // User input is validated
+                    return this.save().then(function () {
+                        _this3.set('model.twitter', '');
+                        run.schedule('afterRender', _this3, function () {
+                            this.set('model.twitter', newUrl);
+                        });
+                    });
+                } else {
+                    errMessage = 'The URL must be in a format like ' + 'https://twitter.com/yourUsername';
+                    this.get('model.errors').add('twitter', errMessage);
+                    this.get('model.hasValidated').pushObject('twitter');
+                    return;
+                }
             }
         }
     });
@@ -5397,49 +6146,11 @@ define('ghost/controllers/settings/labs', ['exports', 'ember'], function (export
         }
     });
 });
-define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data', 'ghost/mixins/settings-save', 'ghost/mixins/validation-engine'], function (exports, _ember, _emberData, _ghostMixinsSettingsSave, _ghostMixinsValidationEngine) {
+define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ghost/mixins/settings-save', 'ghost/models/navigation-item'], function (exports, _ember, _ghostMixinsSettingsSave, _ghostModelsNavigationItem) {
     var Controller = _ember['default'].Controller;
     var RSVP = _ember['default'].RSVP;
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
-    var isBlank = _ember['default'].isBlank;
-    var Errors = _emberData['default'].Errors;
-
-    var emberA = _ember['default'].A;
-
-    var NavItem = _ember['default'].Object.extend(_ghostMixinsValidationEngine['default'], {
-        label: '',
-        url: '',
-        isNew: false,
-
-        validationType: 'navItem',
-
-        isComplete: computed('label', 'url', function () {
-            var _getProperties = this.getProperties('label', 'url');
-
-            var label = _getProperties.label;
-            var url = _getProperties.url;
-
-            return !isBlank(label) && !isBlank(url);
-        }),
-
-        isBlank: computed('label', 'url', function () {
-            var _getProperties2 = this.getProperties('label', 'url');
-
-            var label = _getProperties2.label;
-            var url = _getProperties2.url;
-
-            return isBlank(label) && isBlank(url);
-        }),
-
-        init: function init() {
-            this._super.apply(this, arguments);
-            this.set('errors', Errors.create());
-            this.set('hasValidated', emberA());
-        }
-    });
-
-    exports.NavItem = NavItem;
     exports['default'] = Controller.extend(_ghostMixinsSettingsSave['default'], {
         config: service(),
         notifications: service(),
@@ -5452,35 +6163,18 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
             return url.slice(-1) !== '/' ? url + '/' : url;
         }),
 
-        navigationItems: computed('model.navigation', function () {
-            var navItems = undefined;
-
-            try {
-                navItems = JSON.parse(this.get('model.navigation') || [{}]);
-            } catch (e) {
-                navItems = [{}];
-            }
-
-            navItems = navItems.map(function (item) {
-                return NavItem.create(item);
-            });
-
-            return navItems;
-        }),
-
         init: function init() {
             this._super.apply(this, arguments);
-            this.set('newNavItem', NavItem.create({ isNew: true }));
+            this.set('newNavItem', _ghostModelsNavigationItem['default'].create({ isNew: true }));
         },
 
         save: function save() {
             var _this = this;
 
-            var navItems = this.get('navigationItems');
+            var navItems = this.get('model.navigation');
             var newNavItem = this.get('newNavItem');
             var notifications = this.get('notifications');
             var validationPromises = [];
-            var navSetting = undefined;
 
             if (!newNavItem.get('isBlank')) {
                 validationPromises.pushObject(this.send('addItem'));
@@ -5491,19 +6185,6 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
             });
 
             return RSVP.all(validationPromises).then(function () {
-                navSetting = navItems.map(function (item) {
-                    var label = item.get('label').trim();
-                    var url = item.get('url').trim();
-
-                    return { label: label, url: url };
-                }).compact();
-
-                _this.set('model.navigation', JSON.stringify(navSetting));
-
-                // trigger change event because even if the final JSON is unchanged
-                // we need to have navigationItems recomputed.
-                _this.get('model').notifyPropertyChange('navigation');
-
                 return _this.get('model').save()['catch'](function (err) {
                     notifications.showErrors(err);
                 });
@@ -5513,12 +6194,12 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
         },
 
         addNewNavItem: function addNewNavItem() {
-            var navItems = this.get('navigationItems');
+            var navItems = this.get('model.navigation');
             var newNavItem = this.get('newNavItem');
 
             newNavItem.set('isNew', false);
             navItems.pushObject(newNavItem);
-            this.set('newNavItem', NavItem.create({ isNew: true }));
+            this.set('newNavItem', _ghostModelsNavigationItem['default'].create({ isNew: true }));
         },
 
         actions: {
@@ -5542,13 +6223,13 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
                     return;
                 }
 
-                var navItems = this.get('navigationItems');
+                var navItems = this.get('model.navigation');
 
                 navItems.removeObject(item);
             },
 
             reorderItems: function reorderItems(navItems) {
-                this.set('navigationItems', navItems);
+                this.set('model.navigation', navItems);
             },
 
             updateUrl: function updateUrl(url, navItem) {
@@ -5560,7 +6241,7 @@ define('ghost/controllers/settings/navigation', ['exports', 'ember', 'ember-data
             },
 
             reset: function reset() {
-                this.set('newNavItem', NavItem.create({ isNew: true }));
+                this.set('newNavItem', _ghostModelsNavigationItem['default'].create({ isNew: true }));
             }
         }
     });
@@ -6319,6 +7000,164 @@ define('ghost/controllers/signup', ['exports', 'ember', 'ghost/mixins/validation
         }
     });
 });
+define('ghost/controllers/subscribers', ['exports', 'ember', 'ember-light-table', 'ghost/mixins/pagination', 'ghost/utils/ghost-paths'], function (exports, _ember, _emberLightTable, _ghostMixinsPagination, _ghostUtilsGhostPaths) {
+    var $ = _ember['default'].$;
+    var assign = _ember['default'].assign;
+    var computed = _ember['default'].computed;
+    var service = _ember['default'].inject.service;
+    exports['default'] = _ember['default'].Controller.extend(_ghostMixinsPagination['default'], {
+
+        queryParams: ['order', 'direction'],
+        order: 'created_at',
+        direction: 'desc',
+
+        paginationModel: 'subscriber',
+
+        total: 0,
+        table: null,
+        subscriberToDelete: null,
+
+        session: service(),
+
+        // paginationSettings is replaced by the pagination mixin so we need a
+        // getter/setter CP here so that we don't lose the dynamic order param
+        paginationSettings: computed('order', 'direction', {
+            get: function get() {
+                var order = this.get('order');
+                var direction = this.get('direction');
+
+                var currentSettings = this._paginationSettings || {
+                    limit: 30
+                };
+
+                return assign({}, currentSettings, {
+                    order: order + ' ' + direction
+                });
+            },
+            set: function set(key, value) {
+                this._paginationSettings = value;
+                return value;
+            }
+        }),
+
+        columns: computed('order', 'direction', function () {
+            var order = this.get('order');
+            var direction = this.get('direction');
+
+            return [{
+                label: 'Subscriber',
+                valuePath: 'email',
+                sorted: order === 'email',
+                ascending: direction === 'asc'
+            }, {
+                label: 'Subscription Date',
+                valuePath: 'createdAt',
+                format: function format(value) {
+                    return value.format('MMMM DD, YYYY');
+                },
+                sorted: order === 'created_at',
+                ascending: direction === 'asc'
+            }, {
+                label: 'Status',
+                valuePath: 'status',
+                sorted: order === 'status',
+                ascending: direction === 'asc'
+            }, {
+                label: '',
+                sortable: false,
+                cellComponent: 'gh-subscribers-table-delete-cell',
+                align: 'right'
+            }];
+        }),
+
+        initializeTable: function initializeTable() {
+            this.set('table', new _emberLightTable['default'](this.get('columns'), this.get('subscribers')));
+        },
+
+        // capture the total from the server any time we fetch a new page
+        didReceivePaginationMeta: function didReceivePaginationMeta(meta) {
+            if (meta && meta.pagination) {
+                this.set('total', meta.pagination.total);
+            }
+        },
+
+        actions: {
+            loadFirstPage: function loadFirstPage() {
+                var table = this.get('table');
+
+                return this._super.apply(this, arguments).then(function (results) {
+                    table.addRows(results);
+                    return results;
+                });
+            },
+
+            loadNextPage: function loadNextPage() {
+                var table = this.get('table');
+
+                return this._super.apply(this, arguments).then(function (results) {
+                    table.addRows(results);
+                    return results;
+                });
+            },
+
+            sortByColumn: function sortByColumn(column) {
+                var table = this.get('table');
+
+                if (column.sorted) {
+                    this.setProperties({
+                        order: column.get('valuePath').trim().underscore(),
+                        direction: column.ascending ? 'asc' : 'desc'
+                    });
+                    table.setRows([]);
+                    this.send('loadFirstPage');
+                }
+            },
+
+            addSubscriber: function addSubscriber(subscriber) {
+                this.get('table').insertRowAt(0, subscriber);
+                this.incrementProperty('total');
+            },
+
+            deleteSubscriber: function deleteSubscriber(subscriber) {
+                this.set('subscriberToDelete', subscriber);
+            },
+
+            confirmDeleteSubscriber: function confirmDeleteSubscriber() {
+                var _this = this;
+
+                var subscriber = this.get('subscriberToDelete');
+
+                return subscriber.destroyRecord().then(function () {
+                    _this.set('subscriberToDelete', null);
+                    _this.get('table').removeRow(subscriber);
+                    _this.decrementProperty('total');
+                });
+            },
+
+            cancelDeleteSubscriber: function cancelDeleteSubscriber() {
+                this.set('subscriberToDelete', null);
+            },
+
+            reset: function reset() {
+                this.get('table').setRows([]);
+                this.send('loadFirstPage');
+            },
+
+            exportData: function exportData() {
+                var exportUrl = (0, _ghostUtilsGhostPaths['default'])().url.api('subscribers/csv');
+                var accessToken = this.get('session.data.authenticated.access_token');
+                var downloadURL = exportUrl + '?access_token=' + accessToken;
+                var iframe = $('#iframeDownload');
+
+                if (iframe.length === 0) {
+                    iframe = $('<iframe>', { id: 'iframeDownload' }).hide().appendTo('body');
+                }
+
+                iframe.attr('src', downloadURL);
+            }
+        }
+    });
+});
 define('ghost/controllers/team/index', ['exports', 'ember'], function (exports, _ember) {
     var Controller = _ember['default'].Controller;
     var computed = _ember['default'].computed;
@@ -6351,26 +7190,29 @@ define('ghost/controllers/team/index', ['exports', 'ember'], function (exports, 
         }
     });
 });
-define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/utils/isNumber', 'ghost/utils/bound-one-way', 'ghost/mixins/validation-engine'], function (exports, _ember, _ghostUtilsIsNumber, _ghostUtilsBoundOneWay, _ghostMixinsValidationEngine) {
+define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/utils/isNumber', 'ghost/utils/bound-one-way', 'ember-invoke-action'], function (exports, _ember, _ghostUtilsIsNumber, _ghostUtilsBoundOneWay, _emberInvokeAction) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
     var Controller = _ember['default'].Controller;
     var RSVP = _ember['default'].RSVP;
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
+    var run = _ember['default'].run;
     var isArray = _ember['default'].isArray;
     var alias = computed.alias;
     var and = computed.and;
     var not = computed.not;
     var or = computed.or;
     var readOnly = computed.readOnly;
-    exports['default'] = Controller.extend(_ghostMixinsValidationEngine['default'], {
-        // ValidationEngine settings
-        validationType: 'user',
+    exports['default'] = Controller.extend({
         submitting: false,
         lastPromise: null,
         showDeleteUserModal: false,
         showTransferOwnerModal: false,
         showUploadCoverModal: false,
         showUplaodImageModal: false,
+        _scratchFacebook: null,
+        _scratchTwitter: null,
 
         ajax: service(),
         dropdown: service(),
@@ -6501,6 +7343,7 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/utils/isNumber
                 });
 
                 this.set('lastPromise', promise);
+                return promise;
             },
 
             deleteUser: function deleteUser() {
@@ -6598,8 +7441,164 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/utils/isNumber
                 this.set('lastPromise', promise);
             },
 
-            transferOwnership: function transferOwnership() {
+            validateFacebookUrl: function validateFacebookUrl() {
                 var _this5 = this;
+
+                var newUrl = this.get('_scratchFacebook');
+                var oldUrl = this.get('user.facebook');
+                var errMessage = '';
+
+                if (newUrl === '') {
+                    // Clear out the Facebook url
+                    this.set('user.facebook', '');
+                    this.get('user.errors').remove('facebook');
+                    return;
+                }
+
+                // _scratchFacebook will be null unless the user has input something
+                if (!newUrl) {
+                    newUrl = oldUrl;
+                }
+
+                // If new url didn't change, exit
+                if (newUrl === oldUrl) {
+                    this.get('user.errors').remove('facebook');
+                    return;
+                }
+
+                // TODO: put the validation here into a validator
+                if (newUrl.match(/(?:facebook\.com\/)(\S+)/) || newUrl.match(/([a-z\d\.]+)/i)) {
+                    var username = [];
+
+                    if (newUrl.match(/(?:facebook\.com\/)(\S+)/)) {
+                        var _newUrl$match = newUrl.match(/(?:facebook\.com\/)(\S+)/);
+
+                        var _newUrl$match2 = _slicedToArray(_newUrl$match, 2);
+
+                        username = _newUrl$match2[1];
+                    } else {
+                        var _newUrl$match3 = newUrl.match(/(?:https\:\/\/|http\:\/\/)?(?:www\.)?(?:\w+\.\w+\/+)?(\S+)/mi);
+
+                        var _newUrl$match32 = _slicedToArray(_newUrl$match3, 2);
+
+                        username = _newUrl$match32[1];
+                    }
+
+                    // check if we have a /page/username or without
+                    if (username.match(/^(?:\/)?(pages?\/\S+)/mi)) {
+                        var _username$match = username.match(/^(?:\/)?(pages?\/\S+)/mi);
+
+                        // we got a page url, now save the username without the / in the beginning
+
+                        var _username$match2 = _slicedToArray(_username$match, 2);
+
+                        username = _username$match2[1];
+                    } else if (username.match(/^(http|www)|(\/)/) || !username.match(/^([a-z\d\.]{5,50})$/mi)) {
+                        errMessage = !username.match(/^([a-z\d\.]{5,50})$/mi) ? 'Your Username is not a valid Facebook Username' : 'The URL must be in a format like https://www.facebook.com/yourUsername';
+
+                        this.get('user.errors').add('facebook', errMessage);
+                        this.get('user.hasValidated').pushObject('facebook');
+                        return;
+                    }
+
+                    newUrl = 'https://www.facebook.com/' + username;
+                    this.set('user.facebook', newUrl);
+
+                    this.get('user.errors').remove('facebook');
+                    this.get('user.hasValidated').pushObject('facebook');
+
+                    // User input is validated
+                    (0, _emberInvokeAction.invoke)(this, 'save').then(function () {
+                        // necessary to update the value in the input field
+                        _this5.set('user.facebook', '');
+                        run.schedule('afterRender', _this5, function () {
+                            this.set('user.facebook', newUrl);
+                        });
+                    });
+                } else {
+                    errMessage = 'The URL must be in a format like ' + 'https://www.facebook.com/yourUsername';
+                    this.get('user.errors').add('facebook', errMessage);
+                    this.get('user.hasValidated').pushObject('facebook');
+                    return;
+                }
+            },
+
+            validateTwitterUrl: function validateTwitterUrl() {
+                var _this6 = this;
+
+                var newUrl = this.get('_scratchTwitter');
+                var oldUrl = this.get('user.twitter');
+                var errMessage = '';
+
+                if (newUrl === '') {
+                    // Clear out the Twitter url
+                    this.set('user.twitter', '');
+                    this.get('user.errors').remove('twitter');
+                    return;
+                }
+
+                // _scratchTwitter will be null unless the user has input something
+                if (!newUrl) {
+                    newUrl = oldUrl;
+                }
+
+                // If new url didn't change, exit
+                if (newUrl === oldUrl) {
+                    this.get('user.errors').remove('twitter');
+                    return;
+                }
+
+                // TODO: put the validation here into a validator
+                if (newUrl.match(/(?:twitter\.com\/)(\S+)/) || newUrl.match(/([a-z\d\.]+)/i)) {
+                    var username = [];
+
+                    if (newUrl.match(/(?:twitter\.com\/)(\S+)/)) {
+                        var _newUrl$match4 = newUrl.match(/(?:twitter\.com\/)(\S+)/);
+
+                        var _newUrl$match42 = _slicedToArray(_newUrl$match4, 2);
+
+                        username = _newUrl$match42[1];
+                    } else {
+                        var _newUrl$match5 = newUrl.match(/([^/]+)\/?$/mi);
+
+                        var _newUrl$match52 = _slicedToArray(_newUrl$match5, 1);
+
+                        username = _newUrl$match52[0];
+                    }
+
+                    // check if username starts with http or www and show error if so
+                    if (username.match(/^(http|www)|(\/)/) || !username.match(/^[a-z\d\.\_]{1,15}$/mi)) {
+                        errMessage = !username.match(/^[a-z\d\.\_]{1,15}$/mi) ? 'Your Username is not a valid Twitter Username' : 'The URL must be in a format like https://twitter.com/yourUsername';
+
+                        this.get('user.errors').add('twitter', errMessage);
+                        this.get('user.hasValidated').pushObject('twitter');
+                        return;
+                    }
+
+                    newUrl = 'https://twitter.com/' + username;
+                    this.set('user.twitter', newUrl);
+
+                    this.get('user.errors').remove('twitter');
+                    this.get('user.hasValidated').pushObject('twitter');
+
+                    // User input is validated
+                    (0, _emberInvokeAction.invoke)(this, 'save').then(function () {
+                        // necessary to update the value in the input field
+                        _this6.set('user.twitter', '');
+                        run.schedule('afterRender', _this6, function () {
+                            this.set('user.twitter', newUrl);
+                        });
+                    });
+                } else {
+                    errMessage = 'The URL must be in a format like ' + 'https://twitter.com/yourUsername';
+                    this.get('user.errors').add('twitter', errMessage);
+                    this.get('user.hasValidated').pushObject('twitter');
+                    return;
+                }
+            },
+
+            transferOwnership: function transferOwnership() {
+                var _this7 = this;
 
                 var user = this.get('user');
                 var url = this.get('ghostPaths.url').api('users', 'owner');
@@ -6617,16 +7616,16 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/utils/isNumber
                     // because store.pushPayload is not working with embedded relations
                     if (response && isArray(response.users)) {
                         response.users.forEach(function (userJSON) {
-                            var user = _this5.store.peekRecord('user', userJSON.id);
-                            var role = _this5.store.peekRecord('role', userJSON.roles[0].id);
+                            var user = _this7.store.peekRecord('user', userJSON.id);
+                            var role = _this7.store.peekRecord('role', userJSON.roles[0].id);
 
                             user.set('role', role);
                         });
                     }
 
-                    _this5.get('notifications').showAlert('Ownership successfully transferred to ' + user.get('name'), { type: 'success', key: 'owner.transfer.success' });
+                    _this7.get('notifications').showAlert('Ownership successfully transferred to ' + user.get('name'), { type: 'success', key: 'owner.transfer.success' });
                 })['catch'](function (error) {
-                    _this5.get('notifications').showAPIError(error, { key: 'owner.transfer' });
+                    _this7.get('notifications').showAPIError(error, { key: 'owner.transfer' });
                 });
             },
 
@@ -6645,6 +7644,58 @@ define('ghost/controllers/team/user', ['exports', 'ember', 'ghost/utils/isNumber
             }
         }
     });
+});
+define('ghost/helpers/and', ['exports', 'ember', 'ember-truth-helpers/helpers/and'], function (exports, _ember, _emberTruthHelpersHelpersAnd) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersAnd.andHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersAnd.andHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/ember-power-select-build-selection', ['exports', 'ember-power-select/helpers/ember-power-select-build-selection'], function (exports, _emberPowerSelectHelpersEmberPowerSelectBuildSelection) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectHelpersEmberPowerSelectBuildSelection['default'];
+    }
+  });
+  Object.defineProperty(exports, 'emberPowerSelectBuildSelection', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectHelpersEmberPowerSelectBuildSelection.emberPowerSelectBuildSelection;
+    }
+  });
+});
+define('ghost/helpers/ember-power-select-is-selected', ['exports', 'ember-power-select/helpers/ember-power-select-is-selected'], function (exports, _emberPowerSelectHelpersEmberPowerSelectIsSelected) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectHelpersEmberPowerSelectIsSelected['default'];
+    }
+  });
+  Object.defineProperty(exports, 'emberPowerSelectIsSelected', {
+    enumerable: true,
+    get: function get() {
+      return _emberPowerSelectHelpersEmberPowerSelectIsSelected.emberPowerSelectIsSelected;
+    }
+  });
+});
+define('ghost/helpers/eq', ['exports', 'ember', 'ember-truth-helpers/helpers/equal'], function (exports, _ember, _emberTruthHelpersHelpersEqual) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersEqual.equalHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersEqual.equalHelper);
+  }
+
+  exports['default'] = forExport;
 });
 define('ghost/helpers/gh-count-characters', ['exports', 'ember'], function (exports, _ember) {
     var Helper = _ember['default'].Helper;
@@ -6745,11 +7796,12 @@ define('ghost/helpers/gh-format-html', ['exports', 'ember', 'ghost/utils/caja-sa
 });
 /* global html_sanitize*/
 define('ghost/helpers/gh-format-markdown', ['exports', 'ember', 'ghost/utils/caja-sanitizers'], function (exports, _ember, _ghostUtilsCajaSanitizers) {
+    exports.formatMarkdown = formatMarkdown;
     var Helper = _ember['default'].Helper;
 
     var showdown = new Showdown.converter({ extensions: ['ghostimagepreview', 'ghostgfm', 'footnotes', 'highlight'] });
 
-    exports['default'] = Helper.helper(function (params) {
+    function formatMarkdown(params) {
         if (!params || !params.length) {
             return;
         }
@@ -6770,7 +7822,9 @@ define('ghost/helpers/gh-format-markdown', ['exports', 'ember', 'ghost/utils/caj
         // jscs:enable requireCamelCaseOrUpperCaseIdentifiers
 
         return _ember['default'].String.htmlSafe(escapedhtml);
-    });
+    }
+
+    exports['default'] = Helper.helper(formatMarkdown);
 });
 /* global Showdown, html_sanitize*/
 define('ghost/helpers/gh-format-timeago', ['exports', 'ember'], function (exports, _ember) {
@@ -6869,6 +7923,58 @@ define('ghost/helpers/gh-user-can-admin', ['exports', 'ember'], function (export
         return ghUserCanAdmin(params);
     });
 });
+define('ghost/helpers/gt', ['exports', 'ember', 'ember-truth-helpers/helpers/gt'], function (exports, _ember, _emberTruthHelpersHelpersGt) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersGt.gtHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersGt.gtHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/gte', ['exports', 'ember', 'ember-truth-helpers/helpers/gte'], function (exports, _ember, _emberTruthHelpersHelpersGte) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersGte.gteHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersGte.gteHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/highlighted-text', ['exports', 'ember'], function (exports, _ember) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    exports.highlightedText = highlightedText;
+
+    function highlightedText(_ref) {
+        var _ref2 = _slicedToArray(_ref, 2);
+
+        var text = _ref2[0];
+        var termToHighlight = _ref2[1];
+
+        return _ember['default'].String.htmlSafe(text.replace(new RegExp(termToHighlight, 'ig'), '<span class="highlight">$&</span>'));
+    }
+
+    exports['default'] = _ember['default'].Helper.helper(highlightedText);
+});
+define('ghost/helpers/is-array', ['exports', 'ember', 'ember-truth-helpers/helpers/is-array'], function (exports, _ember, _emberTruthHelpersHelpersIsArray) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersIsArray.isArrayHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersIsArray.isArrayHelper);
+  }
+
+  exports['default'] = forExport;
+});
 define('ghost/helpers/is-equal', ['exports', 'ember'], function (exports, _ember) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
@@ -6900,6 +8006,80 @@ define('ghost/helpers/is-not', ['exports', 'ember'], function (exports, _ember) 
         return isNot(params);
     });
 });
+define('ghost/helpers/lt', ['exports', 'ember', 'ember-truth-helpers/helpers/lt'], function (exports, _ember, _emberTruthHelpersHelpersLt) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersLt.ltHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersLt.ltHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/lte', ['exports', 'ember', 'ember-truth-helpers/helpers/lte'], function (exports, _ember, _emberTruthHelpersHelpersLte) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersLte.lteHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersLte.lteHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/not-eq', ['exports', 'ember', 'ember-truth-helpers/helpers/not-equal'], function (exports, _ember, _emberTruthHelpersHelpersNotEqual) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersNotEqual.notEqualHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersNotEqual.notEqualHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/not', ['exports', 'ember', 'ember-truth-helpers/helpers/not'], function (exports, _ember, _emberTruthHelpersHelpersNot) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersNot.notHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersNot.notHelper);
+  }
+
+  exports['default'] = forExport;
+});
+define('ghost/helpers/one-way-select/contains', ['exports', 'ember-one-way-controls/helpers/one-way-select/contains'], function (exports, _emberOneWayControlsHelpersOneWaySelectContains) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsHelpersOneWaySelectContains['default'];
+    }
+  });
+  Object.defineProperty(exports, 'contains', {
+    enumerable: true,
+    get: function get() {
+      return _emberOneWayControlsHelpersOneWaySelectContains.contains;
+    }
+  });
+});
+define('ghost/helpers/or', ['exports', 'ember', 'ember-truth-helpers/helpers/or'], function (exports, _ember, _emberTruthHelpersHelpersOr) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersOr.orHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersOr.orHelper);
+  }
+
+  exports['default'] = forExport;
+});
 define('ghost/helpers/pluralize', ['exports', 'ember-inflector/lib/helpers/pluralize'], function (exports, _emberInflectorLibHelpersPluralize) {
   exports['default'] = _emberInflectorLibHelpersPluralize['default'];
 });
@@ -6913,6 +8093,18 @@ define('ghost/helpers/route-action', ['exports', 'ember-route-action-helper/help
 });
 define('ghost/helpers/singularize', ['exports', 'ember-inflector/lib/helpers/singularize'], function (exports, _emberInflectorLibHelpersSingularize) {
   exports['default'] = _emberInflectorLibHelpersSingularize['default'];
+});
+define('ghost/helpers/xor', ['exports', 'ember', 'ember-truth-helpers/helpers/xor'], function (exports, _ember, _emberTruthHelpersHelpersXor) {
+
+  var forExport = null;
+
+  if (_ember['default'].Helper) {
+    forExport = _ember['default'].Helper.helper(_emberTruthHelpersHelpersXor.xorHelper);
+  } else if (_ember['default'].HTMLBars.makeBoundHelper) {
+    forExport = _ember['default'].HTMLBars.makeBoundHelper(_emberTruthHelpersHelpersXor.xorHelper);
+  }
+
+  exports['default'] = forExport;
 });
 define('ghost/initializers/app-version', ['exports', 'ember-cli-app-version/initializer-factory', 'ghost/config/environment'], function (exports, _emberCliAppVersionInitializerFactory, _ghostConfigEnvironment) {
   exports['default'] = {
@@ -7130,7 +8322,13 @@ define('ghost/initializers/trailing-history', ['exports', 'ember'], function (ex
 
     var trailingHistory = HistoryLocation.extend({
         formatURL: function formatURL() {
-            return this._super.apply(this, arguments).replace(/\/?$/, '/');
+            var url = this._super.apply(this, arguments);
+
+            if (url.indexOf('?') > 0) {
+                return url.replace(/([^\/])\?/, '$1/?');
+            } else {
+                return url.replace(/\/?$/, '/');
+            }
         }
     });
 
@@ -7157,6 +8355,48 @@ define('ghost/initializers/transforms', ['exports', 'ember'], function (exports,
     initialize: _ember['default'].K
   };
 });
+define('ghost/initializers/truth-helpers', ['exports', 'ember', 'ember-truth-helpers/utils/register-helper', 'ember-truth-helpers/helpers/and', 'ember-truth-helpers/helpers/or', 'ember-truth-helpers/helpers/equal', 'ember-truth-helpers/helpers/not', 'ember-truth-helpers/helpers/is-array', 'ember-truth-helpers/helpers/not-equal', 'ember-truth-helpers/helpers/gt', 'ember-truth-helpers/helpers/gte', 'ember-truth-helpers/helpers/lt', 'ember-truth-helpers/helpers/lte'], function (exports, _ember, _emberTruthHelpersUtilsRegisterHelper, _emberTruthHelpersHelpersAnd, _emberTruthHelpersHelpersOr, _emberTruthHelpersHelpersEqual, _emberTruthHelpersHelpersNot, _emberTruthHelpersHelpersIsArray, _emberTruthHelpersHelpersNotEqual, _emberTruthHelpersHelpersGt, _emberTruthHelpersHelpersGte, _emberTruthHelpersHelpersLt, _emberTruthHelpersHelpersLte) {
+  exports.initialize = initialize;
+
+  function initialize() /* container, application */{
+
+    // Do not register helpers from Ember 1.13 onwards, starting from 1.13 they
+    // will be auto-discovered.
+    if (_ember['default'].Helper) {
+      return;
+    }
+
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('and', _emberTruthHelpersHelpersAnd.andHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('or', _emberTruthHelpersHelpersOr.orHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('eq', _emberTruthHelpersHelpersEqual.equalHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('not', _emberTruthHelpersHelpersNot.notHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('is-array', _emberTruthHelpersHelpersIsArray.isArrayHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('not-eq', _emberTruthHelpersHelpersNotEqual.notEqualHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('gt', _emberTruthHelpersHelpersGt.gtHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('gte', _emberTruthHelpersHelpersGte.gteHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('lt', _emberTruthHelpersHelpersLt.ltHelper);
+    (0, _emberTruthHelpersUtilsRegisterHelper.registerHelper)('lte', _emberTruthHelpersHelpersLte.lteHelper);
+  }
+
+  exports['default'] = {
+    name: 'truth-helpers',
+    initialize: initialize
+  };
+});
+define('ghost/instance-initializers/browser/liquid-target-container', ['exports', 'liquid-wormhole/instance-initializers/browser/liquid-target-container'], function (exports, _liquidWormholeInstanceInitializersBrowserLiquidTargetContainer) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _liquidWormholeInstanceInitializersBrowserLiquidTargetContainer['default'];
+    }
+  });
+  Object.defineProperty(exports, 'initialize', {
+    enumerable: true,
+    get: function get() {
+      return _liquidWormholeInstanceInitializersBrowserLiquidTargetContainer.initialize;
+    }
+  });
+});
 define("ghost/instance-initializers/ember-data", ["exports", "ember-data/-private/instance-initializers/initialize-store-service"], function (exports, _emberDataPrivateInstanceInitializersInitializeStoreService) {
   exports["default"] = {
     name: "ember-data",
@@ -7172,7 +8412,7 @@ define('ghost/instance-initializers/ember-simple-auth', ['exports', 'ember-simpl
   };
 });
 define('ghost/instance-initializers/jquery-ajax-oauth-prefilter', ['exports', 'ember'], function (exports, _ember) {
-    var merge = _ember['default'].merge;
+    var assign = _ember['default'].assign;
     exports['default'] = {
         name: 'jquery-ajax-oauth-prefilter',
         after: 'ember-simple-auth',
@@ -7185,28 +8425,16 @@ define('ghost/instance-initializers/jquery-ajax-oauth-prefilter', ['exports', 'e
                     var headerObject = {};
 
                     headerObject[headerName] = headerValue;
-                    options.headers = merge(options.headers || {}, headerObject);
+                    options.headers = assign(options.headers || {}, headerObject);
                 });
             });
         }
     };
 });
-define('ghost/instance-initializers/liquid-target-container', ['exports', 'liquid-wormhole/instance-initializers/liquid-target-container'], function (exports, _liquidWormholeInstanceInitializersLiquidTargetContainer) {
-  Object.defineProperty(exports, 'default', {
-    enumerable: true,
-    get: function get() {
-      return _liquidWormholeInstanceInitializersLiquidTargetContainer['default'];
-    }
-  });
-  Object.defineProperty(exports, 'initialize', {
-    enumerable: true,
-    get: function get() {
-      return _liquidWormholeInstanceInitializersLiquidTargetContainer.initialize;
-    }
-  });
-});
 define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function (exports, _ember, _emberCliMirage) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    exports.testConfig = testConfig;
 
     function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
@@ -7258,7 +8486,101 @@ define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function
         }, modelName, models);
     }
 
+    function mockSubscribers(server) {
+        server.get('/subscribers/', function (db, request) {
+            var response = paginatedResponse('subscribers', db.subscribers, request);
+            return response;
+        });
+
+        server.post('/subscribers/', function (db, request) {
+            var _JSON$parse$subscribers = _slicedToArray(JSON.parse(request.requestBody).subscribers, 1);
+
+            var attrs = _JSON$parse$subscribers[0];
+
+            var _db$subscribers$where = db.subscribers.where({ email: attrs.email });
+
+            var _db$subscribers$where2 = _slicedToArray(_db$subscribers$where, 1);
+
+            var subscriber = _db$subscribers$where2[0];
+
+            if (subscriber) {
+                return new _emberCliMirage['default'].Response(422, {}, {
+                    errors: [{
+                        errorType: 'ValidationError',
+                        message: 'Email already exists.',
+                        property: 'email'
+                    }]
+                });
+            } else {
+                attrs.created_at = new Date();
+                attrs.created_by = 0;
+
+                subscriber = db.subscribers.insert(attrs);
+
+                return {
+                    subscriber: subscriber
+                };
+            }
+        });
+
+        server.put('/subscribers/:id/', function (db, request) {
+            var id = request.params.id;
+
+            var _JSON$parse$subscribers2 = _slicedToArray(JSON.parse(request.requestBody).subscribers, 1);
+
+            var attrs = _JSON$parse$subscribers2[0];
+
+            var subscriber = db.subscribers.update(id, attrs);
+
+            return {
+                subscriber: subscriber
+            };
+        });
+
+        server.del('/subscribers/:id/', function (db, request) {
+            db.subscribers.remove(request.params.id);
+
+            return new _emberCliMirage['default'].Response(204, {}, {});
+        });
+
+        server.post('/subscribers/csv/', function () /*db, request*/{
+            // NB: we get a raw FormData object with no way to inspect it in Chrome
+            // until version 50 adds the additional read methods
+            // https://developer.mozilla.org/en-US/docs/Web/API/FormData#Browser_compatibility
+
+            server.createList('subscriber', 50);
+
+            return {
+                meta: {
+                    stats: {
+                        imported: 50,
+                        duplicates: 3,
+                        invalid: 2
+                    }
+                }
+            };
+        });
+    }
+
     exports['default'] = function () {
+        // this.urlPrefix = '';    // make this `http://localhost:8080`, for example, if your API is on a different server
+        this.namespace = 'ghost/api/v0.1'; // make this `api`, for example, if your API is namespaced
+        this.timing = 400; // delay for each request, automatically set to 0 during testing
+
+        // Mock endpoints here to override real API requests during development
+        mockSubscribers(this);
+
+        // keep this line, it allows all other API requests to hit the real server
+        this.passthrough();
+
+        // add any external domains to make sure those get passed through too
+        this.passthrough('https://count.ghost.org/');
+        this.passthrough('http://www.gravatar.com/**');
+    };
+
+    // Mock all endpoints here as there is no real API during testing
+
+    function testConfig() {
         // this.urlPrefix = '';    // make this `http://localhost:8080`, for example, if your API is on a different server
         this.namespace = 'ghost/api/v0.1'; // make this `api`, for example, if your API is namespaced
         // this.timing = 400;      // delay for each request, automatically set to 0 during testing
@@ -7390,6 +8712,12 @@ define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function
             };
         });
 
+        /* Apps - Slack Test Notification --------------------------------------------------------- */
+
+        this.post('/slack/test', function () {
+            return {};
+        });
+
         /* Slugs ---------------------------------------------------------------- */
 
         this.get('/slugs/post/:slug/', function (db, request) {
@@ -7444,6 +8772,10 @@ define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function
                 setup: [{ status: true }]
             };
         });
+
+        /* Subscribers ---------------------------------------------------------- */
+
+        mockSubscribers(this);
 
         /* Tags ----------------------------------------------------------------- */
 
@@ -7555,14 +8887,27 @@ define('ghost/mirage/config', ['exports', 'ember', 'ember-cli-mirage'], function
                 users: [db.users.find(request.params.id)]
             };
         });
-    };
 
-    /*
-    You can optionally export a config that is only loaded during tests
-    export function testConfig() {
-    
+        this.put('/users/:id/', function (db, request) {
+            var id = request.params.id;
+
+            var _JSON$parse$users2 = _slicedToArray(JSON.parse(request.requestBody).users, 1);
+
+            var attrs = _JSON$parse$users2[0];
+
+            var record = db.users.update(id, attrs);
+
+            return {
+                user: record
+            };
+        });
+
+        /* External sites ------------------------------------------------------- */
+
+        this.get('http://www.gravatar.com/avatar/:md5', function () {
+            return '';
+        }, 200);
     }
-    */
 });
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
 define('ghost/mirage/factories/notification', ['exports', 'ember-cli-mirage'], function (exports, _emberCliMirage) {
@@ -7688,6 +9033,41 @@ define('ghost/mirage/factories/setting', ['exports', 'ember-cli-mirage'], functi
     });
 });
 /* jscs:disable */
+define('ghost/mirage/factories/subscriber', ['exports', 'ember-cli-mirage'], function (exports, _emberCliMirage) {
+
+    var randomDate = function randomDate() {
+        var start = arguments.length <= 0 || arguments[0] === undefined ? moment().subtract(30, 'days').toDate() : arguments[0];
+        var end = arguments.length <= 1 || arguments[1] === undefined ? new Date() : arguments[1];
+
+        return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+    };
+
+    var statuses = ['pending', 'subscribed'];
+
+    // jscs:disable requireBlocksOnNewline
+    // jscs:disable requireCamelCaseOrUpperCaseIdentifiers
+    exports['default'] = _emberCliMirage['default'].Factory.extend({
+        uuid: function uuid(i) {
+            return 'subscriber-' + i;
+        },
+        name: function name() {
+            return _emberCliMirage.faker.name.firstName() + ' ' + _emberCliMirage.faker.name.lastName();
+        },
+        email: function email() {
+            return _emberCliMirage.faker.internet.email();
+        },
+        status: function status() {
+            return statuses[Math.floor(Math.random() * statuses.length)];
+        },
+        created_at: function created_at() {
+            return randomDate();
+        },
+        updated_at: null,
+        created_by: 0,
+        updated_by: null,
+        unsubscribed_at: null
+    });
+});
 define('ghost/mirage/factories/tag', ['exports', 'ember-cli-mirage'], function (exports, _emberCliMirage) {
     exports['default'] = _emberCliMirage['default'].Factory.extend({
         created_at: function created_at() {
@@ -7962,7 +9342,7 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         id: 12,
         uuid: 'd806f358-7996-4c74-b153-8876959c4b70',
         key: 'labs',
-        value: '{"codeInjectionUI":true}',
+        value: '{"codeInjectionUI":true,"subscribers":true}',
         type: 'blog',
         created_at: '2015-01-12T18:29:01.000Z',
         created_by: 1,
@@ -7999,6 +9379,36 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: 'f8e8cbda-d079-11e5-ab30-625662870761',
         value: ''
     }, {
+        created_at: '2016-05-05T15:04:03.115Z',
+        created_by: 1,
+        id: 17,
+        key: 'slack',
+        type: 'blog',
+        updated_at: '2016-05-05T18:33:09.168Z',
+        updated_by: 1,
+        uuid: 'dd4ebaa8-dedb-40ff-a663-ec64a92d4111',
+        value: '[{"url":""}]'
+    }, {
+        created_at: '2016-05-05T15:40:12.133Z',
+        created_by: 1,
+        id: 23,
+        key: 'facebook',
+        type: 'blog',
+        updated_at: '2016-05-08T15:20:25.953Z',
+        updated_by: 1,
+        uuid: 'd4387e5c-3230-46dd-a89b-0d8a40365c35',
+        value: 'test'
+    }, {
+        created_at: '2016-05-05T15:40:12.134Z',
+        created_by: 1,
+        id: 24,
+        key: 'twitter',
+        type: 'blog',
+        updated_at: '2016-05-08T15:20:25.954Z',
+        updated_by: 1,
+        uuid: '5130441f-e4c7-4750-9692-a22d841ab049',
+        value: '@test'
+    }, {
         key: 'availableThemes',
         value: [{
             name: 'casper',
@@ -8011,12 +9421,14 @@ define('ghost/mirage/fixtures/settings', ['exports'], function (exports) {
         type: 'theme'
     }];
 });
-define("ghost/mirage/scenarios/default", ["exports"], function (exports) {
-    exports["default"] = function () /* server */{
+define('ghost/mirage/scenarios/default', ['exports'], function (exports) {
+    exports['default'] = function (server) {
         // Seed your development database using your factories. This
         // data will not be loaded in your tests.
 
         // server.createList('contact', 10);
+
+        server.createList('subscriber', 125);
     };
 });
 define('ghost/mixins/404-handler', ['exports', 'ember'], function (exports, _ember) {
@@ -8199,6 +9611,7 @@ define('ghost/mixins/dropdown-mixin', ['exports', 'ember'], function (exports, _
 });
 define('ghost/mixins/ed-editor-api', ['exports', 'ember'], function (exports, _ember) {
     var Mixin = _ember['default'].Mixin;
+    var run = _ember['default'].run;
     exports['default'] = Mixin.create({
         /**
          * Get Value
@@ -8208,7 +9621,7 @@ define('ghost/mixins/ed-editor-api', ['exports', 'ember'], function (exports, _e
          * @returns {String}
          */
         getValue: function getValue() {
-            return this.$().val();
+            return this.readDOMAttr('value');
         },
 
         /**
@@ -8308,31 +9721,34 @@ define('ghost/mixins/ed-editor-api', ['exports', 'ember'], function (exports, _e
          * by providing selectionEnd.
          */
         replaceSelection: function replaceSelection(replacement, replacementStart, replacementEnd, cursorPosition) {
-            var $textarea = this.$();
+            run.schedule('afterRender', this, function () {
+                var $textarea = this.$();
 
-            cursorPosition = cursorPosition || 'collapseToEnd';
-            replacementEnd = replacementEnd || replacementStart;
+                cursorPosition = cursorPosition || 'collapseToEnd';
+                replacementEnd = replacementEnd || replacementStart;
 
-            $textarea.setSelection(replacementStart, replacementEnd);
+                $textarea.setSelection(replacementStart, replacementEnd);
 
-            if (['select', 'collapseToStart', 'collapseToEnd'].indexOf(cursorPosition) !== -1) {
-                $textarea.replaceSelectedText(replacement, cursorPosition);
-            } else {
-                $textarea.replaceSelectedText(replacement);
-                if (cursorPosition.hasOwnProperty('start')) {
-                    $textarea.setSelection(cursorPosition.start, cursorPosition.end);
+                if (['select', 'collapseToStart', 'collapseToEnd'].indexOf(cursorPosition) !== -1) {
+                    $textarea.replaceSelectedText(replacement, cursorPosition);
                 } else {
-                    $textarea.setSelection(cursorPosition, cursorPosition);
+                    $textarea.replaceSelectedText(replacement);
+                    if (cursorPosition.hasOwnProperty('start')) {
+                        $textarea.setSelection(cursorPosition.start, cursorPosition.end);
+                    } else {
+                        $textarea.setSelection(cursorPosition, cursorPosition);
+                    }
                 }
-            }
 
-            $textarea.focus();
-            // Tell the editor it has changed, as programmatic replacements won't trigger this automatically
-            this.sendAction('onChange');
+                $textarea.focus();
+                // Tell the editor it has changed, as programmatic replacements won't trigger this automatically
+                this._elementValueDidChange();
+                this.sendAction('onChange');
+            });
         }
     });
 });
-define('ghost/mixins/ed-editor-scroll', ['exports', 'ember'], function (exports, _ember) {
+define('ghost/mixins/ed-editor-scroll', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
     var Mixin = _ember['default'].Mixin;
     var run = _ember['default'].run;
     exports['default'] = Mixin.create({
@@ -8395,7 +9811,7 @@ define('ghost/mixins/ed-editor-scroll', ['exports', 'ember'], function (exports,
             var _this = this;
 
             this.set('scrollThrottle', run.throttle(this, function () {
-                _this.get('updateScrollInfo')(_this.getScrollInfo());
+                (0, _emberInvokeAction.invokeAction)(_this, 'updateScrollInfo', _this.getScrollInfo());
             }, 10));
         },
 
@@ -9028,6 +10444,7 @@ define('ghost/mixins/editor-base-controller', ['exports', 'ember', 'ghost/models
     });
 });
 define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shortcuts-route', 'ghost/mixins/style-body', 'ghost/utils/ctrl-or-cmd'], function (exports, _ember, _ghostMixinsShortcutsRoute, _ghostMixinsStyleBody, _ghostUtilsCtrlOrCmd) {
+    var $ = _ember['default'].$;
     var Mixin = _ember['default'].Mixin;
     var RSVP = _ember['default'].RSVP;
     var run = _ember['default'].run;
@@ -9043,7 +10460,15 @@ define('ghost/mixins/editor-base-route', ['exports', 'ember', 'ghost/mixins/shor
 
         actions: {
             save: function save() {
-                this.get('controller').send('save');
+                var selectedElement = $(document.activeElement);
+
+                if (selectedElement.is('input[type="text"]')) {
+                    selectedElement.trigger('focusout');
+                }
+
+                run.scheduleOnce('actions', this, function () {
+                    this.get('controller').send('save');
+                });
             },
 
             publish: function publish() {
@@ -9200,8 +10625,10 @@ define('ghost/mixins/infinite-scroll', ['exports', 'ember'], function (exports, 
         }
     });
 });
-define('ghost/mixins/pagination-route', ['exports', 'ember', 'ghost/utils/ajax'], function (exports, _ember, _ghostUtilsAjax) {
+define('ghost/mixins/pagination', ['exports', 'ember', 'ghost/utils/ajax'], function (exports, _ember, _ghostUtilsAjax) {
     var Mixin = _ember['default'].Mixin;
+    var computed = _ember['default'].computed;
+    var RSVP = _ember['default'].RSVP;
     var service = _ember['default'].inject.service;
 
     var defaultPaginationSettings = {
@@ -9214,11 +10641,24 @@ define('ghost/mixins/pagination-route', ['exports', 'ember', 'ghost/utils/ajax']
 
         paginationModel: null,
         paginationSettings: null,
-        paginationMeta: null,
+
+        // add a hook so that routes/controllers can do something with the meta data
+        paginationMeta: computed({
+            get: function get() {
+                return this._paginationMeta;
+            },
+            set: function set(key, value) {
+                if (this.didReceivePaginationMeta) {
+                    this.didReceivePaginationMeta(value);
+                }
+                this._paginationMeta = value;
+                return value;
+            }
+        }),
 
         init: function init() {
             var paginationSettings = this.get('paginationSettings');
-            var settings = _ember['default'].$.extend({}, defaultPaginationSettings, paginationSettings);
+            var settings = _ember['default'].assign({}, defaultPaginationSettings, paginationSettings);
 
             this._super.apply(this, arguments);
             this.set('paginationSettings', settings);
@@ -9249,13 +10689,17 @@ define('ghost/mixins/pagination-route', ['exports', 'ember', 'ghost/utils/ajax']
             var paginationSettings = this.get('paginationSettings');
             var modelName = this.get('paginationModel');
 
-            paginationSettings.page = 1;
+            this.set('paginationSettings.page', 1);
+
+            this.set('isLoading', true);
 
             return this.get('store').query(modelName, paginationSettings).then(function (results) {
                 _this.set('paginationMeta', results.meta);
                 return results;
-            }, function (response) {
+            })['catch'](function (response) {
                 _this.reportLoadError(response);
+            })['finally'](function () {
+                _this.set('isLoading', false);
             });
         },
 
@@ -9277,17 +10721,20 @@ define('ghost/mixins/pagination-route', ['exports', 'ember', 'ghost/utils/ajax']
                 var nextPage = metadata.pagination && metadata.pagination.next;
                 var paginationSettings = this.get('paginationSettings');
 
-                if (nextPage) {
+                if (nextPage && !this.get('isLoading')) {
                     this.set('isLoading', true);
                     this.set('paginationSettings.page', nextPage);
 
-                    store.query(modelName, paginationSettings).then(function (results) {
-                        _this2.set('isLoading', false);
+                    return store.query(modelName, paginationSettings).then(function (results) {
                         _this2.set('paginationMeta', results.meta);
                         return results;
-                    }, function (response) {
+                    })['catch'](function (response) {
                         _this2.reportLoadError(response);
+                    })['finally'](function () {
+                        _this2.set('isLoading', false);
                     });
+                } else {
+                    return RSVP.resolve([]);
                 }
             },
 
@@ -9549,7 +10996,7 @@ define('ghost/mixins/text-input', ['exports', 'ember'], function (exports, _embe
         }
     });
 });
-define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'ember-data/model', 'ghost/utils/ajax', 'ghost/utils/validator-extensions', 'ghost/validators/post', 'ghost/validators/setup', 'ghost/validators/signup', 'ghost/validators/signin', 'ghost/validators/setting', 'ghost/validators/reset', 'ghost/validators/user', 'ghost/validators/tag-settings', 'ghost/validators/nav-item', 'ghost/validators/invite-user'], function (exports, _ember, _emberData, _emberDataModel, _ghostUtilsAjax, _ghostUtilsValidatorExtensions, _ghostValidatorsPost, _ghostValidatorsSetup, _ghostValidatorsSignup, _ghostValidatorsSignin, _ghostValidatorsSetting, _ghostValidatorsReset, _ghostValidatorsUser, _ghostValidatorsTagSettings, _ghostValidatorsNavItem, _ghostValidatorsInviteUser) {
+define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'ember-data/model', 'ghost/utils/ajax', 'ghost/validators/invite-user', 'ghost/validators/nav-item', 'ghost/validators/post', 'ghost/validators/reset', 'ghost/validators/setting', 'ghost/validators/setup', 'ghost/validators/signin', 'ghost/validators/signup', 'ghost/validators/slack-integration', 'ghost/validators/subscriber', 'ghost/validators/tag-settings', 'ghost/validators/user', 'ghost/utils/validator-extensions'], function (exports, _ember, _emberData, _emberDataModel, _ghostUtilsAjax, _ghostValidatorsInviteUser, _ghostValidatorsNavItem, _ghostValidatorsPost, _ghostValidatorsReset, _ghostValidatorsSetting, _ghostValidatorsSetup, _ghostValidatorsSignin, _ghostValidatorsSignup, _ghostValidatorsSlackIntegration, _ghostValidatorsSubscriber, _ghostValidatorsTagSettings, _ghostValidatorsUser, _ghostUtilsValidatorExtensions) {
     function _instanceof(left, right) { if (right != null && right[Symbol.hasInstance]) { return right[Symbol.hasInstance](left); } else { return left instanceof right; } }
 
     var Mixin = _ember['default'].Mixin;
@@ -9575,25 +11022,33 @@ define('ghost/mixins/validation-engine', ['exports', 'ember', 'ember-data', 'emb
         // in that case the model will be the class that the ValidationEngine
         // was mixed into, i.e. the controller or Ember Data model.
         validators: {
-            post: _ghostValidatorsPost['default'],
-            setup: _ghostValidatorsSetup['default'],
-            signup: _ghostValidatorsSignup['default'],
-            signin: _ghostValidatorsSignin['default'],
-            setting: _ghostValidatorsSetting['default'],
-            reset: _ghostValidatorsReset['default'],
-            user: _ghostValidatorsUser['default'],
-            tag: _ghostValidatorsTagSettings['default'],
+            inviteUser: _ghostValidatorsInviteUser['default'],
             navItem: _ghostValidatorsNavItem['default'],
-            inviteUser: _ghostValidatorsInviteUser['default']
+            post: _ghostValidatorsPost['default'],
+            reset: _ghostValidatorsReset['default'],
+            setting: _ghostValidatorsSetting['default'],
+            setup: _ghostValidatorsSetup['default'],
+            signin: _ghostValidatorsSignin['default'],
+            signup: _ghostValidatorsSignup['default'],
+            slackIntegration: _ghostValidatorsSlackIntegration['default'],
+            subscriber: _ghostValidatorsSubscriber['default'],
+            tag: _ghostValidatorsTagSettings['default'],
+            user: _ghostValidatorsUser['default']
         },
 
         // This adds the Errors object to the validation engine, and shouldn't affect
         // ember-data models because they essentially use the same thing
-        errors: Errors.create(),
+        errors: null,
 
         // Store whether a property has been validated yet, so that we know whether or not
         // to show error / success validation for a field
-        hasValidated: emberA(),
+        hasValidated: null,
+
+        init: function init() {
+            this._super.apply(this, arguments);
+            this.set('errors', Errors.create());
+            this.set('hasValidated', emberA());
+        },
 
         /**
         * Passes the model to the validator specified by validationType.
@@ -9729,6 +11184,35 @@ define('ghost/mixins/validation-state', ['exports', 'ember'], function (exports,
 
     });
 });
+define('ghost/models/navigation-item', ['exports', 'ember', 'ghost/mixins/validation-engine'], function (exports, _ember, _ghostMixinsValidationEngine) {
+    var computed = _ember['default'].computed;
+    var isBlank = _ember['default'].isBlank;
+    exports['default'] = _ember['default'].Object.extend(_ghostMixinsValidationEngine['default'], {
+        label: '',
+        url: '',
+        isNew: false,
+
+        validationType: 'navItem',
+
+        isComplete: computed('label', 'url', function () {
+            var _getProperties = this.getProperties('label', 'url');
+
+            var label = _getProperties.label;
+            var url = _getProperties.url;
+
+            return !isBlank(label) && !isBlank(url);
+        }),
+
+        isBlank: computed('label', 'url', function () {
+            var _getProperties2 = this.getProperties('label', 'url');
+
+            var label = _getProperties2.label;
+            var url = _getProperties2.url;
+
+            return isBlank(label) && isBlank(url);
+        })
+    });
+});
 define('ghost/models/notification', ['exports', 'ember-data/model', 'ember-data/attr'], function (exports, _emberDataModel, _emberDataAttr) {
     exports['default'] = _emberDataModel['default'].extend({
         dismissible: (0, _emberDataAttr['default'])('boolean'),
@@ -9850,13 +11334,51 @@ define('ghost/models/setting', ['exports', 'ember-data/model', 'ember-data/attr'
         availableThemes: (0, _emberDataAttr['default'])(),
         ghost_head: (0, _emberDataAttr['default'])('string'),
         ghost_foot: (0, _emberDataAttr['default'])('string'),
+        facebook: (0, _emberDataAttr['default'])('facebook-url-user'),
+        twitter: (0, _emberDataAttr['default'])('twitter-url-user'),
         labs: (0, _emberDataAttr['default'])('string'),
-        navigation: (0, _emberDataAttr['default'])('string'),
+        navigation: (0, _emberDataAttr['default'])('navigation-settings'),
         isPrivate: (0, _emberDataAttr['default'])('boolean'),
-        password: (0, _emberDataAttr['default'])('string')
+        password: (0, _emberDataAttr['default'])('string'),
+        slack: (0, _emberDataAttr['default'])('slack-settings')
     });
 });
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+define('ghost/models/slack-integration', ['exports', 'ember', 'ghost/mixins/validation-engine'], function (exports, _ember, _ghostMixinsValidationEngine) {
+    var computed = _ember['default'].computed;
+    var isBlank = _ember['default'].isBlank;
+    exports['default'] = _ember['default'].Object.extend(_ghostMixinsValidationEngine['default'], {
+        // values entered here will act as defaults
+        url: '',
+
+        validationType: 'slackIntegration',
+
+        isActive: computed('url', function () {
+            var url = this.get('url');
+            return !isBlank(url);
+        })
+    });
+});
+define('ghost/models/subscriber', ['exports', 'ember-data/model', 'ember-data/attr', 'ember-data/relationships', 'ghost/mixins/validation-engine'], function (exports, _emberDataModel, _emberDataAttr, _emberDataRelationships, _ghostMixinsValidationEngine) {
+    exports['default'] = _emberDataModel['default'].extend(_ghostMixinsValidationEngine['default'], {
+        validationType: 'subscriber',
+
+        uuid: (0, _emberDataAttr['default'])('string'),
+        name: (0, _emberDataAttr['default'])('string'),
+        email: (0, _emberDataAttr['default'])('string'),
+        status: (0, _emberDataAttr['default'])('string'),
+        subscribedUrl: (0, _emberDataAttr['default'])('string'),
+        subscribedReferrer: (0, _emberDataAttr['default'])('string'),
+        unsubscribedUrl: (0, _emberDataAttr['default'])('string'),
+        unsubscribedAt: (0, _emberDataAttr['default'])('moment-date'),
+        createdAt: (0, _emberDataAttr['default'])('moment-date'),
+        updatedAt: (0, _emberDataAttr['default'])('moment-date'),
+        createdBy: (0, _emberDataAttr['default'])('number'),
+        updatedBy: (0, _emberDataAttr['default'])('number'),
+
+        post: (0, _emberDataRelationships.belongsTo)('post')
+    });
+});
 define('ghost/models/tag', ['exports', 'ember-data/model', 'ember-data/attr', 'ghost/mixins/validation-engine'], function (exports, _emberDataModel, _emberDataAttr, _ghostMixinsValidationEngine) {
     exports['default'] = _emberDataModel['default'].extend(_ghostMixinsValidationEngine['default'], {
         validationType: 'tag',
@@ -9910,6 +11432,8 @@ define('ghost/models/user', ['exports', 'ember', 'ember-data/model', 'ember-data
             async: false
         }),
         count: (0, _emberDataAttr['default'])('raw'),
+        facebook: (0, _emberDataAttr['default'])('facebook-url-user'),
+        twitter: (0, _emberDataAttr['default'])('twitter-url-user'),
 
         ghostPaths: service(),
         ajax: service(),
@@ -10045,6 +11569,14 @@ define('ghost/router', ['exports', 'ember', 'ghost/utils/ghost-paths', 'ghost/ut
         this.route('settings.labs', { path: '/settings/labs' });
         this.route('settings.code-injection', { path: '/settings/code-injection' });
         this.route('settings.navigation', { path: '/settings/navigation' });
+        this.route('settings.apps', { path: '/settings/apps' }, function () {
+            this.route('slack', { path: 'slack' });
+        });
+
+        this.route('subscribers', function () {
+            this.route('new');
+            this.route('import');
+        });
 
         this.route('error404', { path: '/*path' });
     });
@@ -10105,12 +11637,20 @@ define('ghost/routes/application', ['exports', 'ember', 'ember-simple-auth/confi
         shortcuts: shortcuts,
 
         config: service(),
+        feature: service(),
         dropdown: service(),
         notifications: service(),
 
         afterModel: function afterModel(model, transition) {
+            this._super.apply(this, arguments);
+
             if (this.get('session.isAuthenticated')) {
+                this.set('appLoadTransition', transition);
                 transition.send('loadServerNotifications');
+
+                // return the feature loading promise so that we block until settings
+                // are loaded in order for synchronous access everywhere
+                return this.get('feature').fetch();
             }
         },
 
@@ -10125,16 +11665,25 @@ define('ghost/routes/application', ['exports', 'ember', 'ember-simple-auth/confi
                 return;
             }
 
+            // standard ESA post-sign-in redirect
             this._super.apply(this, arguments);
+
+            // trigger post-sign-in background behaviour
             this.get('session.user').then(function (user) {
                 _this.send('signedIn', user);
             });
         },
 
         sessionInvalidated: function sessionInvalidated() {
-            run.scheduleOnce('routerTransitions', this, function () {
-                this.send('authorizationFailed');
-            });
+            var transition = this.get('appLoadTransition');
+
+            if (transition) {
+                transition.send('authorizationFailed');
+            } else {
+                run.scheduleOnce('routerTransitions', this, function () {
+                    this.send('authorizationFailed');
+                });
+            }
         },
 
         actions: {
@@ -10155,6 +11704,7 @@ define('ghost/routes/application', ['exports', 'ember', 'ember-simple-auth/confi
             },
 
             didTransition: function didTransition() {
+                this.set('appLoadTransition', null);
                 this.send('closeMenus');
             },
 
@@ -10312,8 +11862,7 @@ define('ghost/routes/editor/new', ['exports', 'ghost/routes/authenticated', 'gho
             // from previous posts
             psm.removeObserver('titleScratch', psm, 'titleObserver');
 
-            // Ensure that the PSM Image Uploader and Publish Date selector resets
-            psm.send('resetUploader');
+            // Ensure that the PSM Publish Date selector resets
             psm.send('resetPubDate');
 
             this._super.apply(this, arguments);
@@ -10512,8 +12061,8 @@ define('ghost/routes/posts/post', ['exports', 'ghost/routes/authenticated', 'gho
         }
     });
 });
-define('ghost/routes/posts', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination-route'], function (exports, _ember, _ghostRoutesAuthenticated, _ghostMixinsShortcutsRoute, _ghostMixinsPaginationRoute) {
-    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsShortcutsRoute['default'], _ghostMixinsPaginationRoute['default'], {
+define('ghost/routes/posts', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination'], function (exports, _ember, _ghostRoutesAuthenticated, _ghostMixinsShortcutsRoute, _ghostMixinsPagination) {
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsShortcutsRoute['default'], _ghostMixinsPagination['default'], {
         titleToken: 'Content',
 
         paginationModel: 'post',
@@ -10638,6 +12187,39 @@ define('ghost/routes/reset', ['exports', 'ember', 'ember-simple-auth/configurati
         }
     });
 });
+define('ghost/routes/settings/apps/slack', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/style-body'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsStyleBody) {
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsStyleBody['default'], _ghostMixinsCurrentUserSettings['default'], {
+        titleToken: 'Settings - Apps - Slack',
+
+        classNames: ['settings-view-apps-slack'],
+
+        model: function model() {
+            return this.modelFor('settings.apps').get('slack.firstObject');
+        },
+
+        setupController: function setupController(controller) {
+            this._super.apply(this, arguments);
+
+            controller.set('settings', this.modelFor('settings.apps'));
+        }
+    });
+});
+define('ghost/routes/settings/apps', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/style-body'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsStyleBody) {
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsStyleBody['default'], _ghostMixinsCurrentUserSettings['default'], {
+        titleToken: 'Settings - Apps',
+
+        classNames: ['settings-view-apps'],
+
+        beforeModel: function beforeModel() {
+            this._super.apply(this, arguments);
+            return this.get('session.user').then(this.transitionAuthor()).then(this.transitionEditor());
+        },
+
+        model: function model() {
+            return this.store.queryRecord('setting', { type: 'blog,theme,private' });
+        }
+    });
+});
 define('ghost/routes/settings/code-injection', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/style-body'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsStyleBody) {
     exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsStyleBody['default'], _ghostMixinsCurrentUserSettings['default'], {
         titleToken: 'Settings - Code Injection',
@@ -10649,7 +12231,7 @@ define('ghost/routes/settings/code-injection', ['exports', 'ghost/routes/authent
         },
 
         model: function model() {
-            return this.store.query('setting', { type: 'blog,theme' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme,private' }).then(function (records) {
                 return records.get('firstObject');
             });
         },
@@ -10673,9 +12255,7 @@ define('ghost/routes/settings/general', ['exports', 'ghost/routes/authenticated'
         },
 
         model: function model() {
-            return this.store.query('setting', { type: 'blog,theme,private' }).then(function (records) {
-                return records.get('firstObject');
-            });
+            return this.store.queryRecord('setting', { type: 'blog,theme,private' });
         },
 
         actions: {
@@ -10697,7 +12277,7 @@ define('ghost/routes/settings/labs', ['exports', 'ghost/routes/authenticated', '
         },
 
         model: function model() {
-            return this.store.query('setting', { type: 'blog,theme' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme,private' }).then(function (records) {
                 return records.get('firstObject');
             });
         }
@@ -10716,7 +12296,7 @@ define('ghost/routes/settings/navigation', ['exports', 'ember', 'ghost/routes/au
         },
 
         model: function model() {
-            return this.store.query('setting', { type: 'blog,theme' }).then(function (records) {
+            return this.store.query('setting', { type: 'blog,theme,private' }).then(function (records) {
                 return records.get('firstObject');
             });
         },
@@ -10800,8 +12380,8 @@ define('ghost/routes/settings/tags/tag', ['exports', 'ghost/routes/authenticated
     });
 });
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
-define('ghost/routes/settings/tags', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination-route'], function (exports, _ember, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsShortcutsRoute, _ghostMixinsPaginationRoute) {
-    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsCurrentUserSettings['default'], _ghostMixinsPaginationRoute['default'], _ghostMixinsShortcutsRoute['default'], {
+define('ghost/routes/settings/tags', ['exports', 'ember', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/shortcuts-route', 'ghost/mixins/pagination'], function (exports, _ember, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsShortcutsRoute, _ghostMixinsPagination) {
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsCurrentUserSettings['default'], _ghostMixinsPagination['default'], _ghostMixinsShortcutsRoute['default'], {
         titleToken: 'Settings - Tags',
 
         paginationModel: 'tag',
@@ -10985,6 +12565,8 @@ define('ghost/routes/setup/three', ['exports', 'ember'], function (exports, _emb
     });
 });
 define('ghost/routes/setup', ['exports', 'ember', 'ember-simple-auth/configuration', 'ghost/mixins/style-body'], function (exports, _ember, _emberSimpleAuthConfiguration, _ghostMixinsStyleBody) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
     var Route = _ember['default'].Route;
     var service = _ember['default'].inject.service;
     exports['default'] = Route.extend(_ghostMixinsStyleBody['default'], {
@@ -11012,10 +12594,25 @@ define('ghost/routes/setup', ['exports', 'ember', 'ember-simple-auth/configurati
 
             // If user is not logged in, check the state of the setup process via the API
             return this.get('ajax').request(authUrl).then(function (result) {
-                var setup = result.setup[0].status;
+                var _result$setup = _slicedToArray(result.setup, 1);
 
-                if (setup) {
+                var setup = _result$setup[0];
+
+                if (setup.status) {
                     return _this.transitionTo('signin');
+                } else {
+                    var controller = _this.controllerFor('setup/two');
+                    if (setup.title) {
+                        controller.set('blogTitle', setup.title.replace(/&apos;/gim, '\''));
+                    }
+
+                    if (setup.name) {
+                        controller.set('name', setup.name.replace(/&apos;/gim, '\''));
+                    }
+
+                    if (setup.email) {
+                        controller.set('email', setup.email);
+                    }
                 }
             });
         },
@@ -11158,8 +12755,109 @@ define('ghost/routes/signup', ['exports', 'ember', 'ember-data', 'ember-simple-a
         }
     });
 });
-define('ghost/routes/team/index', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/pagination-route', 'ghost/mixins/style-body'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsPaginationRoute, _ghostMixinsStyleBody) {
-    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsStyleBody['default'], _ghostMixinsCurrentUserSettings['default'], _ghostMixinsPaginationRoute['default'], {
+define('ghost/routes/subscribers/import', ['exports', 'ember'], function (exports, _ember) {
+    exports['default'] = _ember['default'].Route.extend({
+        actions: {
+            cancel: function cancel() {
+                this.transitionTo('subscribers');
+            }
+        }
+    });
+});
+define('ghost/routes/subscribers/new', ['exports', 'ember'], function (exports, _ember) {
+    exports['default'] = _ember['default'].Route.extend({
+        model: function model() {
+            return this.get('store').createRecord('subscriber');
+        },
+
+        deactivate: function deactivate() {
+            var subscriber = this.controller.get('model');
+
+            this._super.apply(this, arguments);
+
+            if (subscriber.get('isNew')) {
+                this.rollbackModel();
+            }
+        },
+
+        rollbackModel: function rollbackModel() {
+            var subscriber = this.controller.get('model');
+            subscriber.rollbackAttributes();
+        },
+
+        actions: {
+            save: function save() {
+                var _this = this;
+
+                var subscriber = this.controller.get('model');
+                return subscriber.save().then(function (saved) {
+                    _this.send('addSubscriber', saved);
+                    return saved;
+                });
+            },
+
+            cancel: function cancel() {
+                this.rollbackModel();
+                this.transitionTo('subscribers');
+            }
+        }
+    });
+});
+define('ghost/routes/subscribers', ['exports', 'ember', 'ghost/routes/authenticated'], function (exports, _ember, _ghostRoutesAuthenticated) {
+    var RSVP = _ember['default'].RSVP;
+    var service = _ember['default'].inject.service;
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend({
+        titleToken: 'Subscribers',
+
+        feature: service(),
+
+        // redirect if subscribers is disabled or user isn't owner/admin
+        beforeModel: function beforeModel() {
+            var _this = this;
+
+            this._super.apply(this, arguments);
+            var promises = {
+                user: this.get('session.user'),
+                subscribers: this.get('feature.subscribers')
+            };
+
+            return RSVP.hash(promises).then(function (hash) {
+                var user = hash.user;
+                var subscribers = hash.subscribers;
+
+                if (!subscribers || !(user.get('isOwner') || user.get('isAdmin'))) {
+                    return _this.transitionTo('posts');
+                }
+            });
+        },
+
+        setupController: function setupController(controller) {
+            this._super.apply(this, arguments);
+            controller.initializeTable();
+            controller.send('loadFirstPage');
+        },
+
+        resetController: function resetController(controller, isExiting) {
+            this._super.apply(this, arguments);
+            if (isExiting) {
+                controller.set('order', 'created_at');
+                controller.set('direction', 'desc');
+            }
+        },
+
+        actions: {
+            addSubscriber: function addSubscriber(subscriber) {
+                this.get('controller').send('addSubscriber', subscriber);
+            },
+
+            reset: function reset() {
+                this.get('controller').send('reset');
+            }
+        }
+    });
+});
+define('ghost/routes/team/index', ['exports', 'ghost/routes/authenticated', 'ghost/mixins/current-user-settings', 'ghost/mixins/pagination', 'ghost/mixins/style-body'], function (exports, _ghostRoutesAuthenticated, _ghostMixinsCurrentUserSettings, _ghostMixinsPagination, _ghostMixinsStyleBody) {
+    exports['default'] = _ghostRoutesAuthenticated['default'].extend(_ghostMixinsStyleBody['default'], _ghostMixinsCurrentUserSettings['default'], _ghostMixinsPagination['default'], {
         titleToken: 'Team',
 
         classNames: ['view-team'],
@@ -11414,11 +13112,32 @@ define('ghost/serializers/user', ['exports', 'ember', 'ghost/serializers/applica
         }
     });
 });
-define('ghost/services/ajax', ['exports', 'ember', 'ember-ajax/services/ajax'], function (exports, _ember, _emberAjaxServicesAjax) {
+define('ghost/services/ajax', ['exports', 'ember', 'ember-ajax/services/ajax', 'ember-ajax/errors'], function (exports, _ember, _emberAjaxServicesAjax, _emberAjaxErrors) {
+    exports.RequestEntityTooLargeError = RequestEntityTooLargeError;
+    exports.UnsupportedMediaTypeError = UnsupportedMediaTypeError;
+    exports.NotFoundError = NotFoundError;
+
     function _typeof(obj) { return obj && obj.constructor === Symbol ? 'symbol' : typeof obj; }
 
     var inject = _ember['default'].inject;
     var computed = _ember['default'].computed;
+
+    function RequestEntityTooLargeError(errors) {
+        _emberAjaxErrors.AjaxError.call(this, errors, 'Request was rejected because it\'s larger than the maximum file size the server allows');
+    }
+
+    function UnsupportedMediaTypeError(errors) {
+        _emberAjaxErrors.AjaxError.call(this, errors, 'Request was rejected because it contains an unknown or unsupported file type.');
+    }
+
+    // TODO: remove once upgraded to ember-ajax 2.0
+
+    function NotFoundError(errors) {
+        _emberAjaxErrors.AjaxError.call(this, errors, 'Resource was not found.');
+    }
+
+    NotFoundError.prototype = Object.create(_emberAjaxErrors.AjaxError.prototype);
+
     exports['default'] = _emberAjaxServicesAjax['default'].extend({
         session: inject.service(),
 
@@ -11444,12 +13163,36 @@ define('ghost/services/ajax', ['exports', 'ember', 'ember-ajax/services/ajax'], 
             }
         }),
 
+        handleResponse: function handleResponse(status, headers, payload) {
+            if (this.isRequestEntityTooLarge(status, headers, payload)) {
+                return new RequestEntityTooLargeError(payload.errors);
+            } else if (this.isUnsupportedMediaType(status, headers, payload)) {
+                return new UnsupportedMediaTypeError(payload.errors);
+            } else if (this.isNotFoundError(status, headers, payload)) {
+                return new NotFoundError(payload.errors);
+            }
+
+            return this._super.apply(this, arguments);
+        },
+
         normalizeErrorResponse: function normalizeErrorResponse(status, headers, payload) {
             if (payload && (typeof payload === 'undefined' ? 'undefined' : _typeof(payload)) === 'object') {
                 payload.errors = payload.error || payload.errors || payload.message || undefined;
             }
 
             return this._super(status, headers, payload);
+        },
+
+        isRequestEntityTooLarge: function isRequestEntityTooLarge(status /*, headers, payload */) {
+            return status === 413;
+        },
+
+        isUnsupportedMediaType: function isUnsupportedMediaType(status /*, headers, payload */) {
+            return status === 415;
+        },
+
+        isNotFoundError: function isNotFoundError(status) {
+            return status === 404;
         }
     });
 });
@@ -11522,34 +13265,25 @@ define('ghost/services/dropdown', ['exports', 'ember', 'ghost/mixins/body-event-
 // This is used by the dropdown initializer (and subsequently popovers) to manage closing & toggling
 define('ghost/services/feature', ['exports', 'ember'], function (exports, _ember) {
     exports.feature = feature;
-    var RSVP = _ember['default'].RSVP;
     var Service = _ember['default'].Service;
     var computed = _ember['default'].computed;
     var service = _ember['default'].inject.service;
     var set = _ember['default'].set;
-    var Promise = RSVP.Promise;
 
     var EmberError = _ember['default'].Error;
 
     function feature(name) {
         return computed('config.' + name, 'labs.' + name, {
             get: function get() {
-                var _this = this;
+                if (this.get('config.' + name)) {
+                    return this.get('config.' + name);
+                }
 
-                return new Promise(function (resolve) {
-                    if (_this.get('config.' + name)) {
-                        return resolve(_this.get('config.' + name));
-                    }
-
-                    _this.get('labs').then(function (labs) {
-                        resolve(labs[name] || false);
-                    });
-                });
+                return this.get('labs.' + name) || false;
             },
             set: function set(key, value) {
-                return this.update(key, value).then(function (savedValue) {
-                    return savedValue;
-                });
+                this.update(key, value);
+                return value;
             }
         });
     }
@@ -11560,69 +13294,57 @@ define('ghost/services/feature', ['exports', 'ember'], function (exports, _ember
         notifications: service(),
 
         publicAPI: feature('publicAPI'),
+        subscribers: feature('subscribers'),
 
-        labs: computed('_settings', function () {
-            var _this2 = this;
+        _settings: null,
 
-            return this.get('_settings').then(function (settings) {
-                return _this2._parseLabs(settings);
-            });
-        }),
-
-        _settings: computed(function () {
-            var store = this.get('store');
-
-            return store.queryRecord('setting', { type: 'blog' });
-        }),
-
-        _parseLabs: function _parseLabs(settings) {
-            var labs = settings.get('labs');
+        labs: computed('_settings.labs', function () {
+            var labs = this.get('_settings.labs');
 
             try {
                 return JSON.parse(labs) || {};
             } catch (e) {
                 return {};
             }
+        }),
+
+        fetch: function fetch() {
+            var _this = this;
+
+            return this.get('store').queryRecord('setting', { type: 'blog,theme,private' }).then(function (settings) {
+                _this.set('_settings', settings);
+                return true;
+            });
         },
 
         update: function update(key, value) {
-            var _this3 = this;
+            var _this2 = this;
 
-            return new Promise(function (resolve, reject) {
-                var promises = {
-                    settings: _this3.get('_settings'),
-                    labs: _this3.get('labs')
-                };
+            var settings = this.get('_settings');
+            var labs = this.get('labs');
 
-                RSVP.hash(promises).then(function (_ref) {
-                    var labs = _ref.labs;
-                    var settings = _ref.settings;
+            // set the new labs key value
+            set(labs, key, value);
+            // update the 'labs' key of the settings model
+            settings.set('labs', JSON.stringify(labs));
 
-                    // set the new labs key value
-                    set(labs, key, value);
-                    // update the 'labs' key of the settings model
-                    settings.set('labs', JSON.stringify(labs));
+            return settings.save().then(function () {
+                // return the labs key value that we get from the server
+                _this2.notifyPropertyChange('labs');
+                return _this2.get('labs.' + key);
+            })['catch'](function (errors) {
+                settings.rollbackAttributes();
+                _this2.notifyPropertyChange('labs');
 
-                    settings.save().then(function (savedSettings) {
-                        // replace the cached _settings promise
-                        _this3.set('_settings', RSVP.resolve(savedSettings));
+                // we'll always have an errors object unless we hit a
+                // validation error
+                if (!errors) {
+                    throw new EmberError('Validation of the feature service settings model failed when updating labs.');
+                }
 
-                        // return the labs key value that we get from the server
-                        resolve(_this3._parseLabs(savedSettings).get(key));
-                    })['catch'](function (errors) {
-                        settings.rollbackAttributes();
+                _this2.get('notifications').showErrors(errors);
 
-                        // we'll always have an errors object unless we hit a
-                        // validation error
-                        if (!errors) {
-                            throw new EmberError('Validation of the feature service settings model failed when updating labs.');
-                        }
-
-                        _this3.get('notifications').showErrors(errors);
-
-                        resolve(_this3._parseLabs(settings)[key]);
-                    });
-                })['catch'](reject);
+                return _this2.get('labs.' + key);
             });
         }
     });
@@ -11909,10 +13631,21 @@ define('ghost/services/session', ['exports', 'ember', 'ember-simple-auth/service
     var service = _ember['default'].inject.service;
     exports['default'] = _emberSimpleAuthServicesSession['default'].extend({
         store: service(),
+        feature: service(),
 
         user: computed(function () {
             return this.get('store').findRecord('user', 'me');
-        })
+        }),
+
+        authenticate: function authenticate() {
+            var _this = this;
+
+            return this._super.apply(this, arguments).then(function (authResult) {
+                return _this.get('feature').fetch().then(function () {
+                    return authResult;
+                });
+            });
+        }
     });
 });
 define('ghost/services/slug-generator', ['exports', 'ember'], function (exports, _ember) {
@@ -11963,7 +13696,7 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -12063,12 +13796,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/kevinkucharczyk");
-        dom.setAttribute(el2, "title", "kevinkucharczyk");
+        dom.setAttribute(el2, "href", "https://github.com/kirrg001");
+        dom.setAttribute(el2, "title", "kirrg001");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "kevinkucharczyk");
+        dom.setAttribute(el3, "alt", "kirrg001");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12082,31 +13815,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/jtwebman");
-        dom.setAttribute(el2, "title", "jtwebman");
+        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
+        dom.setAttribute(el2, "title", "AileenCGN");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "jtwebman");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/halfdan");
-        dom.setAttribute(el2, "title", "halfdan");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "halfdan");
+        dom.setAttribute(el3, "alt", "AileenCGN");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12139,50 +13853,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/jamesslock");
-        dom.setAttribute(el2, "title", "jamesslock");
+        dom.setAttribute(el2, "href", "https://github.com/greenkeeperio-bot");
+        dom.setAttribute(el2, "title", "greenkeeperio-bot");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "jamesslock");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cameronviner");
-        dom.setAttribute(el2, "title", "cameronviner");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cameronviner");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
-        dom.setAttribute(el2, "title", "cobbspur");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cobbspur");
+        dom.setAttribute(el3, "alt", "greenkeeperio-bot");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12234,12 +13910,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/damsonn");
-        dom.setAttribute(el2, "title", "damsonn");
+        dom.setAttribute(el2, "href", "https://github.com/joerx");
+        dom.setAttribute(el2, "title", "joerx");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "damsonn");
+        dom.setAttribute(el3, "alt", "joerx");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12253,12 +13929,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/zinyando");
-        dom.setAttribute(el2, "title", "zinyando");
+        dom.setAttribute(el2, "href", "https://github.com/jtwebman");
+        dom.setAttribute(el2, "title", "jtwebman");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "zinyando");
+        dom.setAttribute(el3, "alt", "jtwebman");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12272,12 +13948,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/AntuanKhanna");
-        dom.setAttribute(el2, "title", "AntuanKhanna");
+        dom.setAttribute(el2, "href", "https://github.com/quangtt");
+        dom.setAttribute(el2, "title", "quangtt");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "AntuanKhanna");
+        dom.setAttribute(el3, "alt", "quangtt");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12291,12 +13967,12 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/JohnONolan");
-        dom.setAttribute(el2, "title", "JohnONolan");
+        dom.setAttribute(el2, "href", "https://github.com/Trendy");
+        dom.setAttribute(el2, "title", "Trendy");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "JohnONolan");
+        dom.setAttribute(el3, "alt", "Trendy");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12310,12 +13986,69 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/novaugust");
-        dom.setAttribute(el2, "title", "novaugust");
+        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
+        dom.setAttribute(el2, "title", "cobbspur");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "novaugust");
+        dom.setAttribute(el3, "alt", "cobbspur");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/jeffjewiss");
+        dom.setAttribute(el2, "title", "jeffjewiss");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "jeffjewiss");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/sebgie");
+        dom.setAttribute(el2, "title", "sebgie");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "sebgie");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/terinjokes");
+        dom.setAttribute(el2, "title", "terinjokes");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "terinjokes");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -12365,7 +14098,7 @@ define("ghost/templates/-contributors", ["exports"], function (exports) {
         morphs[17] = dom.createAttrMorph(element17, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/jaswilli"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/kevinkucharczyk"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/jtwebman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/halfdan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/jamesslock"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/cameronviner"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/szelpe"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/king6cong"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/damsonn"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/zinyando"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/AntuanKhanna"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/novaugust"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/jaswilli"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/greenkeeperio-bot"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/szelpe"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/king6cong"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/joerx"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/jtwebman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/quangtt"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/Trendy"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/jeffjewiss"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/terinjokes"]]]],
       locals: [],
       templates: []
     };
@@ -12378,7 +14111,7 @@ define("ghost/templates/-import-errors", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -12425,7 +14158,7 @@ define("ghost/templates/-import-errors", ["exports"], function (exports) {
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -12472,7 +14205,7 @@ define("ghost/templates/-import-errors", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -12516,7 +14249,7 @@ define("ghost/templates/-user-list-item", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -12561,7 +14294,7 @@ define("ghost/templates/-user-list-item", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -12603,7 +14336,7 @@ define("ghost/templates/-user-list-item", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -12704,7 +14437,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -12742,7 +14475,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -12782,7 +14515,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -12819,7 +14552,7 @@ define("ghost/templates/about", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13079,7 +14812,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -13115,7 +14848,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -13157,7 +14890,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -13201,7 +14934,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["wrong-type", "multiple-nodes"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -13272,7 +15005,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
           morphs[7] = dom.createMorphAt(element0, 9, 9);
           return morphs;
         },
-        statements: [["block", "gh-skip-link", [], ["anchor", ".gh-main"], 0, null, ["loc", [null, [2, 4], [2, 76]]]], ["inline", "gh-alerts", [], ["notify", "topNotificationChange"], ["loc", [null, [4, 4], [4, 48]]]], ["attribute", "class", ["concat", ["gh-viewport ", ["subexpr", "if", [["get", "autoNav", ["loc", [null, [6, 33], [6, 40]]]], "gh-autonav"], [], ["loc", [null, [6, 28], [6, 55]]]], " ", ["subexpr", "if", [["get", "showSettingsMenu", ["loc", [null, [6, 61], [6, 77]]]], "settings-menu-expanded"], [], ["loc", [null, [6, 56], [6, 104]]]], " ", ["subexpr", "if", [["get", "showMobileMenu", ["loc", [null, [6, 110], [6, 124]]]], "mobile-menu-expanded"], [], ["loc", [null, [6, 105], [6, 149]]]]]]], ["block", "unless", [["get", "signedOut", ["loc", [null, [7, 18], [7, 27]]]]], [], 1, null, ["loc", [null, [7, 8], [9, 19]]]], ["block", "gh-main", [], ["onMouseEnter", "closeAutoNav", "data-notification-count", ["subexpr", "@mut", [["get", "topNotificationCount", ["loc", [null, [11, 71], [11, 91]]]]], [], []]], 2, null, ["loc", [null, [11, 8], [13, 20]]]], ["content", "gh-notifications", ["loc", [null, [16, 8], [16, 28]]]], ["inline", "gh-content-cover", [], ["onClick", "closeMenus", "onMouseEnter", "closeAutoNav"], ["loc", [null, [18, 8], [18, 77]]]], ["inline", "outlet", ["settings-menu"], [], ["loc", [null, [20, 8], [20, 34]]]]],
+        statements: [["block", "gh-skip-link", [], ["anchor", ".gh-main"], 0, null, ["loc", [null, [2, 4], [2, 76]]]], ["inline", "gh-alerts", [], ["notify", "topNotificationChange"], ["loc", [null, [4, 4], [4, 48]]]], ["attribute", "class", ["concat", ["gh-viewport ", ["subexpr", "if", [["get", "autoNav", ["loc", [null, [6, 33], [6, 40]]]], "gh-autonav"], [], ["loc", [null, [6, 28], [6, 55]]]], " ", ["subexpr", "if", [["get", "showSettingsMenu", ["loc", [null, [6, 61], [6, 77]]]], "settings-menu-expanded"], [], ["loc", [null, [6, 56], [6, 104]]]], " ", ["subexpr", "if", [["get", "showMobileMenu", ["loc", [null, [6, 110], [6, 124]]]], "mobile-menu-expanded"], [], ["loc", [null, [6, 105], [6, 149]]]]]]], ["block", "if", [["get", "showNavMenu", ["loc", [null, [7, 14], [7, 25]]]]], [], 1, null, ["loc", [null, [7, 8], [9, 15]]]], ["block", "gh-main", [], ["onMouseEnter", "closeAutoNav", "data-notification-count", ["subexpr", "@mut", [["get", "topNotificationCount", ["loc", [null, [11, 71], [11, 91]]]]], [], []]], 2, null, ["loc", [null, [11, 8], [13, 20]]]], ["content", "gh-notifications", ["loc", [null, [16, 8], [16, 28]]]], ["inline", "gh-content-cover", [], ["onClick", "closeMenus", "onMouseEnter", "closeAutoNav"], ["loc", [null, [18, 8], [18, 77]]]], ["inline", "outlet", ["settings-menu"], [], ["loc", [null, [20, 8], [20, 34]]]]],
         locals: [],
         templates: [child0, child1, child2]
       };
@@ -13281,7 +15014,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -13325,7 +15058,7 @@ define("ghost/templates/application", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13376,7 +15109,7 @@ define("ghost/templates/components/gh-activating-list-item", ["exports"], functi
             "name": "missing-wrapper",
             "problems": ["wrong-type", "multiple-nodes"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -13421,7 +15154,7 @@ define("ghost/templates/components/gh-activating-list-item", ["exports"], functi
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13467,7 +15200,7 @@ define("ghost/templates/components/gh-alert", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13530,7 +15263,7 @@ define("ghost/templates/components/gh-alerts", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -13574,7 +15307,7 @@ define("ghost/templates/components/gh-alerts", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13619,7 +15352,7 @@ define("ghost/templates/components/gh-app", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13665,7 +15398,7 @@ define("ghost/templates/components/gh-blog-url", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13710,7 +15443,7 @@ define("ghost/templates/components/gh-content-preview-content", ["exports"], fun
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13756,7 +15489,7 @@ define("ghost/templates/components/gh-content-view-container", ["exports"], func
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13802,7 +15535,7 @@ define("ghost/templates/components/gh-datetime-input", ["exports"], function (ex
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13842,13 +15575,95 @@ define("ghost/templates/components/gh-datetime-input", ["exports"], function (ex
 });
 define("ghost/templates/components/gh-ed-preview", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 4,
+                "column": 4
+              },
+              "end": {
+                "line": 13,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-ed-preview.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+            return morphs;
+          },
+          statements: [["inline", "gh-image-uploader-with-preview", [], ["image", ["subexpr", "@mut", [["get", "uploader.src", ["loc", [null, [6, 18], [6, 30]]]]], [], []], "text", "Upload an image", "update", ["subexpr", "action", ["updateImageSrc", ["get", "uploader.index", ["loc", [null, [8, 44], [8, 58]]]]], [], ["loc", [null, [8, 19], [8, 59]]]], "remove", ["subexpr", "action", ["updateImageSrc", ["get", "uploader.index", ["loc", [null, [9, 44], [9, 58]]]], ""], [], ["loc", [null, [9, 19], [9, 62]]]], "uploadStarted", ["subexpr", "@mut", [["get", "uploadStarted", ["loc", [null, [10, 26], [10, 39]]]]], [], []], "uploadFinished", ["subexpr", "@mut", [["get", "uploadFinished", ["loc", [null, [11, 27], [11, 41]]]]], [], []], "formChanged", ["subexpr", "action", ["updateHeight"], [], ["loc", [null, [12, 24], [12, 47]]]]], ["loc", [null, [5, 8], [12, 49]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 3,
+              "column": 0
+            },
+            "end": {
+              "line": 14,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-ed-preview.hbs"
+        },
+        isEmpty: false,
+        arity: 1,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["block", "ember-wormhole", [], ["to", ["subexpr", "@mut", [["get", "uploader.destinationElementId", ["loc", [null, [4, 25], [4, 54]]]]], [], []]], 0, null, ["loc", [null, [4, 4], [13, 23]]]]],
+        locals: ["uploader"],
+        templates: [child0]
+      };
+    })();
     return {
       meta: {
         "fragmentReason": {
           "name": "missing-wrapper",
-          "problems": ["wrong-type"]
+          "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -13856,7 +15671,7 @@ define("ghost/templates/components/gh-ed-preview", ["exports"], function (export
             "column": 0
           },
           "end": {
-            "line": 2,
+            "line": 15,
             "column": 0
           }
         },
@@ -13870,19 +15685,23 @@ define("ghost/templates/components/gh-ed-preview", ["exports"], function (export
         var el0 = dom.createDocumentFragment();
         var el1 = dom.createComment("");
         dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createComment("");
         dom.appendChild(el0, el1);
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var morphs = new Array(1);
+        var morphs = new Array(2);
         morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        morphs[1] = dom.createMorphAt(fragment, 2, 2, contextualElement);
         dom.insertBoundary(fragment, 0);
+        dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["inline", "gh-format-markdown", [["get", "markdown", ["loc", [null, [1, 21], [1, 29]]]]], [], ["loc", [null, [1, 0], [1, 31]]]]],
+      statements: [["content", "previewHTML", ["loc", [null, [1, 0], [1, 15]]]], ["block", "each", [["get", "imageUploadComponents", ["loc", [null, [3, 8], [3, 29]]]]], [], 0, null, ["loc", [null, [3, 0], [14, 9]]]]],
       locals: [],
-      templates: []
+      templates: [child0]
     };
   })());
 });
@@ -13895,7 +15714,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -13935,7 +15754,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -13984,7 +15803,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -14042,7 +15861,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14130,7 +15949,7 @@ define("ghost/templates/components/gh-editor-save-button", ["exports"], function
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14181,7 +16000,7 @@ define("ghost/templates/components/gh-editor", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14225,7 +16044,7 @@ define("ghost/templates/components/gh-editor", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14414,7 +16233,7 @@ define("ghost/templates/components/gh-editor", ["exports"], function (exports) {
         dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["attribute", "class", ["concat", ["entry-markdown js-entry-markdown ", ["subexpr", "if", [["get", "markdownActive", ["loc", [null, [1, 54], [1, 68]]]], "active"], [], ["loc", [null, [1, 49], [1, 79]]]]]]], ["element", "action", [["subexpr", "route-action", ["toggleMarkdownHelpModal"], [], ["loc", [null, [3, 105], [3, 145]]]]], [], ["loc", [null, [3, 96], [3, 147]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "markdownActive", ["loc", [null, [5, 70], [5, 84]]]], "active"], [], ["loc", [null, [5, 65], [5, 95]]]]]]], ["element", "action", ["selectTab", "markdown"], [], ["loc", [null, [5, 24], [5, 57]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "previewActive", ["loc", [null, [6, 69], [6, 82]]]], "active"], [], ["loc", [null, [6, 64], [6, 93]]]]]]], ["element", "action", ["selectTab", "preview"], [], ["loc", [null, [6, 24], [6, 56]]]], ["element", "action", [["subexpr", "route-action", ["toggleMarkdownHelpModal"], [], ["loc", [null, [8, 77], [8, 117]]]]], [], ["loc", [null, [8, 68], [8, 119]]]], ["inline", "gh-ed-editor", [], ["classNames", "markdown-editor js-markdown-editor", "tabindex", "1", "spellcheck", "true", "value", ["subexpr", "@mut", [["get", "value", ["loc", [null, [14, 29], [14, 34]]]]], [], []], "setEditor", ["subexpr", "action", ["setEditor"], [], ["loc", [null, [15, 33], [15, 53]]]], "updateScrollInfo", ["subexpr", "action", ["updateScrollInfo"], [], ["loc", [null, [16, 40], [16, 67]]]], "toggleCopyHTMLModal", ["subexpr", "action", ["toggleCopyHTMLModal"], [], ["loc", [null, [17, 43], [17, 73]]]], "onFocusIn", ["subexpr", "@mut", [["get", "editorFocused", ["loc", [null, [18, 33], [18, 46]]]]], [], []], "height", ["subexpr", "@mut", [["get", "height", ["loc", [null, [19, 30], [19, 36]]]]], [], []], "focus", ["subexpr", "@mut", [["get", "shouldFocusEditor", ["loc", [null, [20, 29], [20, 46]]]]], [], []], "readonly", ["subexpr", "@mut", [["get", "editorDisabled", ["loc", [null, [21, 32], [21, 46]]]]], [], []]], ["loc", [null, [11, 8], [21, 48]]]], ["attribute", "class", ["concat", ["entry-preview js-entry-preview ", ["subexpr", "if", [["get", "previewActive", ["loc", [null, [25, 52], [25, 65]]]], "active"], [], ["loc", [null, [25, 47], [25, 76]]]]]]], ["attribute", "href", ["concat", [["get", "previewUrl", ["loc", [null, [27, 62], [27, 72]]]]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "markdownActive", ["loc", [null, [29, 70], [29, 84]]]], "active"], [], ["loc", [null, [29, 65], [29, 95]]]]]]], ["element", "action", ["selectTab", "markdown"], [], ["loc", [null, [29, 24], [29, 57]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "previewActive", ["loc", [null, [30, 69], [30, 82]]]], "active"], [], ["loc", [null, [30, 64], [30, 93]]]]]]], ["element", "action", ["selectTab", "preview"], [], ["loc", [null, [30, 24], [30, 56]]]], ["inline", "gh-count-words", [["get", "value", ["loc", [null, [32, 56], [32, 61]]]]], [], ["loc", [null, [32, 39], [32, 63]]]], ["inline", "gh-ed-preview", [], ["classNames", "rendered-markdown js-rendered-markdown", "markdown", ["subexpr", "@mut", [["get", "value", ["loc", [null, [36, 33], [36, 38]]]]], [], []], "scrollPosition", ["subexpr", "@mut", [["get", "scrollPosition", ["loc", [null, [37, 39], [37, 53]]]]], [], []], "updateHeight", ["subexpr", "action", ["updateHeight"], [], ["loc", [null, [38, 37], [38, 60]]]], "uploadStarted", ["subexpr", "action", ["disableEditor"], [], ["loc", [null, [39, 38], [39, 62]]]], "uploadFinished", ["subexpr", "action", ["enableEditor"], [], ["loc", [null, [40, 39], [40, 62]]]], "uploadSuccess", ["subexpr", "action", ["handleImgUpload"], [], ["loc", [null, [41, 38], [41, 64]]]]], ["loc", [null, [35, 8], [41, 66]]]], ["block", "if", [["get", "showCopyHTMLModal", ["loc", [null, [45, 6], [45, 23]]]]], [], 0, null, ["loc", [null, [45, 0], [50, 7]]]]],
+      statements: [["attribute", "class", ["concat", ["entry-markdown js-entry-markdown ", ["subexpr", "if", [["get", "markdownActive", ["loc", [null, [1, 54], [1, 68]]]], "active"], [], ["loc", [null, [1, 49], [1, 79]]]]]]], ["element", "action", [["subexpr", "route-action", ["toggleMarkdownHelpModal"], [], ["loc", [null, [3, 105], [3, 145]]]]], [], ["loc", [null, [3, 96], [3, 147]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "markdownActive", ["loc", [null, [5, 70], [5, 84]]]], "active"], [], ["loc", [null, [5, 65], [5, 95]]]]]]], ["element", "action", ["selectTab", "markdown"], [], ["loc", [null, [5, 24], [5, 57]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "previewActive", ["loc", [null, [6, 69], [6, 82]]]], "active"], [], ["loc", [null, [6, 64], [6, 93]]]]]]], ["element", "action", ["selectTab", "preview"], [], ["loc", [null, [6, 24], [6, 56]]]], ["element", "action", [["subexpr", "route-action", ["toggleMarkdownHelpModal"], [], ["loc", [null, [8, 77], [8, 117]]]]], [], ["loc", [null, [8, 68], [8, 119]]]], ["inline", "gh-ed-editor", [], ["classNames", "markdown-editor js-markdown-editor", "tabindex", "1", "spellcheck", "true", "value", ["subexpr", "@mut", [["get", "value", ["loc", [null, [14, 29], [14, 34]]]]], [], []], "setEditor", ["subexpr", "action", ["setEditor"], [], ["loc", [null, [15, 33], [15, 53]]]], "updateScrollInfo", ["subexpr", "action", ["updateScrollInfo"], [], ["loc", [null, [16, 40], [16, 67]]]], "toggleCopyHTMLModal", ["subexpr", "action", ["toggleCopyHTMLModal"], [], ["loc", [null, [17, 43], [17, 73]]]], "onFocusIn", ["subexpr", "@mut", [["get", "editorFocused", ["loc", [null, [18, 33], [18, 46]]]]], [], []], "height", ["subexpr", "@mut", [["get", "height", ["loc", [null, [19, 30], [19, 36]]]]], [], []], "focus", ["subexpr", "@mut", [["get", "shouldFocusEditor", ["loc", [null, [20, 29], [20, 46]]]]], [], []], "readonly", ["subexpr", "@mut", [["get", "editorDisabled", ["loc", [null, [21, 32], [21, 46]]]]], [], []]], ["loc", [null, [11, 8], [21, 48]]]], ["attribute", "class", ["concat", ["entry-preview js-entry-preview ", ["subexpr", "if", [["get", "previewActive", ["loc", [null, [25, 52], [25, 65]]]], "active"], [], ["loc", [null, [25, 47], [25, 76]]]]]]], ["attribute", "href", ["concat", [["get", "previewUrl", ["loc", [null, [27, 62], [27, 72]]]]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "markdownActive", ["loc", [null, [29, 70], [29, 84]]]], "active"], [], ["loc", [null, [29, 65], [29, 95]]]]]]], ["element", "action", ["selectTab", "markdown"], [], ["loc", [null, [29, 24], [29, 57]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "previewActive", ["loc", [null, [30, 69], [30, 82]]]], "active"], [], ["loc", [null, [30, 64], [30, 93]]]]]]], ["element", "action", ["selectTab", "preview"], [], ["loc", [null, [30, 24], [30, 56]]]], ["inline", "gh-count-words", [["get", "value", ["loc", [null, [32, 56], [32, 61]]]]], [], ["loc", [null, [32, 39], [32, 63]]]], ["inline", "gh-ed-preview", [], ["classNames", "rendered-markdown js-rendered-markdown", "markdown", ["subexpr", "@mut", [["get", "value", ["loc", [null, [36, 33], [36, 38]]]]], [], []], "scrollPosition", ["subexpr", "@mut", [["get", "scrollPosition", ["loc", [null, [37, 39], [37, 53]]]]], [], []], "updateHeight", ["subexpr", "action", ["updateHeight"], [], ["loc", [null, [38, 37], [38, 60]]]], "uploadStarted", ["subexpr", "action", ["disableEditor"], [], ["loc", [null, [39, 38], [39, 62]]]], "uploadFinished", ["subexpr", "action", ["enableEditor"], [], ["loc", [null, [40, 39], [40, 62]]]], "updateImageSrc", ["subexpr", "action", ["handleImgUpload"], [], ["loc", [null, [41, 39], [41, 65]]]]], ["loc", [null, [35, 8], [41, 67]]]], ["block", "if", [["get", "showCopyHTMLModal", ["loc", [null, [45, 6], [45, 23]]]]], [], 0, null, ["loc", [null, [45, 0], [50, 7]]]]],
       locals: [],
       templates: [child0]
     };
@@ -14428,7 +16247,7 @@ define("ghost/templates/components/gh-error-message", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14474,7 +16293,7 @@ define("ghost/templates/components/gh-feature-flag", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14532,7 +16351,7 @@ define("ghost/templates/components/gh-file-upload", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14591,13 +16410,312 @@ define("ghost/templates/components/gh-file-upload", ["exports"], function (expor
     };
   })());
 });
+define("ghost/templates/components/gh-file-uploader", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 3,
+                "column": 4
+              },
+              "end": {
+                "line": 5,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-file-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("div");
+            dom.setAttribute(el1, "class", "failed");
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+            return morphs;
+          },
+          statements: [["content", "failureMessage", ["loc", [null, [4, 28], [4, 46]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child1 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 11,
+                "column": 4
+              },
+              "end": {
+                "line": 13,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-file-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("button");
+            dom.setAttribute(el1, "class", "btn btn-green");
+            var el2 = dom.createTextNode("Try Again");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element0 = dom.childAt(fragment, [1]);
+            var morphs = new Array(1);
+            morphs[0] = dom.createElementMorph(element0);
+            return morphs;
+          },
+          statements: [["element", "action", ["reset"], [], ["loc", [null, [12, 38], [12, 56]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": {
+            "name": "missing-wrapper",
+            "problems": ["wrong-type", "multiple-nodes"]
+          },
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 14,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-file-uploader.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1, "class", "progress-container");
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("div");
+          dom.setAttribute(el2, "class", "progress");
+          var el3 = dom.createTextNode("\n            ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("div");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n        ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n    ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element1 = dom.childAt(fragment, [2, 1, 1]);
+          var morphs = new Array(4);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          morphs[1] = dom.createAttrMorph(element1, 'class');
+          morphs[2] = dom.createAttrMorph(element1, 'style');
+          morphs[3] = dom.createMorphAt(fragment, 4, 4, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["block", "if", [["get", "failureMessage", ["loc", [null, [3, 10], [3, 24]]]]], [], 0, null, ["loc", [null, [3, 4], [5, 11]]]], ["attribute", "class", ["concat", ["bar ", ["subexpr", "if", [["get", "failureMessage", ["loc", [null, [8, 33], [8, 47]]]], "fail"], [], ["loc", [null, [8, 28], [8, 56]]]]]]], ["attribute", "style", ["get", "progressStyle", ["loc", [null, [8, 66], [8, 79]]]]], ["block", "if", [["get", "failureMessage", ["loc", [null, [11, 10], [11, 24]]]]], [], 1, null, ["loc", [null, [11, 4], [13, 11]]]]],
+        locals: [],
+        templates: [child0, child1]
+      };
+    })();
+    var child1 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 16,
+                "column": 8
+              },
+              "end": {
+                "line": 18,
+                "column": 8
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-file-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("            ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("div");
+            dom.setAttribute(el1, "class", "description");
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+            return morphs;
+          },
+          statements: [["content", "labelText", ["loc", [null, [17, 37], [17, 50]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 14,
+              "column": 0
+            },
+            "end": {
+              "line": 20,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-file-uploader.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1, "class", "upload-form");
+          var el2 = dom.createTextNode("\n");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("    ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
+          return morphs;
+        },
+        statements: [["block", "x-file-input", [], ["multiple", false, "alt", ["subexpr", "@mut", [["get", "labelText", ["loc", [null, [16, 43], [16, 52]]]]], [], []], "action", ["subexpr", "action", ["fileSelected"], [], ["loc", [null, [16, 60], [16, 83]]]], "accept", "text/csv"], 0, null, ["loc", [null, [16, 8], [18, 25]]]]],
+        locals: [],
+        templates: [child0]
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 21,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-file-uploader.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        dom.insertBoundary(fragment, 0);
+        dom.insertBoundary(fragment, null);
+        return morphs;
+      },
+      statements: [["block", "if", [["get", "file", ["loc", [null, [1, 6], [1, 10]]]]], [], 0, 1, ["loc", [null, [1, 0], [20, 7]]]]],
+      locals: [],
+      templates: [child0, child1]
+    };
+  })());
+});
 define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14639,7 +16757,7 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14683,7 +16801,7 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14733,6 +16851,727 @@ define("ghost/templates/components/gh-fullscreen-modal", ["exports"], function (
     };
   })());
 });
+define("ghost/templates/components/gh-image-uploader-with-preview", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": {
+            "name": "triple-curlies"
+          },
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 8,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-image-uploader-with-preview.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1, "class", "gh-image-uploader --with-image");
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("div");
+          var el3 = dom.createElement("img");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("a");
+          dom.setAttribute(el2, "class", "image-cancel icon-trash");
+          dom.setAttribute(el2, "title", "Delete");
+          var el3 = dom.createTextNode("\n            ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("span");
+          dom.setAttribute(el3, "class", "hidden");
+          var el4 = dom.createTextNode("Delete");
+          dom.appendChild(el3, el4);
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n        ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n    ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [1]);
+          var element1 = dom.childAt(element0, [1, 0]);
+          var element2 = dom.childAt(element0, [3]);
+          var morphs = new Array(2);
+          morphs[0] = dom.createAttrMorph(element1, 'src');
+          morphs[1] = dom.createElementMorph(element2);
+          return morphs;
+        },
+        statements: [["attribute", "src", ["get", "image", ["loc", [null, [3, 24], [3, 29]]]]], ["element", "action", [["get", "remove", ["loc", [null, [4, 67], [4, 73]]]]], [], ["loc", [null, [4, 58], [4, 75]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 8,
+              "column": 0
+            },
+            "end": {
+              "line": 16,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-image-uploader-with-preview.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+          return morphs;
+        },
+        statements: [["inline", "gh-image-uploader", [], ["text", ["subexpr", "@mut", [["get", "text", ["loc", [null, [10, 13], [10, 17]]]]], [], []], "update", ["subexpr", "action", ["update"], [], ["loc", [null, [11, 15], [11, 32]]]], "onInput", ["subexpr", "action", ["onInput"], [], ["loc", [null, [12, 16], [12, 34]]]], "uploadStarted", ["subexpr", "action", ["uploadStarted"], [], ["loc", [null, [13, 22], [13, 46]]]], "uploadFinished", ["subexpr", "action", ["uploadFinished"], [], ["loc", [null, [14, 23], [14, 48]]]], "formChanged", ["subexpr", "action", ["formChanged"], [], ["loc", [null, [15, 20], [15, 42]]]]], ["loc", [null, [9, 4], [15, 44]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 17,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-image-uploader-with-preview.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        dom.insertBoundary(fragment, 0);
+        dom.insertBoundary(fragment, null);
+        return morphs;
+      },
+      statements: [["block", "if", [["get", "image", ["loc", [null, [1, 6], [1, 11]]]]], [], 0, 1, ["loc", [null, [1, 0], [16, 7]]]]],
+      locals: [],
+      templates: [child0, child1]
+    };
+  })());
+});
+define("ghost/templates/components/gh-image-uploader", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 3,
+                "column": 4
+              },
+              "end": {
+                "line": 5,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("div");
+            dom.setAttribute(el1, "class", "failed");
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+            return morphs;
+          },
+          statements: [["content", "failureMessage", ["loc", [null, [4, 28], [4, 46]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child1 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 11,
+                "column": 4
+              },
+              "end": {
+                "line": 13,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("button");
+            dom.setAttribute(el1, "class", "btn btn-green");
+            var el2 = dom.createTextNode("Try Again");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element4 = dom.childAt(fragment, [1]);
+            var morphs = new Array(1);
+            morphs[0] = dom.createElementMorph(element4);
+            return morphs;
+          },
+          statements: [["element", "action", ["reset"], [], ["loc", [null, [12, 38], [12, 56]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": {
+            "name": "missing-wrapper",
+            "problems": ["wrong-type", "multiple-nodes"]
+          },
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 14,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1, "class", "progress-container");
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("div");
+          dom.setAttribute(el2, "class", "progress");
+          var el3 = dom.createTextNode("\n            ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("div");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n        ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n    ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element5 = dom.childAt(fragment, [2, 1, 1]);
+          var morphs = new Array(4);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          morphs[1] = dom.createAttrMorph(element5, 'class');
+          morphs[2] = dom.createAttrMorph(element5, 'style');
+          morphs[3] = dom.createMorphAt(fragment, 4, 4, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["block", "if", [["get", "failureMessage", ["loc", [null, [3, 10], [3, 24]]]]], [], 0, null, ["loc", [null, [3, 4], [5, 11]]]], ["attribute", "class", ["concat", ["bar ", ["subexpr", "if", [["get", "failureMessage", ["loc", [null, [8, 33], [8, 47]]]], "fail"], [], ["loc", [null, [8, 28], [8, 56]]]]]]], ["attribute", "style", ["get", "progressStyle", ["loc", [null, [8, 66], [8, 79]]]]], ["block", "if", [["get", "failureMessage", ["loc", [null, [11, 10], [11, 24]]]]], [], 1, null, ["loc", [null, [11, 4], [13, 11]]]]],
+        locals: [],
+        templates: [child0, child1]
+      };
+    })();
+    var child1 = (function () {
+      var child0 = (function () {
+        var child0 = (function () {
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 18,
+                  "column": 12
+                },
+                "end": {
+                  "line": 20,
+                  "column": 12
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("                ");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createElement("div");
+              dom.setAttribute(el1, "class", "description");
+              var el2 = dom.createComment("");
+              dom.appendChild(el1, el2);
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("\n");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var morphs = new Array(1);
+              morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+              return morphs;
+            },
+            statements: [["content", "text", ["loc", [null, [19, 41], [19, 49]]]]],
+            locals: [],
+            templates: []
+          };
+        })();
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 15,
+                "column": 4
+              },
+              "end": {
+                "line": 26,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("div");
+            dom.setAttribute(el1, "class", "upload-form");
+            var el2 = dom.createTextNode("\n");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("        ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n\n        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("a");
+            dom.setAttribute(el1, "class", "image-url");
+            var el2 = dom.createTextNode("\n            ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("i");
+            dom.setAttribute(el2, "class", "icon-link");
+            var el3 = dom.createElement("span");
+            dom.setAttribute(el3, "class", "hidden");
+            var el4 = dom.createTextNode("URL");
+            dom.appendChild(el3, el4);
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n        ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element3 = dom.childAt(fragment, [3]);
+            var morphs = new Array(2);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
+            morphs[1] = dom.createElementMorph(element3);
+            return morphs;
+          },
+          statements: [["block", "x-file-input", [], ["multiple", false, "alt", ["subexpr", "@mut", [["get", "text", ["loc", [null, [18, 47], [18, 51]]]]], [], []], "action", ["subexpr", "action", ["fileSelected"], [], ["loc", [null, [18, 59], [18, 82]]]], "accept", "image/gif,image/jpg,image/jpeg,image/png,image/svg+xml"], 0, null, ["loc", [null, [18, 12], [20, 29]]]], ["element", "action", ["switchForm", "url-input"], [], ["loc", [null, [23, 29], [23, 64]]]]],
+          locals: [],
+          templates: [child0]
+        };
+      })();
+      var child1 = (function () {
+        var child0 = (function () {
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 30,
+                  "column": 12
+                },
+                "end": {
+                  "line": 32,
+                  "column": 12
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("                ");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createElement("button");
+              dom.setAttribute(el1, "class", "btn btn-blue gh-input");
+              var el2 = dom.createTextNode("Save");
+              dom.appendChild(el1, el2);
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("\n");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var element1 = dom.childAt(fragment, [1]);
+              var morphs = new Array(1);
+              morphs[0] = dom.createElementMorph(element1);
+              return morphs;
+            },
+            statements: [["element", "action", ["saveUrl"], [], ["loc", [null, [31, 54], [31, 74]]]]],
+            locals: [],
+            templates: []
+          };
+        })();
+        var child1 = (function () {
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 32,
+                  "column": 12
+                },
+                "end": {
+                  "line": 34,
+                  "column": 12
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("                ");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createElement("div");
+              dom.setAttribute(el1, "class", "description");
+              var el2 = dom.createComment("");
+              dom.appendChild(el1, el2);
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("\n");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var morphs = new Array(1);
+              morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+              return morphs;
+            },
+            statements: [["content", "text", ["loc", [null, [33, 41], [33, 49]]]]],
+            locals: [],
+            templates: []
+          };
+        })();
+        var child2 = (function () {
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 37,
+                  "column": 8
+                },
+                "end": {
+                  "line": 41,
+                  "column": 8
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("            ");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createElement("a");
+              dom.setAttribute(el1, "class", "image-upload icon-photos");
+              dom.setAttribute(el1, "title", "Add image");
+              var el2 = dom.createTextNode("\n                ");
+              dom.appendChild(el1, el2);
+              var el2 = dom.createElement("span");
+              dom.setAttribute(el2, "class", "hidden");
+              var el3 = dom.createTextNode("Upload");
+              dom.appendChild(el2, el3);
+              dom.appendChild(el1, el2);
+              var el2 = dom.createTextNode("\n            ");
+              dom.appendChild(el1, el2);
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("\n");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var element0 = dom.childAt(fragment, [1]);
+              var morphs = new Array(1);
+              morphs[0] = dom.createElementMorph(element0);
+              return morphs;
+            },
+            statements: [["element", "action", ["switchForm", "upload"], [], ["loc", [null, [38, 66], [38, 98]]]]],
+            locals: [],
+            templates: []
+          };
+        })();
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 26,
+                "column": 4
+              },
+              "end": {
+                "line": 42,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("        ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("form");
+            dom.setAttribute(el1, "class", "url-form");
+            var el2 = dom.createTextNode("\n            ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("        ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n\n");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element2 = dom.childAt(fragment, [1]);
+            var morphs = new Array(3);
+            morphs[0] = dom.createMorphAt(element2, 1, 1);
+            morphs[1] = dom.createMorphAt(element2, 3, 3);
+            morphs[2] = dom.createMorphAt(fragment, 3, 3, contextualElement);
+            dom.insertBoundary(fragment, null);
+            return morphs;
+          },
+          statements: [["inline", "one-way-input", [], ["class", "url gh-input", "placeholder", "http://", "value", ["subexpr", "@mut", [["get", "url", ["loc", [null, [29, 77], [29, 80]]]]], [], []], "update", ["subexpr", "action", ["onInput"], [], ["loc", [null, [29, 88], [29, 106]]]], "onenter", ["subexpr", "action", ["saveUrl"], [], ["loc", [null, [29, 115], [29, 133]]]]], ["loc", [null, [29, 12], [29, 135]]]], ["block", "if", [["get", "saveButton", ["loc", [null, [30, 18], [30, 28]]]]], [], 0, 1, ["loc", [null, [30, 12], [34, 19]]]], ["block", "if", [["get", "canShowUploadForm", ["loc", [null, [37, 14], [37, 31]]]]], [], 2, null, ["loc", [null, [37, 8], [41, 15]]]]],
+          locals: [],
+          templates: [child0, child1, child2]
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 14,
+              "column": 0
+            },
+            "end": {
+              "line": 43,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["block", "if", [["get", "showUploadForm", ["loc", [null, [15, 10], [15, 24]]]]], [], 0, 1, ["loc", [null, [15, 4], [42, 11]]]]],
+        locals: [],
+        templates: [child0, child1]
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 44,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-image-uploader.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        dom.insertBoundary(fragment, 0);
+        dom.insertBoundary(fragment, null);
+        return morphs;
+      },
+      statements: [["block", "if", [["get", "file", ["loc", [null, [1, 6], [1, 10]]]]], [], 0, 1, ["loc", [null, [1, 0], [43, 7]]]]],
+      locals: [],
+      templates: [child0, child1]
+    };
+  })());
+});
 define("ghost/templates/components/gh-infinite-scroll", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     return {
@@ -14741,7 +17580,7 @@ define("ghost/templates/components/gh-infinite-scroll", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14786,7 +17625,7 @@ define("ghost/templates/components/gh-menu-toggle", ["exports"], function (expor
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -14831,7 +17670,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14874,7 +17713,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14921,7 +17760,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -14990,7 +17829,7 @@ define("ghost/templates/components/gh-modal-dialog", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -15089,7 +17928,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
             "name": "missing-wrapper",
             "problems": ["multiple-nodes"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -15163,7 +18002,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -15202,7 +18041,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -15241,7 +18080,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -15279,7 +18118,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -15355,7 +18194,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -15394,7 +18233,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -15433,7 +18272,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -15470,18 +18309,141 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
     })();
     var child5 = (function () {
       var child0 = (function () {
+        var child0 = (function () {
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 30,
+                  "column": 20
+                },
+                "end": {
+                  "line": 30,
+                  "column": 119
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-nav-menu.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createElement("i");
+              dom.setAttribute(el1, "class", "icon-mail");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("Subscribers");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes() {
+              return [];
+            },
+            statements: [],
+            locals: [],
+            templates: []
+          };
+        })();
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 32,
+                "line": 29,
+                "column": 12
+              },
+              "end": {
+                "line": 31,
+                "column": 12
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-nav-menu.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("li");
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 0, 0);
+            return morphs;
+          },
+          statements: [["block", "link-to", ["subscribers"], ["classNames", "gh-nav-main-subscribers"], 0, null, ["loc", [null, [30, 20], [30, 131]]]]],
+          locals: [],
+          templates: [child0]
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 28,
+              "column": 8
+            },
+            "end": {
+              "line": 32,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-nav-menu.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["block", "if", [["subexpr", "gh-user-can-admin", [["get", "session.user", ["loc", [null, [29, 37], [29, 49]]]]], [], ["loc", [null, [29, 18], [29, 50]]]]], [], 0, null, ["loc", [null, [29, 12], [31, 19]]]]],
+        locals: [],
+        templates: [child0]
+      };
+    })();
+    var child6 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 37,
                 "column": 16
               },
               "end": {
-                "line": 32,
+                "line": 37,
                 "column": 120
               }
             },
@@ -15512,15 +18474,15 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 34,
+                "line": 39,
                 "column": 16
               },
               "end": {
-                "line": 34,
+                "line": 39,
                 "column": 128
               }
             },
@@ -15551,15 +18513,15 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 35,
+                "line": 40,
                 "column": 16
               },
               "end": {
-                "line": 35,
+                "line": 40,
                 "column": 106
               }
             },
@@ -15590,15 +18552,15 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 36,
+                "line": 41,
                 "column": 16
               },
               "end": {
-                "line": 36,
+                "line": 41,
                 "column": 137
               }
             },
@@ -15629,15 +18591,54 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 37,
+                "line": 42,
                 "column": 16
               },
               "end": {
-                "line": 37,
+                "line": 42,
+                "column": 106
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-nav-menu.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createElement("i");
+            dom.setAttribute(el1, "class", "icon-box");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("Apps");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child5 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 43,
+                "column": 16
+              },
+              "end": {
+                "line": 43,
                 "column": 107
               }
             },
@@ -15650,7 +18651,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
           buildFragment: function buildFragment(dom) {
             var el0 = dom.createDocumentFragment();
             var el1 = dom.createElement("i");
-            dom.setAttribute(el1, "class", "icon-apps");
+            dom.setAttribute(el1, "class", "icon-labs");
             dom.appendChild(el0, el1);
             var el1 = dom.createTextNode("Labs");
             dom.appendChild(el0, el1);
@@ -15667,15 +18668,15 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 29,
+              "line": 34,
               "column": 4
             },
             "end": {
-              "line": 39,
+              "line": 45,
               "column": 4
             }
           },
@@ -15730,6 +18731,12 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
           var el3 = dom.createComment("");
           dom.appendChild(el2, el3);
           dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("li");
+          var el3 = dom.createComment("");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
           var el2 = dom.createTextNode("\n        ");
           dom.appendChild(el1, el2);
           dom.appendChild(el0, el1);
@@ -15739,32 +18746,33 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
           var element1 = dom.childAt(fragment, [1]);
-          var morphs = new Array(5);
+          var morphs = new Array(6);
           morphs[0] = dom.createMorphAt(dom.childAt(element1, [3]), 0, 0);
           morphs[1] = dom.createMorphAt(dom.childAt(element1, [6]), 0, 0);
           morphs[2] = dom.createMorphAt(dom.childAt(element1, [8]), 0, 0);
           morphs[3] = dom.createMorphAt(dom.childAt(element1, [10]), 0, 0);
           morphs[4] = dom.createMorphAt(dom.childAt(element1, [12]), 0, 0);
+          morphs[5] = dom.createMorphAt(dom.childAt(element1, [14]), 0, 0);
           return morphs;
         },
-        statements: [["block", "link-to", ["settings.general"], ["classNames", "gh-nav-settings-general"], 0, null, ["loc", [null, [32, 16], [32, 132]]]], ["block", "link-to", ["settings.navigation"], ["classNames", "gh-nav-settings-navigation"], 1, null, ["loc", [null, [34, 16], [34, 140]]]], ["block", "link-to", ["settings.tags"], ["classNames", "gh-nav-settings-tags"], 2, null, ["loc", [null, [35, 16], [35, 118]]]], ["block", "link-to", ["settings.code-injection"], ["classNames", "gh-nav-settings-code-injection"], 3, null, ["loc", [null, [36, 16], [36, 149]]]], ["block", "link-to", ["settings.labs"], ["classNames", "gh-nav-settings-labs"], 4, null, ["loc", [null, [37, 16], [37, 119]]]]],
+        statements: [["block", "link-to", ["settings.general"], ["classNames", "gh-nav-settings-general"], 0, null, ["loc", [null, [37, 16], [37, 132]]]], ["block", "link-to", ["settings.navigation"], ["classNames", "gh-nav-settings-navigation"], 1, null, ["loc", [null, [39, 16], [39, 140]]]], ["block", "link-to", ["settings.tags"], ["classNames", "gh-nav-settings-tags"], 2, null, ["loc", [null, [40, 16], [40, 118]]]], ["block", "link-to", ["settings.code-injection"], ["classNames", "gh-nav-settings-code-injection"], 3, null, ["loc", [null, [41, 16], [41, 149]]]], ["block", "link-to", ["settings.apps"], ["classNames", "gh-nav-settings-apps"], 4, null, ["loc", [null, [42, 16], [42, 118]]]], ["block", "link-to", ["settings.labs"], ["classNames", "gh-nav-settings-labs"], 5, null, ["loc", [null, [43, 16], [43, 119]]]]],
         locals: [],
-        templates: [child0, child1, child2, child3, child4]
+        templates: [child0, child1, child2, child3, child4, child5]
       };
     })();
-    var child6 = (function () {
+    var child7 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 45,
+              "line": 51,
               "column": 8
             },
             "end": {
-              "line": 49,
+              "line": 55,
               "column": 8
             }
           },
@@ -15805,19 +18813,19 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         templates: []
       };
     })();
-    var child7 = (function () {
+    var child8 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 50,
+              "line": 56,
               "column": 8
             },
             "end": {
-              "line": 60,
+              "line": 66,
               "column": 8
             }
           },
@@ -15942,7 +18950,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
           morphs[0] = dom.createElementMorph(element0);
           return morphs;
         },
-        statements: [["element", "action", ["showMarkdownHelp"], [], ["loc", [null, [56, 122], [56, 151]]]]],
+        statements: [["element", "action", ["showMarkdownHelp"], [], ["loc", [null, [62, 122], [62, 151]]]]],
         locals: [],
         templates: []
       };
@@ -15953,7 +18961,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -15961,7 +18969,7 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
             "column": 0
           },
           "end": {
-            "line": 64,
+            "line": 70,
             "column": 0
           }
         },
@@ -16017,6 +19025,8 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         dom.appendChild(el3, el4);
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("    ");
         dom.appendChild(el2, el3);
@@ -16074,25 +19084,26 @@ define("ghost/templates/components/gh-nav-menu", ["exports"], function (exports)
         var element8 = dom.childAt(element7, [3]);
         var element9 = dom.childAt(element7, [5]);
         var element10 = dom.childAt(fragment, [6]);
-        var morphs = new Array(12);
+        var morphs = new Array(13);
         morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
         morphs[1] = dom.createMorphAt(fragment, 1, 1, contextualElement);
         morphs[2] = dom.createMorphAt(dom.childAt(element5, [1]), 1, 1);
         morphs[3] = dom.createMorphAt(dom.childAt(element6, [2]), 0, 0);
         morphs[4] = dom.createMorphAt(dom.childAt(element6, [4]), 0, 0);
         morphs[5] = dom.createMorphAt(dom.childAt(element6, [7]), 0, 0);
-        morphs[6] = dom.createMorphAt(element5, 5, 5);
-        morphs[7] = dom.createMorphAt(element7, 1, 1);
-        morphs[8] = dom.createAttrMorph(element8, 'href');
-        morphs[9] = dom.createMorphAt(element9, 1, 1);
-        morphs[10] = dom.createMorphAt(element9, 2, 2);
-        morphs[11] = dom.createElementMorph(element10);
+        morphs[6] = dom.createMorphAt(element6, 9, 9);
+        morphs[7] = dom.createMorphAt(element5, 5, 5);
+        morphs[8] = dom.createMorphAt(element7, 1, 1);
+        morphs[9] = dom.createAttrMorph(element8, 'href');
+        morphs[10] = dom.createMorphAt(element9, 1, 1);
+        morphs[11] = dom.createMorphAt(element9, 2, 2);
+        morphs[12] = dom.createElementMorph(element10);
         dom.insertBoundary(fragment, 0);
         return morphs;
       },
-      statements: [["block", "gh-dropdown-button", [], ["tagName", "header", "class", "gh-nav-menu", "dropdownName", "user-menu"], 0, null, ["loc", [null, [1, 0], [8, 23]]]], ["block", "gh-dropdown", [], ["tagName", "div", "name", "user-menu", "closeOnClick", "true"], 1, null, ["loc", [null, [9, 0], [16, 16]]]], ["inline", "gh-search-input", [], ["class", "gh-nav-search-input"], ["loc", [null, [19, 8], [19, 55]]]], ["block", "link-to", ["editor.new"], ["classNames", "gh-nav-main-editor"], 2, null, ["loc", [null, [23, 12], [23, 113]]]], ["block", "link-to", ["posts"], ["classNames", "gh-nav-main-content"], 3, null, ["loc", [null, [24, 12], [24, 112]]]], ["block", "link-to", ["team"], ["classNames", "gh-nav-main-users"], 4, null, ["loc", [null, [26, 12], [26, 103]]]], ["block", "if", [["subexpr", "gh-user-can-admin", [["get", "session.user", ["loc", [null, [29, 29], [29, 41]]]]], [], ["loc", [null, [29, 10], [29, 42]]]]], [], 5, null, ["loc", [null, [29, 4], [39, 11]]]], ["inline", "gh-menu-toggle", [], ["desktopAction", "toggleAutoNav", "mobileAction", "closeMobileMenu"], ["loc", [null, [42, 4], [42, 83]]]], ["attribute", "href", ["concat", [["get", "config.blogUrl", ["loc", [null, [43, 46], [43, 60]]]], "/"]]], ["block", "gh-dropdown-button", [], ["dropdownName", "help-menu", "tagName", "div"], 6, null, ["loc", [null, [45, 8], [49, 31]]]], ["block", "gh-dropdown", [], ["tagName", "div", "name", "help-menu", "closeOnClick", "true"], 7, null, ["loc", [null, [50, 8], [60, 24]]]], ["element", "action", ["openAutoNav"], ["on", "mouseEnter"], ["loc", [null, [63, 31], [63, 71]]]]],
+      statements: [["block", "gh-dropdown-button", [], ["tagName", "header", "class", "gh-nav-menu", "dropdownName", "user-menu"], 0, null, ["loc", [null, [1, 0], [8, 23]]]], ["block", "gh-dropdown", [], ["tagName", "div", "name", "user-menu", "closeOnClick", "true"], 1, null, ["loc", [null, [9, 0], [16, 16]]]], ["inline", "gh-search-input", [], ["class", "gh-nav-search-input"], ["loc", [null, [19, 8], [19, 55]]]], ["block", "link-to", ["editor.new"], ["classNames", "gh-nav-main-editor"], 2, null, ["loc", [null, [23, 12], [23, 113]]]], ["block", "link-to", ["posts"], ["classNames", "gh-nav-main-content"], 3, null, ["loc", [null, [24, 12], [24, 112]]]], ["block", "link-to", ["team"], ["classNames", "gh-nav-main-users"], 4, null, ["loc", [null, [26, 12], [26, 103]]]], ["block", "if", [["get", "feature.subscribers", ["loc", [null, [28, 14], [28, 33]]]]], [], 5, null, ["loc", [null, [28, 8], [32, 15]]]], ["block", "if", [["subexpr", "gh-user-can-admin", [["get", "session.user", ["loc", [null, [34, 29], [34, 41]]]]], [], ["loc", [null, [34, 10], [34, 42]]]]], [], 6, null, ["loc", [null, [34, 4], [45, 11]]]], ["inline", "gh-menu-toggle", [], ["desktopAction", "toggleAutoNav", "mobileAction", "closeMobileMenu"], ["loc", [null, [48, 4], [48, 83]]]], ["attribute", "href", ["concat", [["get", "config.blogUrl", ["loc", [null, [49, 46], [49, 60]]]], "/"]]], ["block", "gh-dropdown-button", [], ["dropdownName", "help-menu", "tagName", "div"], 7, null, ["loc", [null, [51, 8], [55, 31]]]], ["block", "gh-dropdown", [], ["tagName", "div", "name", "help-menu", "closeOnClick", "true"], 8, null, ["loc", [null, [56, 8], [66, 24]]]], ["element", "action", ["openAutoNav"], ["on", "mouseEnter"], ["loc", [null, [69, 31], [69, 71]]]]],
       locals: [],
-      templates: [child0, child1, child2, child3, child4, child5, child6, child7]
+      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8]
     };
   })());
 });
@@ -16104,7 +19115,7 @@ define("ghost/templates/components/gh-navigation", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16150,7 +19161,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16200,7 +19211,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16247,7 +19258,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16294,7 +19305,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16351,7 +19362,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16410,7 +19421,7 @@ define("ghost/templates/components/gh-navitem", ["exports"], function (exports) 
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16474,7 +19485,7 @@ define("ghost/templates/components/gh-notification", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16537,7 +19548,7 @@ define("ghost/templates/components/gh-notifications", ["exports"], function (exp
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16581,7 +19592,7 @@ define("ghost/templates/components/gh-notifications", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16626,7 +19637,7 @@ define("ghost/templates/components/gh-posts-list-item", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16667,64 +19678,10 @@ define("ghost/templates/components/gh-posts-list-item", ["exports"], function (e
 define("ghost/templates/components/gh-profile-image", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
-      var child0 = (function () {
-        return {
-          meta: {
-            "fragmentReason": false,
-            "revision": "Ember@2.4.4",
-            "loc": {
-              "source": null,
-              "start": {
-                "line": 5,
-                "column": 8
-              },
-              "end": {
-                "line": 9,
-                "column": 8
-              }
-            },
-            "moduleName": "ghost/templates/components/gh-profile-image.hbs"
-          },
-          isEmpty: false,
-          arity: 0,
-          cachedFragment: null,
-          hasRendered: false,
-          buildFragment: function buildFragment(dom) {
-            var el0 = dom.createDocumentFragment();
-            var el1 = dom.createTextNode("            ");
-            dom.appendChild(el0, el1);
-            var el1 = dom.createElement("div");
-            dom.setAttribute(el1, "id", "account-image");
-            dom.setAttribute(el1, "class", "gravatar-img");
-            var el2 = dom.createTextNode("\n                ");
-            dom.appendChild(el1, el2);
-            var el2 = dom.createElement("span");
-            dom.setAttribute(el2, "class", "sr-only");
-            var el3 = dom.createTextNode("User image");
-            dom.appendChild(el2, el3);
-            dom.appendChild(el1, el2);
-            var el2 = dom.createTextNode("\n            ");
-            dom.appendChild(el1, el2);
-            dom.appendChild(el0, el1);
-            var el1 = dom.createTextNode("\n");
-            dom.appendChild(el0, el1);
-            return el0;
-          },
-          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-            var element0 = dom.childAt(fragment, [1]);
-            var morphs = new Array(1);
-            morphs[0] = dom.createAttrMorph(element0, 'style');
-            return morphs;
-          },
-          statements: [["attribute", "style", ["get", "imageBackground", ["loc", [null, [6, 65], [6, 80]]]]]],
-          locals: [],
-          templates: []
-        };
-      })();
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -16732,7 +19689,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
               "column": 4
             },
             "end": {
-              "line": 10,
+              "line": 7,
               "column": 4
             }
           },
@@ -16749,38 +19706,51 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
           var el1 = dom.createElement("div");
           dom.setAttribute(el1, "class", "placeholder-img");
           dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n\n");
+          var el1 = dom.createTextNode("\n            ");
           dom.appendChild(el0, el1);
-          var el1 = dom.createComment("");
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1, "id", "account-image");
+          dom.setAttribute(el1, "class", "gravatar-img");
+          var el2 = dom.createTextNode("\n                ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("span");
+          dom.setAttribute(el2, "class", "sr-only");
+          var el3 = dom.createTextNode("User image");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
           dom.appendChild(el0, el1);
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element1 = dom.childAt(fragment, [1]);
+          var element0 = dom.childAt(fragment, [1]);
+          var element1 = dom.childAt(fragment, [3]);
           var morphs = new Array(2);
-          morphs[0] = dom.createAttrMorph(element1, 'style');
-          morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
-          dom.insertBoundary(fragment, null);
+          morphs[0] = dom.createAttrMorph(element0, 'style');
+          morphs[1] = dom.createAttrMorph(element1, 'style');
           return morphs;
         },
-        statements: [["attribute", "style", ["get", "defaultImage", ["loc", [null, [3, 45], [3, 57]]]]], ["block", "if", [["get", "displayGravatar", ["loc", [null, [5, 14], [5, 29]]]]], [], 0, null, ["loc", [null, [5, 8], [9, 15]]]]],
+        statements: [["attribute", "style", ["get", "defaultImage", ["loc", [null, [3, 45], [3, 57]]]]], ["attribute", "style", ["get", "imageBackground", ["loc", [null, [4, 65], [4, 80]]]]]],
         locals: [],
-        templates: [child0]
+        templates: []
       };
     })();
     var child1 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 19,
+              "line": 16,
               "column": 4
             },
             "end": {
-              "line": 19,
+              "line": 16,
               "column": 97
             }
           },
@@ -16812,7 +19782,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16820,7 +19790,7 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
             "column": 0
           },
           "end": {
-            "line": 21,
+            "line": 18,
             "column": 0
           }
         },
@@ -16882,21 +19852,20 @@ define("ghost/templates/components/gh-profile-image", ["exports"], function (exp
         morphs[1] = dom.createMorphAt(element2, 7, 7);
         return morphs;
       },
-      statements: [["block", "unless", [["get", "hasUploadedImage", ["loc", [null, [2, 14], [2, 30]]]]], [], 0, null, ["loc", [null, [2, 4], [10, 15]]]], ["block", "if", [["get", "fileStorage", ["loc", [null, [19, 10], [19, 21]]]]], [], 1, null, ["loc", [null, [19, 4], [19, 104]]]]],
+      statements: [["block", "unless", [["get", "hasUploadedImage", ["loc", [null, [2, 14], [2, 30]]]]], [], 0, null, ["loc", [null, [2, 4], [7, 15]]]], ["block", "if", [["get", "fileStorage", ["loc", [null, [16, 10], [16, 21]]]]], [], 1, null, ["loc", [null, [16, 4], [16, 104]]]]],
       locals: [],
       templates: [child0, child1]
     };
   })());
 });
-define("ghost/templates/components/gh-search-input", ["exports"], function (exports) {
+define("ghost/templates/components/gh-search-input/trigger", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     return {
       meta: {
         "fragmentReason": {
-          "name": "missing-wrapper",
-          "problems": ["wrong-type", "multiple-nodes"]
+          "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -16904,7 +19873,133 @@ define("ghost/templates/components/gh-search-input", ["exports"], function (expo
             "column": 0
           },
           "end": {
-            "line": 17,
+            "line": 13,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-search-input/trigger.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "ember-power-select-search");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("input");
+        dom.setAttribute(el2, "type", "search");
+        dom.setAttribute(el2, "autocomplete", "off");
+        dom.setAttribute(el2, "autocorrect", "off");
+        dom.setAttribute(el2, "autocapitalize", "off");
+        dom.setAttribute(el2, "spellcheck", "false");
+        dom.setAttribute(el2, "role", "combobox");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("button");
+        dom.setAttribute(el2, "class", "gh-nav-search-button");
+        var el3 = dom.createElement("i");
+        dom.setAttribute(el3, "class", "icon-search");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("span");
+        dom.setAttribute(el3, "class", "sr-only");
+        var el4 = dom.createTextNode("Search");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [0]);
+        var element1 = dom.childAt(element0, [1]);
+        var element2 = dom.childAt(element0, [3]);
+        var morphs = new Array(8);
+        morphs[0] = dom.createAttrMorph(element0, 'onmousedown');
+        morphs[1] = dom.createAttrMorph(element1, 'value');
+        morphs[2] = dom.createAttrMorph(element1, 'placeholder');
+        morphs[3] = dom.createAttrMorph(element1, 'oninput');
+        morphs[4] = dom.createAttrMorph(element1, 'onmousedown');
+        morphs[5] = dom.createAttrMorph(element1, 'onkeydown');
+        morphs[6] = dom.createAttrMorph(element1, 'onblur');
+        morphs[7] = dom.createElementMorph(element2);
+        return morphs;
+      },
+      statements: [["attribute", "onmousedown", ["subexpr", "action", ["captureMouseDown"], [], ["loc", [null, [1, 51], [1, 80]]]]], ["attribute", "value", ["subexpr", "if", [["get", "extra.labelPath", ["loc", [null, [4, 19], [4, 34]]]], ["subexpr", "get", [["get", "selected", ["loc", [null, [4, 40], [4, 48]]]], ["get", "extra.labelPath", ["loc", [null, [4, 49], [4, 64]]]]], [], ["loc", [null, [4, 35], [4, 65]]]], ["get", "selected", ["loc", [null, [4, 66], [4, 74]]]]], [], ["loc", [null, [4, 14], [4, 76]]]]], ["attribute", "placeholder", ["get", "placeholder", ["loc", [null, [6, 22], [6, 33]]]]], ["attribute", "oninput", ["subexpr", "action", ["search"], ["value", "target.value"], ["loc", [null, [7, 16], [7, 56]]]]], ["attribute", "onmousedown", ["subexpr", "action", ["captureMouseDown"], [], ["loc", [null, [8, 20], [8, 49]]]]], ["attribute", "onkeydown", ["subexpr", "action", ["handleKeydown"], [], ["loc", [null, [9, 18], [9, 44]]]]], ["attribute", "onblur", ["subexpr", "action", ["resetInput"], [], ["loc", [null, [10, 15], [10, 38]]]]], ["element", "action", ["focusInput"], [], ["loc", [null, [11, 41], [11, 64]]]]],
+      locals: [],
+      templates: []
+    };
+  })());
+});
+define("ghost/templates/components/gh-search-input", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": {
+            "name": "missing-wrapper",
+            "problems": ["wrong-type"]
+          },
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 13,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-search-input.hbs"
+        },
+        isEmpty: false,
+        arity: 2,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+          return morphs;
+        },
+        statements: [["inline", "highlighted-text", [["get", "name.title", ["loc", [null, [12, 23], [12, 33]]]], ["get", "term", ["loc", [null, [12, 34], [12, 38]]]]], [], ["loc", [null, [12, 4], [12, 40]]]]],
+        locals: ["name", "term"],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 14,
             "column": 0
           }
         },
@@ -16918,34 +20013,18 @@ define("ghost/templates/components/gh-search-input", ["exports"], function (expo
         var el0 = dom.createDocumentFragment();
         var el1 = dom.createComment("");
         dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("button");
-        dom.setAttribute(el1, "class", "gh-nav-search-button");
-        var el2 = dom.createElement("i");
-        dom.setAttribute(el2, "class", "icon-search");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("span");
-        dom.setAttribute(el2, "class", "sr-only");
-        var el3 = dom.createTextNode("Search");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element0 = dom.childAt(fragment, [2]);
-        var morphs = new Array(2);
+        var morphs = new Array(1);
         morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
-        morphs[1] = dom.createElementMorph(element0);
         dom.insertBoundary(fragment, 0);
+        dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["inline", "gh-selectize", [], ["placeholder", "Search", "selection", ["subexpr", "@mut", [["get", "selection", ["loc", [null, [3, 14], [3, 23]]]]], [], []], "content", ["subexpr", "@mut", [["get", "content", ["loc", [null, [4, 12], [4, 19]]]]], [], []], "loading", ["subexpr", "@mut", [["get", "isLoading", ["loc", [null, [5, 12], [5, 21]]]]], [], []], "optionValuePath", "content.id", "optionLabelPath", "content.title", "optionGroupPath", "content.category", "openOnFocus", false, "maxItems", "1", "on-init", "onInit", "on-focus", "onFocus", "on-blur", "onBlur", "update-filter", "onType", "select-item", "openSelected"], ["loc", [null, [1, 0], [15, 32]]]], ["element", "action", ["focusInput"], [], ["loc", [null, [16, 37], [16, 60]]]]],
+      statements: [["block", "power-select", [], ["search", ["subexpr", "action", ["search"], [], ["loc", [null, [2, 11], [2, 28]]]], "onchange", ["subexpr", "action", ["openSelected"], [], ["loc", [null, [3, 13], [3, 36]]]], "placeholder", "Search", "onopen", ["subexpr", "action", ["onFocus"], [], ["loc", [null, [5, 11], [5, 29]]]], "onclose", ["subexpr", "action", ["onBlur"], [], ["loc", [null, [6, 12], [6, 29]]]], "searchEnabled", false, "triggerComponent", "gh-search-input/trigger", "renderInPlace", true, "loadingMessage", "Loading"], 0, null, ["loc", [null, [1, 0], [13, 17]]]]],
       locals: [],
-      templates: []
+      templates: [child0]
     };
   })());
 });
@@ -16955,7 +20034,7 @@ define("ghost/templates/components/gh-select-native", ["exports"], function (exp
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -17006,7 +20085,7 @@ define("ghost/templates/components/gh-select-native", ["exports"], function (exp
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -17059,7 +20138,7 @@ define("ghost/templates/components/gh-select-native", ["exports"], function (exp
           "name": "modifiers",
           "modifiers": ["action"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -17115,7 +20194,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -17157,7 +20236,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -17199,7 +20278,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -17240,7 +20319,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -17282,7 +20361,7 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -17319,6 +20398,382 @@ define("ghost/templates/components/gh-spin-button", ["exports"], function (expor
     };
   })());
 });
+define("ghost/templates/components/gh-subscribers-table-delete-cell", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "modifiers",
+          "modifiers": ["action"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 2,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-subscribers-table-delete-cell.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("button");
+        dom.setAttribute(el1, "class", "btn btn-minor btn-sm");
+        var el2 = dom.createElement("i");
+        dom.setAttribute(el2, "class", "icon-trash");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [0]);
+        var morphs = new Array(1);
+        morphs[0] = dom.createElementMorph(element0);
+        return morphs;
+      },
+      statements: [["element", "action", [["get", "tableActions.delete", ["loc", [null, [1, 46], [1, 65]]]], ["get", "row.content", ["loc", [null, [1, 66], [1, 77]]]]], [], ["loc", [null, [1, 37], [1, 79]]]]],
+      locals: [],
+      templates: []
+    };
+  })());
+});
+define("ghost/templates/components/gh-subscribers-table", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      var child0 = (function () {
+        var child0 = (function () {
+          var child0 = (function () {
+            return {
+              meta: {
+                "fragmentReason": false,
+                "revision": "Ember@2.5.1",
+                "loc": {
+                  "source": null,
+                  "start": {
+                    "line": 6,
+                    "column": 12
+                  },
+                  "end": {
+                    "line": 8,
+                    "column": 12
+                  }
+                },
+                "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+              },
+              isEmpty: false,
+              arity: 0,
+              cachedFragment: null,
+              hasRendered: false,
+              buildFragment: function buildFragment(dom) {
+                var el0 = dom.createDocumentFragment();
+                var el1 = dom.createTextNode("                Loading...\n");
+                dom.appendChild(el0, el1);
+                return el0;
+              },
+              buildRenderNodes: function buildRenderNodes() {
+                return [];
+              },
+              statements: [],
+              locals: [],
+              templates: []
+            };
+          })();
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 5,
+                  "column": 8
+                },
+                "end": {
+                  "line": 9,
+                  "column": 8
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createComment("");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var morphs = new Array(1);
+              morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+              dom.insertBoundary(fragment, 0);
+              dom.insertBoundary(fragment, null);
+              return morphs;
+            },
+            statements: [["block", "body.loader", [], [], 0, null, ["loc", [null, [6, 12], [8, 28]]]]],
+            locals: [],
+            templates: [child0]
+          };
+        })();
+        var child1 = (function () {
+          var child0 = (function () {
+            var child0 = (function () {
+              return {
+                meta: {
+                  "fragmentReason": false,
+                  "revision": "Ember@2.5.1",
+                  "loc": {
+                    "source": null,
+                    "start": {
+                      "line": 11,
+                      "column": 16
+                    },
+                    "end": {
+                      "line": 13,
+                      "column": 16
+                    }
+                  },
+                  "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+                },
+                isEmpty: false,
+                arity: 0,
+                cachedFragment: null,
+                hasRendered: false,
+                buildFragment: function buildFragment(dom) {
+                  var el0 = dom.createDocumentFragment();
+                  var el1 = dom.createTextNode("                    No subscribers found.\n");
+                  dom.appendChild(el0, el1);
+                  return el0;
+                },
+                buildRenderNodes: function buildRenderNodes() {
+                  return [];
+                },
+                statements: [],
+                locals: [],
+                templates: []
+              };
+            })();
+            return {
+              meta: {
+                "fragmentReason": false,
+                "revision": "Ember@2.5.1",
+                "loc": {
+                  "source": null,
+                  "start": {
+                    "line": 10,
+                    "column": 12
+                  },
+                  "end": {
+                    "line": 14,
+                    "column": 12
+                  }
+                },
+                "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+              },
+              isEmpty: false,
+              arity: 0,
+              cachedFragment: null,
+              hasRendered: false,
+              buildFragment: function buildFragment(dom) {
+                var el0 = dom.createDocumentFragment();
+                var el1 = dom.createComment("");
+                dom.appendChild(el0, el1);
+                return el0;
+              },
+              buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                var morphs = new Array(1);
+                morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                dom.insertBoundary(fragment, 0);
+                dom.insertBoundary(fragment, null);
+                return morphs;
+              },
+              statements: [["block", "body.no-data", [], [], 0, null, ["loc", [null, [11, 16], [13, 33]]]]],
+              locals: [],
+              templates: [child0]
+            };
+          })();
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.5.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 9,
+                  "column": 8
+                },
+                "end": {
+                  "line": 15,
+                  "column": 8
+                }
+              },
+              "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createComment("");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var morphs = new Array(1);
+              morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+              dom.insertBoundary(fragment, 0);
+              dom.insertBoundary(fragment, null);
+              return morphs;
+            },
+            statements: [["block", "if", [["get", "table.isEmpty", ["loc", [null, [10, 18], [10, 31]]]]], [], 0, null, ["loc", [null, [10, 12], [14, 19]]]]],
+            locals: [],
+            templates: [child0]
+          };
+        })();
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 4,
+                "column": 4
+              },
+              "end": {
+                "line": 16,
+                "column": 4
+              }
+            },
+            "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+          },
+          isEmpty: false,
+          arity: 1,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+            dom.insertBoundary(fragment, 0);
+            dom.insertBoundary(fragment, null);
+            return morphs;
+          },
+          statements: [["block", "if", [["get", "isLoading", ["loc", [null, [5, 14], [5, 23]]]]], [], 0, 1, ["loc", [null, [5, 8], [15, 15]]]]],
+          locals: ["body"],
+          templates: [child0, child1]
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": {
+            "name": "missing-wrapper",
+            "problems": ["wrong-type", "multiple-nodes"]
+          },
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 1,
+              "column": 0
+            },
+            "end": {
+              "line": 17,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+        },
+        isEmpty: false,
+        arity: 1,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n\n");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+          morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["inline", "t.head", [], ["onColumnClick", ["subexpr", "action", [["get", "sortByColumn", ["loc", [null, [2, 35], [2, 47]]]]], [], ["loc", [null, [2, 27], [2, 48]]]], "iconAscending", "icon-ascending", "iconDescending", "icon-descending"], ["loc", [null, [2, 4], [2, 114]]]], ["block", "t.body", [], ["canSelect", false, "tableActions", ["subexpr", "hash", [], ["delete", ["subexpr", "action", [["get", "delete", ["loc", [null, [4, 64], [4, 70]]]]], [], ["loc", [null, [4, 56], [4, 71]]]]], ["loc", [null, [4, 43], [4, 72]]]]], 0, null, ["loc", [null, [4, 4], [16, 15]]]]],
+        locals: ["t"],
+        templates: [child0]
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 18,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/gh-subscribers-table.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        dom.insertBoundary(fragment, 0);
+        dom.insertBoundary(fragment, null);
+        return morphs;
+      },
+      statements: [["block", "gh-light-table", [["get", "table", ["loc", [null, [1, 18], [1, 23]]]]], ["scrollContainer", ".subscribers-table", "scrollBuffer", 100, "onScrolledToBottom", ["subexpr", "action", ["onScrolledToBottom"], [], ["loc", [null, [1, 97], [1, 126]]]]], 0, null, ["loc", [null, [1, 0], [17, 19]]]]],
+      locals: [],
+      templates: [child0]
+    };
+  })());
+});
 define("ghost/templates/components/gh-tag-settings-form", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
@@ -17326,7 +20781,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -17364,7 +20819,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -17418,7 +20873,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -17462,15 +20917,15 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 14,
+              "line": 18,
               "column": 12
             },
             "end": {
-              "line": 18,
+              "line": 22,
               "column": 12
             }
           },
@@ -17507,7 +20962,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-input", [], ["id", "tag-name", "name", "name", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchName", ["loc", [null, [16, 71], [16, 82]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "name"], [], ["loc", [null, [16, 93], [16, 122]]]]], ["loc", [null, [16, 16], [16, 124]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [17, 42], [17, 52]]]]], [], []], "property", "name"], ["loc", [null, [17, 16], [17, 70]]]]],
+        statements: [["inline", "gh-input", [], ["id", "tag-name", "name", "name", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchName", ["loc", [null, [20, 71], [20, 82]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "name"], [], ["loc", [null, [20, 93], [20, 122]]]]], ["loc", [null, [20, 16], [20, 124]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [21, 42], [21, 52]]]]], [], []], "property", "name"], ["loc", [null, [21, 16], [21, 70]]]]],
         locals: [],
         templates: []
       };
@@ -17516,15 +20971,15 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 20,
+              "line": 24,
               "column": 12
             },
             "end": {
-              "line": 25,
+              "line": 29,
               "column": 12
             }
           },
@@ -17566,7 +21021,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[2] = dom.createMorphAt(fragment, 7, 7, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-input", [], ["id", "tag-slug", "name", "slug", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchSlug", ["loc", [null, [22, 71], [22, 82]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "slug"], [], ["loc", [null, [22, 93], [22, 122]]]]], ["loc", [null, [22, 16], [22, 124]]]], ["inline", "gh-url-preview", [], ["prefix", "tag", "slug", ["subexpr", "@mut", [["get", "scratchSlug", ["loc", [null, [23, 51], [23, 62]]]]], [], []], "tagName", "p", "classNames", "description"], ["loc", [null, [23, 16], [23, 101]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "activeTag.errors", ["loc", [null, [24, 42], [24, 58]]]]], [], []], "property", "slug"], ["loc", [null, [24, 16], [24, 76]]]]],
+        statements: [["inline", "gh-input", [], ["id", "tag-slug", "name", "slug", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchSlug", ["loc", [null, [26, 71], [26, 82]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "slug"], [], ["loc", [null, [26, 93], [26, 122]]]]], ["loc", [null, [26, 16], [26, 124]]]], ["inline", "gh-url-preview", [], ["prefix", "tag", "slug", ["subexpr", "@mut", [["get", "scratchSlug", ["loc", [null, [27, 51], [27, 62]]]]], [], []], "tagName", "p", "classNames", "description"], ["loc", [null, [27, 16], [27, 101]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "activeTag.errors", ["loc", [null, [28, 42], [28, 58]]]]], [], []], "property", "slug"], ["loc", [null, [28, 16], [28, 76]]]]],
         locals: [],
         templates: []
       };
@@ -17575,15 +21030,15 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 27,
+              "line": 31,
               "column": 12
             },
             "end": {
-              "line": 32,
+              "line": 36,
               "column": 12
             }
           },
@@ -17635,7 +21090,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 3, 3);
           return morphs;
         },
-        statements: [["inline", "gh-textarea", [], ["id", "tag-description", "name", "description", "value", ["subexpr", "@mut", [["get", "scratchDescription", ["loc", [null, [29, 76], [29, 94]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "description"], [], ["loc", [null, [29, 105], [29, 141]]]]], ["loc", [null, [29, 16], [29, 143]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [30, 42], [30, 52]]]]], [], []], "property", "description"], ["loc", [null, [30, 16], [30, 77]]]], ["inline", "gh-count-down-characters", [["get", "scratchDescription", ["loc", [null, [31, 90], [31, 108]]]], 200], [], ["loc", [null, [31, 63], [31, 114]]]]],
+        statements: [["inline", "gh-textarea", [], ["id", "tag-description", "name", "description", "value", ["subexpr", "@mut", [["get", "scratchDescription", ["loc", [null, [33, 76], [33, 94]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "description"], [], ["loc", [null, [33, 105], [33, 141]]]]], ["loc", [null, [33, 16], [33, 143]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [34, 42], [34, 52]]]]], [], []], "property", "description"], ["loc", [null, [34, 16], [34, 77]]]], ["inline", "gh-count-down-characters", [["get", "scratchDescription", ["loc", [null, [35, 90], [35, 108]]]], 200], [], ["loc", [null, [35, 63], [35, 114]]]]],
         locals: [],
         templates: []
       };
@@ -17644,15 +21099,15 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 44,
+              "line": 48,
               "column": 12
             },
             "end": {
-              "line": 46,
+              "line": 50,
               "column": 12
             }
           },
@@ -17685,7 +21140,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[0] = dom.createElementMorph(element0);
           return morphs;
         },
-        statements: [["element", "action", ["deleteTag"], [], ["loc", [null, [45, 84], [45, 106]]]]],
+        statements: [["element", "action", ["deleteTag"], [], ["loc", [null, [49, 84], [49, 106]]]]],
         locals: [],
         templates: []
       };
@@ -17694,15 +21149,15 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 60,
+              "line": 64,
               "column": 12
             },
             "end": {
-              "line": 65,
+              "line": 69,
               "column": 12
             }
           },
@@ -17754,7 +21209,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 3, 3);
           return morphs;
         },
-        statements: [["inline", "gh-input", [], ["id", "meta-title", "name", "metaTitle", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchMetaTitle", ["loc", [null, [62, 78], [62, 94]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "metaTitle"], [], ["loc", [null, [62, 105], [62, 139]]]]], ["loc", [null, [62, 16], [62, 141]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [63, 42], [63, 52]]]]], [], []], "property", "metaTitle"], ["loc", [null, [63, 16], [63, 75]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaTitle", ["loc", [null, [64, 93], [64, 109]]]], 70], [], ["loc", [null, [64, 66], [64, 114]]]]],
+        statements: [["inline", "gh-input", [], ["id", "meta-title", "name", "metaTitle", "type", "text", "value", ["subexpr", "@mut", [["get", "scratchMetaTitle", ["loc", [null, [66, 78], [66, 94]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "metaTitle"], [], ["loc", [null, [66, 105], [66, 139]]]]], ["loc", [null, [66, 16], [66, 141]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [67, 42], [67, 52]]]]], [], []], "property", "metaTitle"], ["loc", [null, [67, 16], [67, 75]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaTitle", ["loc", [null, [68, 93], [68, 109]]]], 70], [], ["loc", [null, [68, 66], [68, 114]]]]],
         locals: [],
         templates: []
       };
@@ -17763,15 +21218,15 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 67,
+              "line": 71,
               "column": 12
             },
             "end": {
-              "line": 72,
+              "line": 76,
               "column": 12
             }
           },
@@ -17823,7 +21278,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 3, 3);
           return morphs;
         },
-        statements: [["inline", "gh-textarea", [], ["id", "meta-description", "name", "metaDescription", "value", ["subexpr", "@mut", [["get", "scratchMetaDescription", ["loc", [null, [69, 81], [69, 103]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "metaDescription"], [], ["loc", [null, [69, 114], [69, 154]]]]], ["loc", [null, [69, 16], [69, 156]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [70, 42], [70, 52]]]]], [], []], "property", "metaDescription"], ["loc", [null, [70, 16], [70, 81]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaDescription", ["loc", [null, [71, 94], [71, 116]]]], 156], [], ["loc", [null, [71, 67], [71, 122]]]]],
+        statements: [["inline", "gh-textarea", [], ["id", "meta-description", "name", "metaDescription", "value", ["subexpr", "@mut", [["get", "scratchMetaDescription", ["loc", [null, [73, 81], [73, 103]]]]], [], []], "focus-out", ["subexpr", "action", ["setProperty", "metaDescription"], [], ["loc", [null, [73, 114], [73, 154]]]]], ["loc", [null, [73, 16], [73, 156]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [74, 42], [74, 52]]]]], [], []], "property", "metaDescription"], ["loc", [null, [74, 16], [74, 81]]]], ["inline", "gh-count-down-characters", [["get", "scratchMetaDescription", ["loc", [null, [75, 94], [75, 116]]]], 156], [], ["loc", [null, [75, 67], [75, 122]]]]],
         locals: [],
         templates: []
       };
@@ -17834,7 +21289,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -17842,7 +21297,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
             "column": 0
           },
           "end": {
-            "line": 85,
+            "line": 89,
             "column": 0
           }
         },
@@ -18069,7 +21524,7 @@ define("ghost/templates/components/gh-tag-settings-form", ["exports"], function 
         morphs[15] = dom.createMorphAt(dom.childAt(element9, [5]), 0, 0);
         return morphs;
       },
-      statements: [["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [1, 17], [1, 33]]]], "settings-menu-pane-out-left", "settings-menu-pane-in"], [], ["loc", [null, [1, 12], [1, 89]]]], " settings-menu settings-menu-pane tag-settings-pane"]]], ["attribute", "class", ["concat", ["settings-menu-header ", ["subexpr", "if", [["get", "isMobile", ["loc", [null, [2, 42], [2, 50]]]], "subview"], [], ["loc", [null, [2, 37], [2, 62]]]]]]], ["block", "if", [["get", "isMobile", ["loc", [null, [3, 14], [3, 22]]]]], [], 0, 1, ["loc", [null, [3, 8], [9, 15]]]], ["inline", "gh-uploader", [], ["uploaded", "setCoverImage", "canceled", "clearCoverImage", "description", "Add tag image", "image", ["subexpr", "@mut", [["get", "tag.image", ["loc", [null, [12, 108], [12, 117]]]]], [], []], "initUploader", "setUploaderReference", "tagName", "section"], ["loc", [null, [12, 8], [12, 173]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [14, 36], [14, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [14, 60], [14, 76]]]]], [], []], "property", "name"], 2, null, ["loc", [null, [14, 12], [18, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [20, 36], [20, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [20, 60], [20, 76]]]]], [], []], "property", "slug"], 3, null, ["loc", [null, [20, 12], [25, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [27, 36], [27, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [27, 60], [27, 76]]]]], [], []], "property", "description"], 4, null, ["loc", [null, [27, 12], [32, 30]]]], ["element", "action", ["openMeta"], [], ["loc", [null, [35, 42], [35, 63]]]], ["block", "unless", [["get", "tag.isNew", ["loc", [null, [44, 22], [44, 31]]]]], [], 5, null, ["loc", [null, [44, 12], [46, 23]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [51, 17], [51, 33]]]], "settings-menu-pane-in", "settings-menu-pane-out-right"], [], ["loc", [null, [51, 12], [51, 90]]]], " settings-menu settings-menu-pane tag-meta-settings-pane"]]], ["element", "action", ["closeMeta"], [], ["loc", [null, [53, 16], [53, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [60, 36], [60, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [60, 60], [60, 76]]]]], [], []], "property", "metaTitle"], 6, null, ["loc", [null, [60, 12], [65, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [67, 36], [67, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [67, 60], [67, 76]]]]], [], []], "property", "metaDescription"], 7, null, ["loc", [null, [67, 12], [72, 30]]]], ["content", "seoTitle", ["loc", [null, [77, 51], [77, 63]]]], ["content", "seoURL", ["loc", [null, [78, 50], [78, 60]]]], ["content", "seoDescription", ["loc", [null, [79, 57], [79, 75]]]]],
+      statements: [["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [1, 17], [1, 33]]]], "settings-menu-pane-out-left", "settings-menu-pane-in"], [], ["loc", [null, [1, 12], [1, 89]]]], " settings-menu settings-menu-pane tag-settings-pane"]]], ["attribute", "class", ["concat", ["settings-menu-header ", ["subexpr", "if", [["get", "isMobile", ["loc", [null, [2, 42], [2, 50]]]], "subview"], [], ["loc", [null, [2, 37], [2, 62]]]]]]], ["block", "if", [["get", "isMobile", ["loc", [null, [3, 14], [3, 22]]]]], [], 0, 1, ["loc", [null, [3, 8], [9, 15]]]], ["inline", "gh-image-uploader-with-preview", [], ["image", ["subexpr", "@mut", [["get", "tag.image", ["loc", [null, [13, 18], [13, 27]]]]], [], []], "text", "Add tag image", "update", ["subexpr", "action", ["setCoverImage"], [], ["loc", [null, [15, 19], [15, 43]]]], "remove", ["subexpr", "action", ["clearCoverImage"], [], ["loc", [null, [16, 19], [16, 45]]]]], ["loc", [null, [12, 8], [16, 47]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [18, 36], [18, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [18, 60], [18, 76]]]]], [], []], "property", "name"], 2, null, ["loc", [null, [18, 12], [22, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [24, 36], [24, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [24, 60], [24, 76]]]]], [], []], "property", "slug"], 3, null, ["loc", [null, [24, 12], [29, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [31, 36], [31, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [31, 60], [31, 76]]]]], [], []], "property", "description"], 4, null, ["loc", [null, [31, 12], [36, 30]]]], ["element", "action", ["openMeta"], [], ["loc", [null, [39, 42], [39, 63]]]], ["block", "unless", [["get", "tag.isNew", ["loc", [null, [48, 22], [48, 31]]]]], [], 5, null, ["loc", [null, [48, 12], [50, 23]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [55, 17], [55, 33]]]], "settings-menu-pane-in", "settings-menu-pane-out-right"], [], ["loc", [null, [55, 12], [55, 90]]]], " settings-menu settings-menu-pane tag-meta-settings-pane"]]], ["element", "action", ["closeMeta"], [], ["loc", [null, [57, 16], [57, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [64, 36], [64, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [64, 60], [64, 76]]]]], [], []], "property", "metaTitle"], 6, null, ["loc", [null, [64, 12], [69, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "tag.errors", ["loc", [null, [71, 36], [71, 46]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "tag.hasValidated", ["loc", [null, [71, 60], [71, 76]]]]], [], []], "property", "metaDescription"], 7, null, ["loc", [null, [71, 12], [76, 30]]]], ["content", "seoTitle", ["loc", [null, [81, 51], [81, 63]]]], ["content", "seoURL", ["loc", [null, [82, 50], [82, 60]]]], ["content", "seoDescription", ["loc", [null, [83, 57], [83, 75]]]]],
       locals: [],
       templates: [child0, child1, child2, child3, child4, child5, child6, child7]
     };
@@ -18081,7 +21536,7 @@ define("ghost/templates/components/gh-tag", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -18153,7 +21608,7 @@ define("ghost/templates/components/gh-tag", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18203,7 +21658,7 @@ define("ghost/templates/components/gh-tags-management-container", ["exports"], f
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18241,71 +21696,6 @@ define("ghost/templates/components/gh-tags-management-container", ["exports"], f
     };
   })());
 });
-define("ghost/templates/components/gh-uploader", ["exports"], function (exports) {
-  exports["default"] = Ember.HTMLBars.template((function () {
-    return {
-      meta: {
-        "fragmentReason": {
-          "name": "missing-wrapper",
-          "problems": ["multiple-nodes"]
-        },
-        "revision": "Ember@2.4.4",
-        "loc": {
-          "source": null,
-          "start": {
-            "line": 1,
-            "column": 0
-          },
-          "end": {
-            "line": 4,
-            "column": 0
-          }
-        },
-        "moduleName": "ghost/templates/components/gh-uploader.hbs"
-      },
-      isEmpty: false,
-      arity: 0,
-      cachedFragment: null,
-      hasRendered: false,
-      buildFragment: function buildFragment(dom) {
-        var el0 = dom.createDocumentFragment();
-        var el1 = dom.createElement("img");
-        dom.setAttribute(el1, "class", "js-upload-target");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("div");
-        dom.setAttribute(el1, "class", "description");
-        var el2 = dom.createComment("");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("strong");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("input");
-        dom.setAttribute(el1, "data-url", "upload");
-        dom.setAttribute(el1, "class", "gh-input js-fileupload main fileupload");
-        dom.setAttribute(el1, "type", "file");
-        dom.setAttribute(el1, "name", "uploadimage");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        return el0;
-      },
-      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element0 = dom.childAt(fragment, [0]);
-        var morphs = new Array(2);
-        morphs[0] = dom.createAttrMorph(element0, 'src');
-        morphs[1] = dom.createMorphAt(dom.childAt(fragment, [2]), 0, 0);
-        return morphs;
-      },
-      statements: [["attribute", "src", ["concat", [["get", "imageSource", ["loc", [null, [1, 37], [1, 48]]]]]]], ["content", "description", ["loc", [null, [2, 25], [2, 40]]]]],
-      locals: [],
-      templates: []
-    };
-  })());
-});
 define("ghost/templates/components/gh-url-preview", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     return {
@@ -18314,7 +21704,7 @@ define("ghost/templates/components/gh-url-preview", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18360,7 +21750,7 @@ define("ghost/templates/components/gh-user-active", ["exports"], function (expor
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18406,7 +21796,7 @@ define("ghost/templates/components/gh-user-invited", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18452,7 +21842,7 @@ define("ghost/templates/components/gh-view-title", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18513,7 +21903,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18553,7 +21943,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18592,7 +21982,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -18634,7 +22024,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -18677,7 +22067,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18717,7 +22107,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -18756,7 +22146,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -18795,7 +22185,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -18834,7 +22224,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -18876,7 +22266,7 @@ define("ghost/templates/components/liquid-bind", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18921,7 +22311,7 @@ define("ghost/templates/components/liquid-container", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -18966,7 +22356,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19008,7 +22398,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19049,7 +22439,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -19091,7 +22481,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -19134,7 +22524,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -19176,7 +22566,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -19217,7 +22607,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19256,7 +22646,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -19295,7 +22685,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -19337,7 +22727,7 @@ define("ghost/templates/components/liquid-if", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -19381,7 +22771,7 @@ define("ghost/templates/components/liquid-modal", ["exports"], function (exports
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -19436,7 +22826,7 @@ define("ghost/templates/components/liquid-modal", ["exports"], function (exports
             "name": "missing-wrapper",
             "problems": ["wrong-type", "multiple-nodes"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -19484,7 +22874,7 @@ define("ghost/templates/components/liquid-modal", ["exports"], function (exports
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -19529,7 +22919,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19568,7 +22958,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -19610,7 +23000,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -19652,7 +23042,7 @@ define("ghost/templates/components/liquid-outlet", ["exports"], function (export
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -19697,7 +23087,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19736,7 +23126,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -19778,7 +23168,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -19820,7 +23210,7 @@ define("ghost/templates/components/liquid-versions", ["exports"], function (expo
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -19864,7 +23254,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -19906,7 +23296,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
             "name": "missing-wrapper",
             "problems": ["wrong-type"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -19948,7 +23338,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -19987,7 +23377,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -20026,7 +23416,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20068,7 +23458,7 @@ define("ghost/templates/components/liquid-with", ["exports"], function (exports)
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -20113,7 +23503,7 @@ define("ghost/templates/components/modals/copy-html", ["exports"], function (exp
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -20190,7 +23580,7 @@ define("ghost/templates/components/modals/delete-all", ["exports"], function (ex
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20228,7 +23618,7 @@ define("ghost/templates/components/modals/delete-all", ["exports"], function (ex
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -20332,7 +23722,7 @@ define("ghost/templates/components/modals/delete-post", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20370,7 +23760,7 @@ define("ghost/templates/components/modals/delete-post", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -20479,13 +23869,151 @@ define("ghost/templates/components/modals/delete-post", ["exports"], function (e
     };
   })());
 });
+define("ghost/templates/components/modals/delete-subscriber", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 12,
+              "column": 4
+            },
+            "end": {
+              "line": 12,
+              "column": 88
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/delete-subscriber.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Delete");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["multiple-nodes"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 14,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/modals/delete-subscriber.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        dom.setAttribute(el1, "class", "modal-header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("h1");
+        var el3 = dom.createTextNode("Are you sure?");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("a");
+        dom.setAttribute(el1, "class", "close icon-x");
+        dom.setAttribute(el1, "href", "");
+        dom.setAttribute(el1, "title", "Close");
+        var el2 = dom.createElement("span");
+        dom.setAttribute(el2, "class", "hidden");
+        var el3 = dom.createTextNode("Close");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "modal-body");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("strong");
+        var el3 = dom.createTextNode("WARNING:");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode(" All data for this subscriber will be deleted. There is no way to recover this.\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "modal-footer");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("button");
+        dom.setAttribute(el2, "class", "btn btn-default btn-minor");
+        var el3 = dom.createTextNode("Cancel");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [2]);
+        var element1 = dom.childAt(fragment, [6]);
+        var element2 = dom.childAt(element1, [1]);
+        var morphs = new Array(3);
+        morphs[0] = dom.createElementMorph(element0);
+        morphs[1] = dom.createElementMorph(element2);
+        morphs[2] = dom.createMorphAt(element1, 3, 3);
+        return morphs;
+      },
+      statements: [["element", "action", ["closeModal"], [], ["loc", [null, [4, 46], [4, 69]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [11, 12], [11, 35]]]], ["block", "gh-spin-button", [], ["action", "confirm", "class", "btn btn-red", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [12, 70], [12, 80]]]]], [], []]], 0, null, ["loc", [null, [12, 4], [12, 107]]]]],
+      locals: [],
+      templates: [child0]
+    };
+  })());
+});
 define("ghost/templates/components/modals/delete-tag", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20540,7 +24068,7 @@ define("ghost/templates/components/modals/delete-tag", ["exports"], function (ex
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20578,7 +24106,7 @@ define("ghost/templates/components/modals/delete-tag", ["exports"], function (ex
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -20691,7 +24219,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20746,7 +24274,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20788,7 +24316,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20826,7 +24354,7 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -20917,13 +24445,490 @@ define("ghost/templates/components/modals/delete-user", ["exports"], function (e
     };
   })());
 });
+define("ghost/templates/components/modals/import-subscribers", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 3,
+              "column": 8
+            },
+            "end": {
+              "line": 5,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("            Import Successful\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 5,
+              "column": 8
+            },
+            "end": {
+              "line": 7,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("            Import Subscribers\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child2 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 19,
+                "column": 12
+              },
+              "end": {
+                "line": 24,
+                "column": 12
+              }
+            },
+            "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("tr");
+            var el2 = dom.createTextNode("\n                    ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("td");
+            var el3 = dom.createTextNode("Duplicates:");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n                    ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("td");
+            dom.setAttribute(el2, "align", "left");
+            var el3 = dom.createComment("");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n                ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1, 3]), 0, 0);
+            return morphs;
+          },
+          statements: [["content", "response.duplicates", ["loc", [null, [22, 37], [22, 60]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child1 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 25,
+                "column": 12
+              },
+              "end": {
+                "line": 30,
+                "column": 12
+              }
+            },
+            "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("tr");
+            var el2 = dom.createTextNode("\n                    ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("td");
+            var el3 = dom.createTextNode("Invalid:");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n                    ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("td");
+            dom.setAttribute(el2, "align", "left");
+            var el3 = dom.createComment("");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n                ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1, 3]), 0, 0);
+            return morphs;
+          },
+          statements: [["content", "response.invalid", ["loc", [null, [28, 37], [28, 57]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 13,
+              "column": 4
+            },
+            "end": {
+              "line": 32,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("table");
+          dom.setAttribute(el1, "class", "subscribers-import-results");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("tr");
+          var el3 = dom.createTextNode("\n                ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("td");
+          var el4 = dom.createTextNode("Imported:");
+          dom.appendChild(el3, el4);
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n                ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("td");
+          dom.setAttribute(el3, "align", "left");
+          var el4 = dom.createComment("");
+          dom.appendChild(el3, el4);
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n            ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [1]);
+          var morphs = new Array(3);
+          morphs[0] = dom.createMorphAt(dom.childAt(element0, [1, 3]), 0, 0);
+          morphs[1] = dom.createMorphAt(element0, 3, 3);
+          morphs[2] = dom.createMorphAt(element0, 4, 4);
+          return morphs;
+        },
+        statements: [["content", "response.imported", ["loc", [null, [17, 33], [17, 54]]]], ["block", "if", [["get", "response.duplicates", ["loc", [null, [19, 18], [19, 37]]]]], [], 0, null, ["loc", [null, [19, 12], [24, 19]]]], ["block", "if", [["get", "response.invalid", ["loc", [null, [25, 18], [25, 34]]]]], [], 1, null, ["loc", [null, [25, 12], [30, 19]]]]],
+        locals: [],
+        templates: [child0, child1]
+      };
+    })();
+    var child3 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 32,
+              "column": 4
+            },
+            "end": {
+              "line": 40,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+          return morphs;
+        },
+        statements: [["inline", "gh-file-uploader", [], ["url", ["subexpr", "@mut", [["get", "uploadUrl", ["loc", [null, [34, 16], [34, 25]]]]], [], []], "paramName", "subscribersfile", "labelText", "Select or drag-and-drop a CSV file.", "uploadStarted", ["subexpr", "action", ["uploadStarted"], [], ["loc", [null, [37, 26], [37, 50]]]], "uploadFinished", ["subexpr", "action", ["uploadFinished"], [], ["loc", [null, [38, 27], [38, 52]]]], "uploadSuccess", ["subexpr", "action", ["uploadSuccess"], [], ["loc", [null, [39, 26], [39, 50]]]]], ["loc", [null, [33, 8], [39, 52]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child4 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 45,
+              "column": 8
+            },
+            "end": {
+              "line": 45,
+              "column": 29
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Close");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child5 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 45,
+              "column": 29
+            },
+            "end": {
+              "line": 45,
+              "column": 43
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Cancel");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["multiple-nodes"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 48,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/modals/import-subscribers.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        dom.setAttribute(el1, "class", "modal-header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("h1");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("a");
+        dom.setAttribute(el1, "class", "close icon-x");
+        dom.setAttribute(el1, "href", "");
+        dom.setAttribute(el1, "title", "Close");
+        var el2 = dom.createElement("span");
+        dom.setAttribute(el2, "class", "hidden");
+        var el3 = dom.createTextNode("Close");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "modal-body");
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "modal-footer");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("button");
+        dom.setAttribute(el2, "class", "btn btn-default btn-minor");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element1 = dom.childAt(fragment, [2]);
+        var element2 = dom.childAt(fragment, [6, 1]);
+        var morphs = new Array(6);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0, 1]), 1, 1);
+        morphs[1] = dom.createElementMorph(element1);
+        morphs[2] = dom.createMorphAt(dom.childAt(fragment, [4]), 1, 1);
+        morphs[3] = dom.createAttrMorph(element2, 'disabled');
+        morphs[4] = dom.createElementMorph(element2);
+        morphs[5] = dom.createMorphAt(element2, 1, 1);
+        return morphs;
+      },
+      statements: [["block", "if", [["get", "response", ["loc", [null, [3, 14], [3, 22]]]]], [], 0, 1, ["loc", [null, [3, 8], [7, 15]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [10, 46], [10, 69]]]], ["block", "liquid-if", [["get", "response", ["loc", [null, [13, 17], [13, 25]]]]], ["class", "fade-transition"], 2, 3, ["loc", [null, [13, 4], [40, 18]]]], ["attribute", "disabled", ["get", "closeDisabled", ["loc", [null, [44, 47], [44, 60]]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [44, 12], [44, 35]]]], ["block", "if", [["get", "response", ["loc", [null, [45, 14], [45, 22]]]]], [], 4, 5, ["loc", [null, [45, 8], [45, 50]]]]],
+      locals: [],
+      templates: [child0, child1, child2, child3, child4, child5]
+    };
+  })());
+});
 define("ghost/templates/components/modals/invite-new-user", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -20977,7 +24982,7 @@ define("ghost/templates/components/modals/invite-new-user", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -21015,7 +25020,7 @@ define("ghost/templates/components/modals/invite-new-user", ["exports"], functio
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -21140,7 +25145,7 @@ define("ghost/templates/components/modals/leave-editor", ["exports"], function (
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -21252,7 +25257,7 @@ define("ghost/templates/components/modals/markdown-help", ["exports"], function 
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -21673,13 +25678,220 @@ define("ghost/templates/components/modals/markdown-help", ["exports"], function 
     };
   })());
 });
+define("ghost/templates/components/modals/new-subscriber", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 8,
+              "column": 8
+            },
+            "end": {
+              "line": 21,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/new-subscriber.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "new-subscriber-email");
+          var el2 = dom.createTextNode("Email Address");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("input");
+          dom.setAttribute(el1, "type", "email");
+          dom.setAttribute(el1, "id", "new-subscriber-email");
+          dom.setAttribute(el1, "class", "gh-input email");
+          dom.setAttribute(el1, "placeholder", "Email Address");
+          dom.setAttribute(el1, "name", "email");
+          dom.setAttribute(el1, "autofocus", "autofocus");
+          dom.setAttribute(el1, "autocapitalize", "off");
+          dom.setAttribute(el1, "autocorrect", "off");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n            ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [3]);
+          var morphs = new Array(3);
+          morphs[0] = dom.createAttrMorph(element0, 'value');
+          morphs[1] = dom.createAttrMorph(element0, 'oninput');
+          morphs[2] = dom.createMorphAt(fragment, 5, 5, contextualElement);
+          return morphs;
+        },
+        statements: [["attribute", "value", ["get", "model.email", ["loc", [null, [11, 24], [11, 35]]]]], ["attribute", "oninput", ["subexpr", "action", ["updateEmail"], ["value", "target.value"], ["loc", [null, [12, 24], [12, 69]]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [20, 38], [20, 50]]]]], [], []], "property", "email"], ["loc", [null, [20, 12], [20, 69]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 28,
+              "column": 4
+            },
+            "end": {
+              "line": 28,
+              "column": 87
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/new-subscriber.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Add");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["multiple-nodes"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 30,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/components/modals/new-subscriber.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        dom.setAttribute(el1, "class", "modal-header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("h1");
+        var el3 = dom.createTextNode("Add a Subscriber");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("a");
+        dom.setAttribute(el1, "class", "close icon-x");
+        dom.setAttribute(el1, "href", "");
+        dom.setAttribute(el1, "title", "Close");
+        var el2 = dom.createElement("span");
+        dom.setAttribute(el2, "class", "hidden");
+        var el3 = dom.createTextNode("Close");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "modal-body");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("fieldset");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("div");
+        dom.setAttribute(el1, "class", "modal-footer");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("button");
+        dom.setAttribute(el2, "class", "btn btn-default btn-minor");
+        var el3 = dom.createTextNode("Cancel");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element1 = dom.childAt(fragment, [2]);
+        var element2 = dom.childAt(fragment, [6]);
+        var element3 = dom.childAt(element2, [1]);
+        var morphs = new Array(4);
+        morphs[0] = dom.createElementMorph(element1);
+        morphs[1] = dom.createMorphAt(dom.childAt(fragment, [4, 1]), 1, 1);
+        morphs[2] = dom.createElementMorph(element3);
+        morphs[3] = dom.createMorphAt(element2, 3, 3);
+        return morphs;
+      },
+      statements: [["element", "action", ["closeModal"], [], ["loc", [null, [4, 46], [4, 69]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [8, 32], [8, 44]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [8, 58], [8, 76]]]]], [], []], "property", "email"], 0, null, ["loc", [null, [8, 8], [21, 26]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [27, 12], [27, 35]]]], ["block", "gh-spin-button", [], ["action", "confirm", "class", "btn btn-green", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [28, 72], [28, 82]]]]], [], []]], 1, null, ["loc", [null, [28, 4], [28, 106]]]]],
+      locals: [],
+      templates: [child0, child1]
+    };
+  })());
+});
 define("ghost/templates/components/modals/re-authenticate", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -21721,7 +25933,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -21757,7 +25969,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -21804,7 +26016,7 @@ define("ghost/templates/components/modals/re-authenticate", ["exports"], functio
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -21902,7 +26114,7 @@ define("ghost/templates/components/modals/transfer-owner", ["exports"], function
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -21940,7 +26152,7 @@ define("ghost/templates/components/modals/transfer-owner", ["exports"], function
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -22040,15 +26252,127 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 10,
+              "line": 2,
               "column": 4
             },
             "end": {
-              "line": 10,
+              "line": 9,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/upload-image.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("div");
+          dom.setAttribute(el1, "class", "gh-image-uploader --with-image");
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("div");
+          var el3 = dom.createElement("img");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n            ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("a");
+          dom.setAttribute(el2, "class", "image-cancel icon-trash");
+          dom.setAttribute(el2, "title", "Delete");
+          var el3 = dom.createTextNode("\n                ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("span");
+          dom.setAttribute(el3, "class", "hidden");
+          var el4 = dom.createTextNode("Delete");
+          dom.appendChild(el3, el4);
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n            ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n        ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [1]);
+          var element1 = dom.childAt(element0, [1, 0]);
+          var element2 = dom.childAt(element0, [3]);
+          var morphs = new Array(2);
+          morphs[0] = dom.createAttrMorph(element1, 'src');
+          morphs[1] = dom.createElementMorph(element2);
+          return morphs;
+        },
+        statements: [["attribute", "src", ["get", "url", ["loc", [null, [4, 28], [4, 31]]]]], ["element", "action", ["removeImage"], [], ["loc", [null, [5, 62], [5, 86]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 9,
+              "column": 4
+            },
+            "end": {
+              "line": 14,
+              "column": 4
+            }
+          },
+          "moduleName": "ghost/templates/components/modals/upload-image.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+          return morphs;
+        },
+        statements: [["inline", "gh-image-uploader", [], ["image", ["subexpr", "@mut", [["get", "newUrl", ["loc", [null, [10, 34], [10, 40]]]]], [], []], "saveButton", false, "update", ["subexpr", "action", ["fileUploaded"], [], ["loc", [null, [12, 35], [12, 58]]]], "onInput", ["subexpr", "action", [["subexpr", "mut", [["get", "newUrl", ["loc", [null, [13, 49], [13, 55]]]]], [], ["loc", [null, [13, 44], [13, 56]]]]], [], ["loc", [null, [13, 36], [13, 57]]]]], ["loc", [null, [10, 8], [13, 59]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child2 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 19,
+              "column": 4
+            },
+            "end": {
+              "line": 19,
               "column": 110
             }
           },
@@ -22078,7 +26402,7 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -22086,7 +26410,7 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
             "column": 0
           },
           "end": {
-            "line": 12,
+            "line": 21,
             "column": 0
           }
         },
@@ -22100,28 +26424,9 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
         var el0 = dom.createDocumentFragment();
         var el1 = dom.createElement("div");
         dom.setAttribute(el1, "class", "modal-body");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("section");
-        dom.setAttribute(el2, "class", "js-drop-zone");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "class", "js-upload-target");
-        dom.setAttribute(el3, "alt", "logo");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("input");
-        dom.setAttribute(el3, "data-url", "upload");
-        dom.setAttribute(el3, "class", "js-fileupload main");
-        dom.setAttribute(el3, "type", "file");
-        dom.setAttribute(el3, "name", "uploadimage");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
         var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
         dom.appendChild(el1, el2);
         dom.appendChild(el0, el1);
         var el1 = dom.createTextNode("\n\n");
@@ -22147,21 +26452,17 @@ define("ghost/templates/components/modals/upload-image", ["exports"], function (
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element0 = dom.childAt(fragment, [0, 1]);
-        var element1 = dom.childAt(element0, [1]);
-        var element2 = dom.childAt(element0, [3]);
         var element3 = dom.childAt(fragment, [2]);
         var element4 = dom.childAt(element3, [1]);
-        var morphs = new Array(4);
-        morphs[0] = dom.createAttrMorph(element1, 'src');
-        morphs[1] = dom.createAttrMorph(element2, 'accept');
-        morphs[2] = dom.createElementMorph(element4);
-        morphs[3] = dom.createMorphAt(element3, 3, 3);
+        var morphs = new Array(3);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]), 1, 1);
+        morphs[1] = dom.createElementMorph(element4);
+        morphs[2] = dom.createMorphAt(element3, 3, 3);
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["get", "imageUrl", ["loc", [null, [3, 45], [3, 53]]]]]]], ["attribute", "accept", ["concat", [["get", "acceptEncoding", ["loc", [null, [4, 101], [4, 115]]]]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [9, 12], [9, 35]]]], ["block", "gh-spin-button", [], ["action", "confirm", "class", "btn btn-blue right js-button-accept", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [10, 94], [10, 104]]]]], [], []]], 0, null, ["loc", [null, [10, 4], [10, 129]]]]],
+      statements: [["block", "if", [["get", "url", ["loc", [null, [2, 10], [2, 13]]]]], [], 0, 1, ["loc", [null, [2, 4], [14, 11]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [18, 12], [18, 35]]]], ["block", "gh-spin-button", [], ["action", "confirm", "class", "btn btn-blue right js-button-accept", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [19, 94], [19, 104]]]]], [], []]], 2, null, ["loc", [null, [19, 4], [19, 129]]]]],
       locals: [],
-      templates: [child0]
+      templates: [child0, child1, child2]
     };
   })());
 });
@@ -22171,7 +26472,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -22213,7 +26514,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -22255,7 +26556,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -22297,7 +26598,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -22341,7 +26642,7 @@ define("ghost/templates/editor/edit", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -22450,7 +26751,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -22490,7 +26791,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -22550,7 +26851,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -22623,7 +26924,7 @@ define("ghost/templates/error", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -22720,15 +27021,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 13,
+                "line": 17,
                 "column": 16
               },
               "end": {
-                "line": 17,
+                "line": 21,
                 "column": 16
               }
             },
@@ -22763,7 +27064,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             morphs[0] = dom.createAttrMorph(element4, 'href');
             return morphs;
           },
-          statements: [["attribute", "href", ["concat", [["get", "model.absoluteUrl", ["loc", [null, [14, 66], [14, 83]]]]]]]],
+          statements: [["attribute", "href", ["concat", [["get", "model.absoluteUrl", ["loc", [null, [18, 66], [18, 83]]]]]]]],
           locals: [],
           templates: []
         };
@@ -22772,15 +27073,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 17,
+                "line": 21,
                 "column": 16
               },
               "end": {
-                "line": 21,
+                "line": 25,
                 "column": 16
               }
             },
@@ -22815,7 +27116,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             morphs[0] = dom.createAttrMorph(element3, 'href');
             return morphs;
           },
-          statements: [["attribute", "href", ["concat", [["get", "model.previewUrl", ["loc", [null, [18, 66], [18, 82]]]]]]]],
+          statements: [["attribute", "href", ["concat", [["get", "model.previewUrl", ["loc", [null, [22, 66], [22, 82]]]]]]]],
           locals: [],
           templates: []
         };
@@ -22824,15 +27125,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 29,
+                "line": 33,
                 "column": 12
               },
               "end": {
-                "line": 37,
+                "line": 41,
                 "column": 12
               }
             },
@@ -22869,7 +27170,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
             return morphs;
           },
-          statements: [["inline", "gh-datetime-input", [], ["value", ["subexpr", "@mut", [["get", "model.publishedAt", ["loc", [null, [31, 42], [31, 59]]]]], [], []], "update", ["subexpr", "action", ["setPublishedAt"], [], ["loc", [null, [32, 43], [32, 68]]]], "inputClass", "post-setting-date", "inputId", "post-setting-date", "inputName", "post-setting-date"], ["loc", [null, [31, 16], [35, 67]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [36, 42], [36, 54]]]]], [], []], "property", "post-setting-date"], ["loc", [null, [36, 16], [36, 85]]]]],
+          statements: [["inline", "gh-datetime-input", [], ["value", ["subexpr", "@mut", [["get", "model.publishedAt", ["loc", [null, [35, 42], [35, 59]]]]], [], []], "update", ["subexpr", "action", ["setPublishedAt"], [], ["loc", [null, [36, 43], [36, 68]]]], "inputClass", "post-setting-date", "inputId", "post-setting-date", "inputName", "post-setting-date"], ["loc", [null, [35, 16], [39, 67]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [40, 42], [40, 54]]]]], [], []], "property", "post-setting-date"], ["loc", [null, [40, 16], [40, 85]]]]],
           locals: [],
           templates: []
         };
@@ -22878,15 +27179,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 54,
+                "line": 58,
                 "column": 12
               },
               "end": {
-                "line": 71,
+                "line": 75,
                 "column": 12
               }
             },
@@ -22940,7 +27241,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1, 3, 1]), 1, 1);
             return morphs;
           },
-          statements: [["inline", "gh-select-native", [], ["name", "post-setting-author", "id", "author-list", "content", ["subexpr", "@mut", [["get", "authors", ["loc", [null, [62, 32], [62, 39]]]]], [], []], "optionValuePath", "id", "optionLabelPath", "name", "selection", ["subexpr", "@mut", [["get", "selectedAuthor", ["loc", [null, [65, 34], [65, 48]]]]], [], []], "action", "changeAuthor"], ["loc", [null, [59, 20], [67, 22]]]]],
+          statements: [["inline", "gh-select-native", [], ["name", "post-setting-author", "id", "author-list", "content", ["subexpr", "@mut", [["get", "authors", ["loc", [null, [66, 32], [66, 39]]]]], [], []], "optionValuePath", "id", "optionLabelPath", "name", "selection", ["subexpr", "@mut", [["get", "selectedAuthor", ["loc", [null, [69, 34], [69, 48]]]]], [], []], "action", "changeAuthor"], ["loc", [null, [63, 20], [71, 22]]]]],
           locals: [],
           templates: []
         };
@@ -22949,15 +27250,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 74,
+                "line": 78,
                 "column": 16
               },
               "end": {
-                "line": 80,
+                "line": 84,
                 "column": 16
               }
             },
@@ -23011,15 +27312,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 112,
+                    "line": 116,
                     "column": 12
                   },
                   "end": {
-                    "line": 117,
+                    "line": 121,
                     "column": 12
                   }
                 },
@@ -23071,7 +27372,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
                 morphs[2] = dom.createMorphAt(fragment, 7, 7, contextualElement);
                 return morphs;
               },
-              statements: [["inline", "gh-input", [], ["class", "post-setting-meta-title", "id", "meta-title", "value", ["subexpr", "@mut", [["get", "metaTitleScratch", ["loc", [null, [114, 81], [114, 97]]]]], [], []], "name", "post-setting-meta-title", "focus-out", "setMetaTitle", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [114, 16], [114, 190]]]], ["inline", "gh-count-down-characters", [["get", "metaTitleScratch", ["loc", [null, [115, 93], [115, 109]]]], 70], [], ["loc", [null, [115, 66], [115, 114]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [116, 42], [116, 54]]]]], [], []], "property", "metaTitle"], ["loc", [null, [116, 16], [116, 77]]]]],
+              statements: [["inline", "gh-input", [], ["class", "post-setting-meta-title", "id", "meta-title", "value", ["subexpr", "@mut", [["get", "metaTitleScratch", ["loc", [null, [118, 81], [118, 97]]]]], [], []], "name", "post-setting-meta-title", "focus-out", "setMetaTitle", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [118, 16], [118, 190]]]], ["inline", "gh-count-down-characters", [["get", "metaTitleScratch", ["loc", [null, [119, 93], [119, 109]]]], 70], [], ["loc", [null, [119, 66], [119, 114]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [120, 42], [120, 54]]]]], [], []], "property", "metaTitle"], ["loc", [null, [120, 16], [120, 77]]]]],
               locals: [],
               templates: []
             };
@@ -23080,15 +27381,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 119,
+                    "line": 123,
                     "column": 12
                   },
                   "end": {
-                    "line": 124,
+                    "line": 128,
                     "column": 12
                   }
                 },
@@ -23140,7 +27441,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
                 morphs[2] = dom.createMorphAt(fragment, 7, 7, contextualElement);
                 return morphs;
               },
-              statements: [["inline", "gh-textarea", [], ["class", "gh-input post-setting-meta-description", "id", "meta-description", "value", ["subexpr", "@mut", [["get", "metaDescriptionScratch", ["loc", [null, [121, 105], [121, 127]]]]], [], []], "name", "post-setting-meta-description", "focus-out", "setMetaDescription", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [121, 16], [121, 232]]]], ["inline", "gh-count-down-characters", [["get", "metaDescriptionScratch", ["loc", [null, [122, 94], [122, 116]]]], 156], [], ["loc", [null, [122, 67], [122, 122]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [123, 42], [123, 54]]]]], [], []], "property", "metaDescription"], ["loc", [null, [123, 16], [123, 83]]]]],
+              statements: [["inline", "gh-textarea", [], ["class", "gh-input post-setting-meta-description", "id", "meta-description", "value", ["subexpr", "@mut", [["get", "metaDescriptionScratch", ["loc", [null, [125, 105], [125, 127]]]]], [], []], "name", "post-setting-meta-description", "focus-out", "setMetaDescription", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [125, 16], [125, 232]]]], ["inline", "gh-count-down-characters", [["get", "metaDescriptionScratch", ["loc", [null, [126, 94], [126, 116]]]], 156], [], ["loc", [null, [126, 67], [126, 122]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [127, 42], [127, 54]]]]], [], []], "property", "metaDescription"], ["loc", [null, [127, 16], [127, 83]]]]],
               locals: [],
               templates: []
             };
@@ -23148,15 +27449,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
-                  "line": 103,
+                  "line": 107,
                   "column": 8
                 },
                 "end": {
-                  "line": 136,
+                  "line": 140,
                   "column": 8
                 }
               },
@@ -23276,7 +27577,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
               morphs[6] = dom.createMorphAt(dom.childAt(element2, [5]), 0, 0);
               return morphs;
             },
-            statements: [["element", "action", ["closeSubview"], [], ["loc", [null, [105, 20], [105, 45]]]], ["element", "action", ["discardEnter"], ["on", "submit"], ["loc", [null, [111, 18], [111, 55]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [112, 36], [112, 48]]]]], [], []], "property", "metaTitle"], 0, null, ["loc", [null, [112, 12], [117, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [119, 36], [119, 48]]]]], [], []], "property", "metaDescription"], 1, null, ["loc", [null, [119, 12], [124, 30]]]], ["content", "seoTitle", ["loc", [null, [129, 51], [129, 63]]]], ["content", "seoURL", ["loc", [null, [130, 50], [130, 60]]]], ["content", "seoDescription", ["loc", [null, [131, 57], [131, 75]]]]],
+            statements: [["element", "action", ["closeSubview"], [], ["loc", [null, [109, 20], [109, 45]]]], ["element", "action", ["discardEnter"], ["on", "submit"], ["loc", [null, [115, 18], [115, 55]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [116, 36], [116, 48]]]]], [], []], "property", "metaTitle"], 0, null, ["loc", [null, [116, 12], [121, 30]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [123, 36], [123, 48]]]]], [], []], "property", "metaDescription"], 1, null, ["loc", [null, [123, 12], [128, 30]]]], ["content", "seoTitle", ["loc", [null, [133, 51], [133, 63]]]], ["content", "seoURL", ["loc", [null, [134, 50], [134, 60]]]], ["content", "seoDescription", ["loc", [null, [135, 57], [135, 75]]]]],
             locals: [],
             templates: [child0, child1]
           };
@@ -23284,15 +27585,15 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 102,
+                "line": 106,
                 "column": 4
               },
               "end": {
-                "line": 137,
+                "line": 141,
                 "column": 4
               }
             },
@@ -23315,7 +27616,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             dom.insertBoundary(fragment, null);
             return morphs;
           },
-          statements: [["block", "if", [["get", "isViewingSubview", ["loc", [null, [103, 14], [103, 30]]]]], [], 0, null, ["loc", [null, [103, 8], [136, 15]]]]],
+          statements: [["block", "if", [["get", "isViewingSubview", ["loc", [null, [107, 14], [107, 30]]]]], [], 0, null, ["loc", [null, [107, 8], [140, 15]]]]],
           locals: [],
           templates: [child0]
         };
@@ -23325,7 +27626,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           "fragmentReason": {
             "name": "triple-curlies"
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -23333,7 +27634,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
               "column": 0
             },
             "end": {
-              "line": 140,
+              "line": 144,
               "column": 0
             }
           },
@@ -23563,7 +27864,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           morphs[15] = dom.createMorphAt(element14, 1, 1);
           return morphs;
         },
-        statements: [["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [3, 21], [3, 37]]]], "settings-menu-pane-out-left", "settings-menu-pane-in"], [], ["loc", [null, [3, 16], [3, 93]]]], " settings-menu settings-menu-pane"]]], ["element", "action", ["closeMenus"], [], ["loc", [null, [6, 69], [6, 92]]]], ["inline", "gh-uploader", [], ["uploaded", "setCoverImage", "canceled", "clearCoverImage", "description", "Add post image", "image", ["subexpr", "@mut", [["get", "model.image", ["loc", [null, [9, 113], [9, 124]]]]], [], []], "uploaderReference", ["subexpr", "@mut", [["get", "uploaderReference", ["loc", [null, [9, 143], [9, 160]]]]], [], []], "tagName", "section"], ["loc", [null, [9, 12], [9, 180]]]], ["block", "if", [["get", "model.isPublished", ["loc", [null, [13, 22], [13, 39]]]]], [], 0, 1, ["loc", [null, [13, 16], [21, 23]]]], ["inline", "gh-input", [], ["class", "post-setting-slug", "id", "url", "value", ["subexpr", "@mut", [["get", "slugValue", ["loc", [null, [24, 72], [24, 81]]]]], [], []], "name", "post-setting-slug", "focus-out", "updateSlug", "selectOnClick", "true", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [24, 20], [24, 187]]]], ["inline", "gh-url-preview", [], ["slug", ["subexpr", "@mut", [["get", "slugValue", ["loc", [null, [26, 38], [26, 47]]]]], [], []], "tagName", "p", "classNames", "description"], ["loc", [null, [26, 16], [26, 86]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [29, 36], [29, 48]]]]], [], []], "property", "post-setting-date"], 2, null, ["loc", [null, [29, 12], [37, 30]]]], ["inline", "gh-selectize", [], ["id", "tag-input", "multiple", true, "selection", ["subexpr", "@mut", [["get", "model.tags", ["loc", [null, [44, 30], [44, 40]]]]], [], []], "content", ["subexpr", "@mut", [["get", "availableTags", ["loc", [null, [45, 28], [45, 41]]]]], [], []], "optionValuePath", "content.uuid", "optionLabelPath", "content.name", "openOnFocus", false, "create-item", "addTag", "remove-item", "removeTag", "plugins", "remove_button, drag_drop"], ["loc", [null, [41, 16], [51, 56]]]], ["block", "unless", [["get", "session.user.isAuthor", ["loc", [null, [54, 22], [54, 43]]]]], [], 3, null, ["loc", [null, [54, 12], [71, 23]]]], ["block", "gh-tab", [], ["tagName", "li", "classNames", "nav-list-item"], 4, null, ["loc", [null, [74, 16], [80, 27]]]], ["element", "action", ["togglePage"], ["bubbles", "false"], ["loc", [null, [84, 58], [84, 97]]]], ["inline", "input", [], ["type", "checkbox", "name", "static-page", "id", "static-page", "class", "gh-input post-setting-static-page", "checked", ["subexpr", "@mut", [["get", "model.page", ["loc", [null, [85, 130], [85, 140]]]]], [], []]], ["loc", [null, [85, 20], [85, 142]]]], ["element", "action", ["toggleFeatured"], ["bubbles", "false"], ["loc", [null, [90, 55], [90, 98]]]], ["inline", "input", [], ["type", "checkbox", "name", "featured", "id", "featured", "class", "gh-input post-setting-featured", "checked", ["subexpr", "@mut", [["get", "model.featured", ["loc", [null, [91, 121], [91, 135]]]]], [], []]], ["loc", [null, [91, 20], [91, 137]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [101, 21], [101, 37]]]], "settings-menu-pane-in", "settings-menu-pane-out-right"], [], ["loc", [null, [101, 16], [101, 94]]]], " settings-menu settings-menu-pane"]]], ["block", "gh-tab-pane", [], [], 5, null, ["loc", [null, [102, 4], [137, 20]]]]],
+        statements: [["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [3, 21], [3, 37]]]], "settings-menu-pane-out-left", "settings-menu-pane-in"], [], ["loc", [null, [3, 16], [3, 93]]]], " settings-menu settings-menu-pane"]]], ["element", "action", ["closeMenus"], [], ["loc", [null, [6, 69], [6, 92]]]], ["inline", "gh-image-uploader-with-preview", [], ["image", ["subexpr", "@mut", [["get", "model.image", ["loc", [null, [10, 22], [10, 33]]]]], [], []], "text", "Add post image", "update", ["subexpr", "action", ["setCoverImage"], [], ["loc", [null, [12, 23], [12, 47]]]], "remove", ["subexpr", "action", ["clearCoverImage"], [], ["loc", [null, [13, 23], [13, 49]]]]], ["loc", [null, [9, 12], [13, 51]]]], ["block", "if", [["get", "model.isPublished", ["loc", [null, [17, 22], [17, 39]]]]], [], 0, 1, ["loc", [null, [17, 16], [25, 23]]]], ["inline", "gh-input", [], ["class", "post-setting-slug", "id", "url", "value", ["subexpr", "@mut", [["get", "slugValue", ["loc", [null, [28, 72], [28, 81]]]]], [], []], "name", "post-setting-slug", "focus-out", "updateSlug", "stopEnterKeyDownPropagation", "true"], ["loc", [null, [28, 20], [28, 166]]]], ["inline", "gh-url-preview", [], ["slug", ["subexpr", "@mut", [["get", "slugValue", ["loc", [null, [30, 38], [30, 47]]]]], [], []], "tagName", "p", "classNames", "description"], ["loc", [null, [30, 16], [30, 86]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [33, 36], [33, 48]]]]], [], []], "property", "post-setting-date"], 2, null, ["loc", [null, [33, 12], [41, 30]]]], ["inline", "gh-selectize", [], ["id", "tag-input", "multiple", true, "selection", ["subexpr", "@mut", [["get", "model.tags", ["loc", [null, [48, 30], [48, 40]]]]], [], []], "content", ["subexpr", "@mut", [["get", "availableTags", ["loc", [null, [49, 28], [49, 41]]]]], [], []], "optionValuePath", "content.uuid", "optionLabelPath", "content.name", "openOnFocus", false, "create-item", "addTag", "remove-item", "removeTag", "plugins", "remove_button, drag_drop"], ["loc", [null, [45, 16], [55, 56]]]], ["block", "unless", [["get", "session.user.isAuthor", ["loc", [null, [58, 22], [58, 43]]]]], [], 3, null, ["loc", [null, [58, 12], [75, 23]]]], ["block", "gh-tab", [], ["tagName", "li", "classNames", "nav-list-item"], 4, null, ["loc", [null, [78, 16], [84, 27]]]], ["element", "action", ["togglePage"], ["bubbles", "false"], ["loc", [null, [88, 58], [88, 97]]]], ["inline", "input", [], ["type", "checkbox", "name", "static-page", "id", "static-page", "class", "gh-input post-setting-static-page", "checked", ["subexpr", "@mut", [["get", "model.page", ["loc", [null, [89, 130], [89, 140]]]]], [], []]], ["loc", [null, [89, 20], [89, 142]]]], ["element", "action", ["toggleFeatured"], ["bubbles", "false"], ["loc", [null, [94, 55], [94, 98]]]], ["inline", "input", [], ["type", "checkbox", "name", "featured", "id", "featured", "class", "gh-input post-setting-featured", "checked", ["subexpr", "@mut", [["get", "model.featured", ["loc", [null, [95, 121], [95, 135]]]]], [], []]], ["loc", [null, [95, 20], [95, 137]]]], ["attribute", "class", ["concat", [["subexpr", "if", [["get", "isViewingSubview", ["loc", [null, [105, 21], [105, 37]]]], "settings-menu-pane-in", "settings-menu-pane-out-right"], [], ["loc", [null, [105, 16], [105, 94]]]], " settings-menu settings-menu-pane"]]], ["block", "gh-tab-pane", [], [], 5, null, ["loc", [null, [106, 4], [141, 20]]]]],
         locals: [],
         templates: [child0, child1, child2, child3, child4, child5]
       };
@@ -23574,7 +27875,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -23582,7 +27883,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 141,
+            "line": 145,
             "column": 0
           }
         },
@@ -23605,7 +27906,7 @@ define("ghost/templates/post-settings-menu", ["exports"], function (exports) {
         dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["block", "gh-tabs-manager", [], ["selected", "showSubview", "id", "entry-controls", "class", "settings-menu-container"], 0, null, ["loc", [null, [1, 0], [140, 20]]]]],
+      statements: [["block", "gh-tabs-manager", [], ["selected", "showSubview", "id", "entry-controls", "class", "settings-menu-container"], 0, null, ["loc", [null, [1, 0], [144, 20]]]]],
       locals: [],
       templates: [child0]
     };
@@ -23618,7 +27919,7 @@ define("ghost/templates/posts/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -23658,7 +27959,7 @@ define("ghost/templates/posts/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -23714,7 +28015,7 @@ define("ghost/templates/posts/index", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -23762,7 +28063,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -23800,7 +28101,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -23841,7 +28142,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -23905,7 +28206,7 @@ define("ghost/templates/posts/post", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -23960,7 +28261,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -23998,7 +28299,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -24039,7 +28340,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                   return {
                     meta: {
                       "fragmentReason": false,
-                      "revision": "Ember@2.4.4",
+                      "revision": "Ember@2.5.1",
                       "loc": {
                         "source": null,
                         "start": {
@@ -24082,7 +28383,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                   return {
                     meta: {
                       "fragmentReason": false,
-                      "revision": "Ember@2.4.4",
+                      "revision": "Ember@2.5.1",
                       "loc": {
                         "source": null,
                         "start": {
@@ -24132,7 +28433,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.4.4",
+                    "revision": "Ember@2.5.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -24172,7 +28473,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.4.4",
+                    "revision": "Ember@2.5.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -24214,7 +28515,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
               return {
                 meta: {
                   "fragmentReason": false,
-                  "revision": "Ember@2.4.4",
+                  "revision": "Ember@2.5.1",
                   "loc": {
                     "source": null,
                     "start": {
@@ -24302,7 +28603,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -24341,7 +28642,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -24380,7 +28681,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -24431,7 +28732,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
             "name": "missing-wrapper",
             "problems": ["multiple-nodes"]
           },
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24525,7 +28826,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24569,7 +28870,7 @@ define("ghost/templates/posts", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -24617,7 +28918,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24659,7 +28960,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24701,7 +29002,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24738,7 +29039,7 @@ define("ghost/templates/reset", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -24825,13 +29126,847 @@ define("ghost/templates/reset", ["exports"], function (exports) {
     };
   })());
 });
+define("ghost/templates/settings/apps/index", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 2,
+              "column": 4
+            },
+            "end": {
+              "line": 2,
+              "column": 96
+            }
+          },
+          "moduleName": "ghost/templates/settings/apps/index.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1, "style", "padding-left:1px");
+          var el2 = dom.createTextNode("Apps");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 19,
+                "column": 28
+              },
+              "end": {
+                "line": 21,
+                "column": 28
+              }
+            },
+            "moduleName": "ghost/templates/settings/apps/index.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                                ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("span");
+            dom.setAttribute(el1, "class", "green");
+            var el2 = dom.createTextNode("Active");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child1 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 21,
+                "column": 28
+              },
+              "end": {
+                "line": 23,
+                "column": 28
+              }
+            },
+            "moduleName": "ghost/templates/settings/apps/index.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                                ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("span");
+            var el2 = dom.createTextNode("Configure");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 10,
+              "column": 16
+            },
+            "end": {
+              "line": 28,
+              "column": 16
+            }
+          },
+          "moduleName": "ghost/templates/settings/apps/index.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("article");
+          dom.setAttribute(el1, "class", "apps-card-app");
+          var el2 = dom.createTextNode("\n                    ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("div");
+          dom.setAttribute(el2, "class", "apps-card-content");
+          var el3 = dom.createTextNode("\n                        ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("figure");
+          dom.setAttribute(el3, "class", "apps-card-app-icon");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n                        ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("div");
+          dom.setAttribute(el3, "class", "apps-card-meta");
+          var el4 = dom.createTextNode("\n                            ");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createElement("h3");
+          dom.setAttribute(el4, "class", "apps-card-app-title");
+          var el5 = dom.createTextNode("Slack");
+          dom.appendChild(el4, el5);
+          dom.appendChild(el3, el4);
+          var el4 = dom.createTextNode("\n                            ");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createElement("p");
+          dom.setAttribute(el4, "class", "apps-card-app-desc");
+          var el5 = dom.createTextNode("A team communication tool");
+          dom.appendChild(el4, el5);
+          dom.appendChild(el3, el4);
+          var el4 = dom.createTextNode("\n                        ");
+          dom.appendChild(el3, el4);
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n                        ");
+          dom.appendChild(el2, el3);
+          var el3 = dom.createElement("div");
+          dom.setAttribute(el3, "class", "apps-configured");
+          var el4 = dom.createTextNode("\n");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createComment("");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createTextNode("                            ");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createElement("i");
+          dom.setAttribute(el4, "class", "icon-arrow-right");
+          dom.appendChild(el3, el4);
+          var el4 = dom.createTextNode("\n                        ");
+          dom.appendChild(el3, el4);
+          dom.appendChild(el2, el3);
+          var el3 = dom.createTextNode("\n                    ");
+          dom.appendChild(el2, el3);
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode("\n                ");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [1, 1]);
+          var element1 = dom.childAt(element0, [1]);
+          var morphs = new Array(2);
+          morphs[0] = dom.createAttrMorph(element1, 'style');
+          morphs[1] = dom.createMorphAt(dom.childAt(element0, [5]), 1, 1);
+          return morphs;
+        },
+        statements: [["attribute", "style", ["concat", ["background-image:url(", ["subexpr", "gh-path", ["admin", "/img/slackicon.png"], [], ["loc", [null, [13, 87], [13, 127]]]], ")"]]], ["block", "if", [["get", "slack.isActive", ["loc", [null, [19, 34], [19, 48]]]]], [], 0, 1, ["loc", [null, [19, 28], [23, 35]]]]],
+        locals: [],
+        templates: [child0, child1]
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["multiple-nodes"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 34,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/settings/apps/index.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        dom.setAttribute(el1, "class", "view-header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1, "class", "view-container");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("section");
+        dom.setAttribute(el2, "class", "view-content");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("span");
+        dom.setAttribute(el3, "class", "apps-grid-title");
+        var el4 = dom.createTextNode("Available integrations");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("div");
+        dom.setAttribute(el3, "class", "apps-grid");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "apps-grid-cell");
+        var el5 = dom.createTextNode("\n");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createComment("");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("p");
+        dom.setAttribute(el3, "class", "apps-grid-note");
+        var el4 = dom.createTextNode("(More coming soon!)");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(2);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]), 1, 1);
+        morphs[1] = dom.createMorphAt(dom.childAt(fragment, [2, 1, 3, 1]), 1, 1);
+        return morphs;
+      },
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [2, 4], [2, 114]]]], ["block", "link-to", ["settings.apps.slack"], ["id", "slack-link"], 1, null, ["loc", [null, [10, 16], [28, 28]]]]],
+      locals: [],
+      templates: [child0, child1]
+    };
+  })());
+});
+define("ghost/templates/settings/apps/slack", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 2,
+                "column": 85
+              },
+              "end": {
+                "line": 2,
+                "column": 123
+              }
+            },
+            "moduleName": "ghost/templates/settings/apps/slack.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("Apps");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 2,
+              "column": 4
+            },
+            "end": {
+              "line": 2,
+              "column": 204
+            }
+          },
+          "moduleName": "ghost/templates/settings/apps/slack.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createElement("span");
+          dom.setAttribute(el1, "style", "padding-left:1px");
+          var el2 = dom.createComment("");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode(" ");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createElement("i");
+          dom.setAttribute(el2, "class", "icon-arrow-right");
+          dom.setAttribute(el2, "style", "display:inline");
+          dom.appendChild(el1, el2);
+          var el2 = dom.createTextNode(" Slack");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]), 0, 0);
+          return morphs;
+        },
+        statements: [["block", "link-to", ["settings.apps.index"], [], 0, null, ["loc", [null, [2, 85], [2, 135]]]]],
+        locals: [],
+        templates: [child0]
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 4,
+              "column": 8
+            },
+            "end": {
+              "line": 6,
+              "column": 8
+            }
+          },
+          "moduleName": "ghost/templates/settings/apps/slack.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("            Save\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child2 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 28,
+                "column": 16
+              },
+              "end": {
+                "line": 30,
+                "column": 16
+              }
+            },
+            "moduleName": "ghost/templates/settings/apps/slack.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                    ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("p");
+            var el2 = dom.createTextNode("Set up a new incoming webhook ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("a");
+            dom.setAttribute(el2, "href", "https://my.slack.com/apps/new/A0F7XDUAZ-incoming-webhooks");
+            dom.setAttribute(el2, "target", "_blank");
+            var el3 = dom.createTextNode("here");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode(", and grab the URL.");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child1 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.5.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 30,
+                "column": 16
+              },
+              "end": {
+                "line": 32,
+                "column": 16
+              }
+            },
+            "moduleName": "ghost/templates/settings/apps/slack.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                    ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createComment("");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var morphs = new Array(1);
+            morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+            return morphs;
+          },
+          statements: [["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [31, 46], [31, 58]]]]], [], []], "property", "url"], ["loc", [null, [31, 20], [31, 75]]]]],
+          locals: [],
+          templates: []
+        };
+      })();
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 25,
+              "column": 12
+            },
+            "end": {
+              "line": 33,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/settings/apps/slack.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "url");
+          var el2 = dom.createTextNode("Webhook URL");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment, 3, 3, contextualElement);
+          morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
+          dom.insertBoundary(fragment, null);
+          return morphs;
+        },
+        statements: [["inline", "one-way-input", [["get", "model.url", ["loc", [null, [27, 32], [27, 41]]]]], ["class", "gh-input", "name", "slack[url]", "update", ["subexpr", "action", ["updateURL"], [], ["loc", [null, [27, 84], [27, 104]]]], "onenter", ["subexpr", "action", ["save"], [], ["loc", [null, [27, 113], [27, 128]]]], "placeholder", "https://hooks.slack.com/services/..."], ["loc", [null, [27, 16], [27, 181]]]], ["block", "unless", [["get", "model.errors.url", ["loc", [null, [28, 26], [28, 42]]]]], [], 0, 1, ["loc", [null, [28, 16], [32, 27]]]]],
+        locals: [],
+        templates: [child0, child1]
+      };
+    })();
+    var child3 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 37,
+              "column": 12
+            },
+            "end": {
+              "line": 39,
+              "column": 12
+            }
+          },
+          "moduleName": "ghost/templates/settings/apps/slack.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                Send Test Notification\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["multiple-nodes"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 43,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/settings/apps/slack.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("header");
+        dom.setAttribute(el1, "class", "view-header");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("section");
+        dom.setAttribute(el2, "class", "view-actions");
+        var el3 = dom.createTextNode("\n");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1, "class", "view-container");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("section");
+        dom.setAttribute(el2, "class", "view-content");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("section");
+        dom.setAttribute(el3, "class", "app-grid");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "app-cell");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("img");
+        dom.setAttribute(el5, "class", "app-icon");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "app-cell");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("h3");
+        var el6 = dom.createTextNode("Slack");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("p");
+        var el6 = dom.createTextNode("A messaging app for teams");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("section");
+        dom.setAttribute(el3, "class", "app-subtitle");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("p");
+        var el5 = dom.createTextNode("Automatically send newly published posts to a channel in Slack.");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("form");
+        dom.setAttribute(el3, "class", "app-config-form");
+        dom.setAttribute(el3, "id", "slack-settings");
+        dom.setAttribute(el3, "novalidate", "novalidate");
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("form");
+        dom.setAttribute(el3, "class", "app-config-form");
+        var el4 = dom.createTextNode("\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [0]);
+        var element1 = dom.childAt(fragment, [2, 1]);
+        var element2 = dom.childAt(element1, [1, 1, 1]);
+        var element3 = dom.childAt(element1, [5]);
+        var morphs = new Array(6);
+        morphs[0] = dom.createMorphAt(element0, 1, 1);
+        morphs[1] = dom.createMorphAt(dom.childAt(element0, [3]), 1, 1);
+        morphs[2] = dom.createAttrMorph(element2, 'src');
+        morphs[3] = dom.createElementMorph(element3);
+        morphs[4] = dom.createMorphAt(element3, 1, 1);
+        morphs[5] = dom.createMorphAt(dom.childAt(element1, [7]), 1, 1);
+        return morphs;
+      },
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [2, 4], [2, 222]]]], ["block", "gh-spin-button", [], ["id", "saveSlackIntegration", "class", "btn btn-green", "action", ["subexpr", "action", ["save"], [], ["loc", [null, [4, 81], [4, 96]]]], "submitting", ["subexpr", "@mut", [["get", "isSaving", ["loc", [null, [4, 108], [4, 116]]]]], [], []]], 1, null, ["loc", [null, [4, 8], [6, 27]]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/slackicon.png"], [], ["loc", [null, [13, 43], [13, 83]]]]]]], ["element", "action", ["save"], ["on", "submit"], ["loc", [null, [24, 82], [24, 111]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [25, 36], [25, 48]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [25, 62], [25, 80]]]]], [], []], "property", "url"], 2, null, ["loc", [null, [25, 12], [33, 30]]]], ["block", "gh-spin-button", [], ["id", "sendTestNotification", "class", "btn btn-grey", "disabled", ["subexpr", "@mut", [["get", "testNotificationDisabled", ["loc", [null, [37, 86], [37, 110]]]]], [], []], "action", ["subexpr", "action", ["sendTestNotification"], [], ["loc", [null, [37, 118], [37, 149]]]], "submitting", ["subexpr", "@mut", [["get", "isSendingTest", ["loc", [null, [37, 161], [37, 174]]]]], [], []]], 3, null, ["loc", [null, [37, 12], [39, 31]]]]],
+      locals: [],
+      templates: [child0, child1, child2, child3]
+    };
+  })());
+});
+define("ghost/templates/settings/apps", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "triple-curlies"
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 4,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/settings/apps.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1, "class", "gh-view");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createComment("");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0]), 1, 1);
+        return morphs;
+      },
+      statements: [["content", "outlet", ["loc", [null, [2, 4], [2, 14]]]]],
+      locals: [],
+      templates: []
+    };
+  })());
+});
 define("ghost/templates/settings/code-injection", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24869,7 +30004,7 @@ define("ghost/templates/settings/code-injection", ["exports"], function (exports
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -24906,7 +30041,7 @@ define("ghost/templates/settings/code-injection", ["exports"], function (exports
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -25067,7 +30202,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25105,7 +30240,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25141,7 +30276,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25192,7 +30327,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-input", [], ["id", "blog-title", "class", "gh-input", "name", "general[title]", "type", "text", "value", ["subexpr", "@mut", [["get", "model.title", ["loc", [null, [15, 104], [15, 115]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "title"], [], ["loc", [null, [15, 125], [15, 152]]]]], ["loc", [null, [15, 20], [15, 154]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [16, 46], [16, 58]]]]], [], []], "property", "title"], ["loc", [null, [16, 20], [16, 77]]]]],
+        statements: [["inline", "gh-input", [], ["id", "blog-title", "class", "gh-input", "name", "general[title]", "type", "text", "value", ["subexpr", "@mut", [["get", "model.title", ["loc", [null, [15, 104], [15, 115]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "title"], ["target", ["get", "model", ["loc", [null, [15, 159], [15, 164]]]]], ["loc", [null, [15, 125], [15, 165]]]]], ["loc", [null, [15, 20], [15, 167]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [16, 46], [16, 58]]]]], [], []], "property", "title"], ["loc", [null, [16, 20], [16, 77]]]]],
         locals: [],
         templates: []
       };
@@ -25201,7 +30336,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25257,7 +30392,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 1, 1);
           return morphs;
         },
-        statements: [["inline", "gh-textarea", [], ["id", "blog-description", "class", "gh-input", "name", "general[description]", "value", ["subexpr", "@mut", [["get", "model.description", ["loc", [null, [22, 107], [22, 124]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "description"], [], ["loc", [null, [22, 134], [22, 167]]]]], ["loc", [null, [22, 20], [22, 169]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [23, 46], [23, 58]]]]], [], []], "property", "description"], ["loc", [null, [23, 20], [23, 83]]]], ["inline", "gh-count-characters", [["get", "model.description", ["loc", [null, [26, 46], [26, 63]]]]], [], ["loc", [null, [26, 24], [26, 65]]]]],
+        statements: [["inline", "gh-textarea", [], ["id", "blog-description", "class", "gh-input", "name", "general[description]", "value", ["subexpr", "@mut", [["get", "model.description", ["loc", [null, [22, 107], [22, 124]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "description"], ["target", ["get", "model", ["loc", [null, [22, 174], [22, 179]]]]], ["loc", [null, [22, 134], [22, 180]]]]], ["loc", [null, [22, 20], [22, 182]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [23, 46], [23, 58]]]]], [], []], "property", "description"], ["loc", [null, [23, 20], [23, 83]]]], ["inline", "gh-count-characters", [["get", "model.description", ["loc", [null, [26, 46], [26, 63]]]]], [], ["loc", [null, [26, 24], [26, 65]]]]],
         locals: [],
         templates: []
       };
@@ -25266,7 +30401,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25298,10 +30433,10 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element3 = dom.childAt(fragment, [1]);
+          var element5 = dom.childAt(fragment, [1]);
           var morphs = new Array(2);
-          morphs[0] = dom.createAttrMorph(element3, 'src');
-          morphs[1] = dom.createElementMorph(element3);
+          morphs[0] = dom.createAttrMorph(element5, 'src');
+          morphs[1] = dom.createElementMorph(element5);
           return morphs;
         },
         statements: [["attribute", "src", ["concat", [["get", "model.logo", ["loc", [null, [34, 50], [34, 60]]]]]]], ["element", "action", ["toggleUploadLogoModal"], [], ["loc", [null, [34, 89], [34, 123]]]]],
@@ -25313,7 +30448,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25346,9 +30481,9 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element2 = dom.childAt(fragment, [1]);
+          var element4 = dom.childAt(fragment, [1]);
           var morphs = new Array(1);
-          morphs[0] = dom.createElementMorph(element2);
+          morphs[0] = dom.createElementMorph(element4);
           return morphs;
         },
         statements: [["element", "action", ["toggleUploadLogoModal"], [], ["loc", [null, [36, 78], [36, 112]]]]],
@@ -25360,7 +30495,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25402,7 +30537,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25434,10 +30569,10 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element1 = dom.childAt(fragment, [1]);
+          var element3 = dom.childAt(fragment, [1]);
           var morphs = new Array(2);
-          morphs[0] = dom.createAttrMorph(element1, 'src');
-          morphs[1] = dom.createElementMorph(element1);
+          morphs[0] = dom.createAttrMorph(element3, 'src');
+          morphs[1] = dom.createElementMorph(element3);
           return morphs;
         },
         statements: [["attribute", "src", ["concat", [["get", "model.cover", ["loc", [null, [51, 51], [51, 62]]]]]]], ["element", "action", ["toggleUploadCoverModal"], [], ["loc", [null, [51, 98], [51, 133]]]]],
@@ -25449,7 +30584,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25482,9 +30617,9 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element0 = dom.childAt(fragment, [1]);
+          var element2 = dom.childAt(fragment, [1]);
           var morphs = new Array(1);
-          morphs[0] = dom.createElementMorph(element0);
+          morphs[0] = dom.createElementMorph(element2);
           return morphs;
         },
         statements: [["element", "action", ["toggleUploadCoverModal"], [], ["loc", [null, [53, 79], [53, 114]]]]],
@@ -25496,7 +30631,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25535,19 +30670,157 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       };
     })();
     var child10 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 100,
+              "column": 20
+            },
+            "end": {
+              "line": 105,
+              "column": 20
+            }
+          },
+          "moduleName": "ghost/templates/settings/general.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "facebook");
+          var el2 = dom.createTextNode("Facebook Page");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("input");
+          dom.setAttribute(el1, "type", "url");
+          dom.setAttribute(el1, "class", "gh-input");
+          dom.setAttribute(el1, "id", "facebook");
+          dom.setAttribute(el1, "name", "general[facebook]");
+          dom.setAttribute(el1, "placeholder", "https://www.facebook.com/ghost");
+          dom.setAttribute(el1, "autocorrect", "off");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("URL of your blog's Facebook Page");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element1 = dom.childAt(fragment, [3]);
+          var morphs = new Array(4);
+          morphs[0] = dom.createAttrMorph(element1, 'value');
+          morphs[1] = dom.createAttrMorph(element1, 'oninput');
+          morphs[2] = dom.createElementMorph(element1);
+          morphs[3] = dom.createMorphAt(fragment, 5, 5, contextualElement);
+          return morphs;
+        },
+        statements: [["attribute", "value", ["get", "model.facebook", ["loc", [null, [102, 39], [102, 53]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchFacebook", ["loc", [null, [102, 78], [102, 94]]]]], [], ["loc", [null, [102, 73], [102, 95]]]]], ["value", "target.value"], ["loc", [null, [102, 64], [102, 118]]]]], ["element", "action", ["validateFacebookUrl"], ["on", "focusOut"], ["loc", [null, [102, 119], [102, 165]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [103, 50], [103, 62]]]]], [], []], "property", "facebook"], ["loc", [null, [103, 24], [103, 84]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child11 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 108,
+              "column": 20
+            },
+            "end": {
+              "line": 113,
+              "column": 20
+            }
+          },
+          "moduleName": "ghost/templates/settings/general.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "twitter");
+          var el2 = dom.createTextNode("Twitter Profile");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("input");
+          dom.setAttribute(el1, "type", "url");
+          dom.setAttribute(el1, "class", "gh-input");
+          dom.setAttribute(el1, "id", "facebook");
+          dom.setAttribute(el1, "name", "general[twitter]");
+          dom.setAttribute(el1, "placeholder", "https://twitter.com/tryghost");
+          dom.setAttribute(el1, "autocorrect", "off");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("URL of your blog's Twitter profile");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element0 = dom.childAt(fragment, [3]);
+          var morphs = new Array(4);
+          morphs[0] = dom.createAttrMorph(element0, 'value');
+          morphs[1] = dom.createAttrMorph(element0, 'oninput');
+          morphs[2] = dom.createElementMorph(element0);
+          morphs[3] = dom.createMorphAt(fragment, 5, 5, contextualElement);
+          return morphs;
+        },
+        statements: [["attribute", "value", ["get", "model.twitter", ["loc", [null, [110, 39], [110, 52]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchTwitter", ["loc", [null, [110, 77], [110, 92]]]]], [], ["loc", [null, [110, 72], [110, 93]]]]], ["value", "target.value"], ["loc", [null, [110, 63], [110, 116]]]]], ["element", "action", ["validateTwitterUrl"], ["on", "focusOut"], ["loc", [null, [110, 117], [110, 162]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [111, 50], [111, 62]]]]], [], []], "property", "twitter"], ["loc", [null, [111, 24], [111, 83]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child12 = (function () {
       var child0 = (function () {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 110,
+                "line": 127,
                 "column": 20
               },
               "end": {
-                "line": 114,
+                "line": 131,
                 "column": 20
               }
             },
@@ -25583,7 +30856,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
             morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
             return morphs;
           },
-          statements: [["inline", "gh-input", [], ["name", "general[password]", "type", "text", "value", ["subexpr", "@mut", [["get", "model.password", ["loc", [null, [111, 78], [111, 92]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "password"], [], ["loc", [null, [111, 102], [111, 132]]]]], ["loc", [null, [111, 24], [111, 134]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [112, 50], [112, 62]]]]], [], []], "property", "password"], ["loc", [null, [112, 24], [112, 84]]]]],
+          statements: [["inline", "gh-input", [], ["name", "general[password]", "type", "text", "value", ["subexpr", "@mut", [["get", "model.password", ["loc", [null, [128, 78], [128, 92]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "password"], ["target", ["get", "model", ["loc", [null, [128, 139], [128, 144]]]]], ["loc", [null, [128, 102], [128, 145]]]]], ["loc", [null, [128, 24], [128, 147]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [129, 50], [129, 62]]]]], [], []], "property", "password"], ["loc", [null, [129, 24], [129, 84]]]]],
           locals: [],
           templates: []
         };
@@ -25591,15 +30864,15 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 109,
+              "line": 126,
               "column": 16
             },
             "end": {
-              "line": 115,
+              "line": 132,
               "column": 16
             }
           },
@@ -25622,7 +30895,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
           dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [110, 44], [110, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [110, 70], [110, 88]]]]], [], []], "property", "password"], 0, null, ["loc", [null, [110, 20], [114, 38]]]]],
+        statements: [["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [127, 44], [127, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [127, 70], [127, 88]]]]], [], []], "property", "password"], 0, null, ["loc", [null, [127, 20], [131, 38]]]]],
         locals: [],
         templates: [child0]
       };
@@ -25632,7 +30905,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -25640,7 +30913,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 120,
+            "line": 138,
             "column": 0
           }
         },
@@ -25716,7 +30989,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         var el5 = dom.createTextNode("                ");
         dom.appendChild(el4, el5);
         var el5 = dom.createElement("p");
-        var el6 = dom.createTextNode("Display a sexy logo for your publication");
+        var el6 = dom.createTextNode("Display a logo for your publication");
         dom.appendChild(el5, el6);
         dom.appendChild(el4, el5);
         var el5 = dom.createTextNode("\n\n");
@@ -25854,6 +31127,28 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         var el5 = dom.createTextNode("\n\n                ");
         dom.appendChild(el4, el5);
         var el5 = dom.createElement("div");
+        dom.setAttribute(el5, "class", "form-group");
+        var el6 = dom.createTextNode("\n");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createComment("");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("                ");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("div");
+        dom.setAttribute(el5, "class", "form-group");
+        var el6 = dom.createTextNode("\n");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createComment("");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("                ");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("div");
         dom.setAttribute(el5, "class", "form-group for-checkbox");
         var el6 = dom.createTextNode("\n                    ");
         dom.appendChild(el5, el6);
@@ -25895,7 +31190,7 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         var el5 = dom.createTextNode("            ");
         dom.appendChild(el4, el5);
         dom.appendChild(el3, el4);
-        var el4 = dom.createTextNode("\n        ");
+        var el4 = dom.createTextNode("\n\n        ");
         dom.appendChild(el3, el4);
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
@@ -25909,34 +31204,36 @@ define("ghost/templates/settings/general", ["exports"], function (exports) {
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element4 = dom.childAt(fragment, [0]);
-        var element5 = dom.childAt(element4, [1]);
-        var element6 = dom.childAt(element4, [3, 1]);
+        var element6 = dom.childAt(fragment, [0]);
         var element7 = dom.childAt(element6, [1]);
-        var element8 = dom.childAt(element6, [3]);
-        var element9 = dom.childAt(element6, [5]);
-        var element10 = dom.childAt(element6, [7]);
-        var element11 = dom.childAt(element10, [5, 3]);
-        var morphs = new Array(14);
-        morphs[0] = dom.createMorphAt(element5, 1, 1);
-        morphs[1] = dom.createMorphAt(dom.childAt(element5, [3]), 1, 1);
-        morphs[2] = dom.createMorphAt(element7, 1, 1);
-        morphs[3] = dom.createMorphAt(element7, 3, 3);
-        morphs[4] = dom.createMorphAt(element8, 3, 3);
-        morphs[5] = dom.createMorphAt(element8, 7, 7);
-        morphs[6] = dom.createMorphAt(element9, 3, 3);
-        morphs[7] = dom.createMorphAt(element9, 7, 7);
-        morphs[8] = dom.createMorphAt(dom.childAt(element10, [1]), 4, 4);
-        morphs[9] = dom.createMorphAt(dom.childAt(element10, [3, 3]), 1, 1);
-        morphs[10] = dom.createAttrMorph(element11, 'data-select-text');
-        morphs[11] = dom.createMorphAt(element11, 1, 1);
-        morphs[12] = dom.createMorphAt(dom.childAt(element10, [7, 3]), 1, 1);
-        morphs[13] = dom.createMorphAt(element10, 9, 9);
+        var element8 = dom.childAt(element6, [3, 1]);
+        var element9 = dom.childAt(element8, [1]);
+        var element10 = dom.childAt(element8, [3]);
+        var element11 = dom.childAt(element8, [5]);
+        var element12 = dom.childAt(element8, [7]);
+        var element13 = dom.childAt(element12, [5, 3]);
+        var morphs = new Array(16);
+        morphs[0] = dom.createMorphAt(element7, 1, 1);
+        morphs[1] = dom.createMorphAt(dom.childAt(element7, [3]), 1, 1);
+        morphs[2] = dom.createMorphAt(element9, 1, 1);
+        morphs[3] = dom.createMorphAt(element9, 3, 3);
+        morphs[4] = dom.createMorphAt(element10, 3, 3);
+        morphs[5] = dom.createMorphAt(element10, 7, 7);
+        morphs[6] = dom.createMorphAt(element11, 3, 3);
+        morphs[7] = dom.createMorphAt(element11, 7, 7);
+        morphs[8] = dom.createMorphAt(dom.childAt(element12, [1]), 4, 4);
+        morphs[9] = dom.createMorphAt(dom.childAt(element12, [3, 3]), 1, 1);
+        morphs[10] = dom.createAttrMorph(element13, 'data-select-text');
+        morphs[11] = dom.createMorphAt(element13, 1, 1);
+        morphs[12] = dom.createMorphAt(dom.childAt(element12, [7]), 1, 1);
+        morphs[13] = dom.createMorphAt(dom.childAt(element12, [9]), 1, 1);
+        morphs[14] = dom.createMorphAt(dom.childAt(element12, [11, 3]), 1, 1);
+        morphs[15] = dom.createMorphAt(element12, 13, 13);
         return morphs;
       },
-      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 96]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [5, 76], [5, 86]]]]], [], []]], 1, null, ["loc", [null, [5, 12], [5, 111]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [13, 40], [13, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [13, 66], [13, 84]]]]], [], []], "property", "title"], 2, null, ["loc", [null, [13, 16], [18, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [20, 40], [20, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [20, 66], [20, 84]]]]], [], []], "property", "description", "class", "description-container"], 3, null, ["loc", [null, [20, 16], [28, 34]]]], ["block", "if", [["get", "model.logo", ["loc", [null, [33, 22], [33, 32]]]]], [], 4, 5, ["loc", [null, [33, 16], [37, 23]]]], ["block", "if", [["get", "showUploadLogoModal", ["loc", [null, [40, 22], [40, 41]]]]], [], 6, null, ["loc", [null, [40, 16], [45, 23]]]], ["block", "if", [["get", "model.cover", ["loc", [null, [50, 22], [50, 33]]]]], [], 7, 8, ["loc", [null, [50, 16], [54, 23]]]], ["block", "if", [["get", "showUploadCoverModal", ["loc", [null, [57, 22], [57, 42]]]]], [], 9, null, ["loc", [null, [57, 16], [62, 23]]]], ["inline", "gh-input", [], ["id", "postsPerPage", "class", "gh-input", "name", "general[postsPerPage]", "focus-out", "checkPostsPerPage", "value", ["subexpr", "@mut", [["get", "model.postsPerPage", ["loc", [null, [70, 131], [70, 149]]]]], [], []], "min", "1", "max", "1000", "type", "number", "pattern", "[0-9]*"], ["loc", [null, [70, 20], [70, 201]]]], ["inline", "input", [], ["id", "permalinks", "class", "gh-input", "name", "general[permalinks]", "type", "checkbox", "checked", ["subexpr", "@mut", [["get", "isDatedPermalinks", ["loc", [null, [77, 116], [77, 133]]]]], [], []]], ["loc", [null, [77, 24], [77, 135]]]], ["attribute", "data-select-text", ["concat", [["get", "selectedTheme.label", ["loc", [null, [85, 64], [85, 83]]]]]]], ["inline", "gh-select-native", [], ["id", "activeTheme", "name", "general[activeTheme]", "content", ["subexpr", "@mut", [["get", "themes", ["loc", [null, [89, 36], [89, 42]]]]], [], []], "optionValuePath", "name", "optionLabelPath", "label", "selection", ["subexpr", "@mut", [["get", "selectedTheme", ["loc", [null, [92, 38], [92, 51]]]]], [], []], "action", "setTheme"], ["loc", [null, [86, 24], [94, 26]]]], ["inline", "input", [], ["id", "isPrivate", "name", "general[isPrivate]", "type", "checkbox", "checked", ["subexpr", "@mut", [["get", "model.isPrivate", ["loc", [null, [103, 32], [103, 47]]]]], [], []]], ["loc", [null, [102, 24], [103, 49]]]], ["block", "if", [["get", "model.isPrivate", ["loc", [null, [109, 22], [109, 37]]]]], [], 10, null, ["loc", [null, [109, 16], [115, 23]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 96]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [5, 76], [5, 86]]]]], [], []]], 1, null, ["loc", [null, [5, 12], [5, 111]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [13, 40], [13, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [13, 66], [13, 84]]]]], [], []], "property", "title"], 2, null, ["loc", [null, [13, 16], [18, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [20, 40], [20, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [20, 66], [20, 84]]]]], [], []], "property", "description", "class", "description-container"], 3, null, ["loc", [null, [20, 16], [28, 34]]]], ["block", "if", [["get", "model.logo", ["loc", [null, [33, 22], [33, 32]]]]], [], 4, 5, ["loc", [null, [33, 16], [37, 23]]]], ["block", "if", [["get", "showUploadLogoModal", ["loc", [null, [40, 22], [40, 41]]]]], [], 6, null, ["loc", [null, [40, 16], [45, 23]]]], ["block", "if", [["get", "model.cover", ["loc", [null, [50, 22], [50, 33]]]]], [], 7, 8, ["loc", [null, [50, 16], [54, 23]]]], ["block", "if", [["get", "showUploadCoverModal", ["loc", [null, [57, 22], [57, 42]]]]], [], 9, null, ["loc", [null, [57, 16], [62, 23]]]], ["inline", "gh-input", [], ["id", "postsPerPage", "class", "gh-input", "name", "general[postsPerPage]", "focus-out", "checkPostsPerPage", "value", ["subexpr", "@mut", [["get", "model.postsPerPage", ["loc", [null, [70, 131], [70, 149]]]]], [], []], "min", "1", "max", "1000", "type", "number", "pattern", "[0-9]*"], ["loc", [null, [70, 20], [70, 201]]]], ["inline", "input", [], ["id", "permalinks", "class", "gh-input", "name", "general[permalinks]", "type", "checkbox", "checked", ["subexpr", "@mut", [["get", "isDatedPermalinks", ["loc", [null, [77, 116], [77, 133]]]]], [], []]], ["loc", [null, [77, 24], [77, 135]]]], ["attribute", "data-select-text", ["concat", [["get", "selectedTheme.label", ["loc", [null, [85, 64], [85, 83]]]]]]], ["inline", "gh-select-native", [], ["id", "activeTheme", "name", "general[activeTheme]", "content", ["subexpr", "@mut", [["get", "themes", ["loc", [null, [89, 36], [89, 42]]]]], [], []], "optionValuePath", "name", "optionLabelPath", "label", "selection", ["subexpr", "@mut", [["get", "selectedTheme", ["loc", [null, [92, 38], [92, 51]]]]], [], []], "action", "setTheme"], ["loc", [null, [86, 24], [94, 26]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [100, 44], [100, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [100, 70], [100, 88]]]]], [], []], "property", "facebook"], 10, null, ["loc", [null, [100, 20], [105, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [108, 44], [108, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [108, 70], [108, 88]]]]], [], []], "property", "twitter"], 11, null, ["loc", [null, [108, 20], [113, 38]]]], ["inline", "input", [], ["id", "isPrivate", "name", "general[isPrivate]", "type", "checkbox", "checked", ["subexpr", "@mut", [["get", "model.isPrivate", ["loc", [null, [120, 32], [120, 47]]]]], [], []]], ["loc", [null, [119, 24], [120, 49]]]], ["block", "if", [["get", "model.isPrivate", ["loc", [null, [126, 22], [126, 37]]]]], [], 12, null, ["loc", [null, [126, 16], [132, 23]]]]],
       locals: [],
-      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10]
+      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10, child11, child12]
     };
   })());
 });
@@ -25946,7 +31243,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -25984,7 +31281,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26020,7 +31317,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26063,15 +31360,51 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 59,
+              "line": 53,
+              "column": 20
+            },
+            "end": {
+              "line": 55,
+              "column": 20
+            }
+          },
+          "moduleName": "ghost/templates/settings/labs.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                        Subscribers - Allow visitors to subscribe to e-mail updates of your new posts\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child4 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 62,
               "column": 0
             },
             "end": {
-              "line": 63,
+              "line": 66,
               "column": 0
             }
           },
@@ -26096,7 +31429,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
           morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-fullscreen-modal", ["delete-all"], ["close", ["subexpr", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [61, 32], [61, 63]]]], "modifier", "action wide"], ["loc", [null, [60, 4], [62, 50]]]]],
+        statements: [["inline", "gh-fullscreen-modal", ["delete-all"], ["close", ["subexpr", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [64, 32], [64, 63]]]], "modifier", "action wide"], ["loc", [null, [63, 4], [65, 50]]]]],
         locals: [],
         templates: []
       };
@@ -26107,7 +31440,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -26115,7 +31448,7 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 64,
+            "line": 67,
             "column": 0
           }
         },
@@ -26335,6 +31668,8 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
         dom.appendChild(el5, el6);
         var el6 = dom.createComment("");
         dom.appendChild(el5, el6);
+        var el6 = dom.createComment("");
+        dom.appendChild(el5, el6);
         var el6 = dom.createTextNode("                ");
         dom.appendChild(el5, el6);
         dom.appendChild(el4, el5);
@@ -26362,21 +31697,23 @@ define("ghost/templates/settings/labs", ["exports"], function (exports) {
         var element2 = dom.childAt(element1, [3, 1, 1, 3]);
         var element3 = dom.childAt(element1, [5, 1, 1]);
         var element4 = dom.childAt(element1, [7, 1, 1, 3]);
-        var morphs = new Array(8);
+        var element5 = dom.childAt(element1, [13, 1, 1]);
+        var morphs = new Array(9);
         morphs[0] = dom.createMorphAt(dom.childAt(element0, [1]), 1, 1);
         morphs[1] = dom.createElementMorph(element2);
         morphs[2] = dom.createMorphAt(element3, 3, 3);
         morphs[3] = dom.createMorphAt(element3, 5, 5);
         morphs[4] = dom.createElementMorph(element4);
         morphs[5] = dom.createMorphAt(dom.childAt(element1, [9, 1, 1]), 3, 3);
-        morphs[6] = dom.createMorphAt(dom.childAt(element1, [13, 1, 1]), 3, 3);
-        morphs[7] = dom.createMorphAt(fragment, 2, 2, contextualElement);
+        morphs[6] = dom.createMorphAt(element5, 3, 3);
+        morphs[7] = dom.createMorphAt(element5, 4, 4);
+        morphs[8] = dom.createMorphAt(fragment, 2, 2, contextualElement);
         dom.insertBoundary(fragment, null);
         return morphs;
       },
-      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 93]]]], ["element", "action", ["exportData"], [], ["loc", [null, [12, 63], [12, 86]]]], ["inline", "partial", ["import-errors"], [], ["loc", [null, [21, 20], [21, 47]]]], ["inline", "gh-file-upload", [], ["id", "importfile", "classNames", "flex", "uploadButtonText", ["subexpr", "@mut", [["get", "uploadButtonText", ["loc", [null, [22, 88], [22, 104]]]]], [], []], "onUpload", "onUpload"], ["loc", [null, [22, 20], [22, 126]]]], ["element", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [31, 72], [31, 105]]]], ["block", "gh-spin-button", [], ["id", "sendtestemail", "class", "btn btn-blue", "action", "sendTestEmail", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [40, 112], [40, 122]]]]], [], []]], 1, null, ["loc", [null, [40, 20], [40, 147]]]], ["block", "gh-feature-flag", ["publicAPI"], [], 2, null, ["loc", [null, [50, 20], [52, 40]]]], ["block", "if", [["get", "showDeleteAllModal", ["loc", [null, [59, 6], [59, 24]]]]], [], 3, null, ["loc", [null, [59, 0], [63, 7]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 93]]]], ["element", "action", ["exportData"], [], ["loc", [null, [12, 63], [12, 86]]]], ["inline", "partial", ["import-errors"], [], ["loc", [null, [21, 20], [21, 47]]]], ["inline", "gh-file-upload", [], ["id", "importfile", "classNames", "flex", "uploadButtonText", ["subexpr", "@mut", [["get", "uploadButtonText", ["loc", [null, [22, 88], [22, 104]]]]], [], []], "onUpload", "onUpload"], ["loc", [null, [22, 20], [22, 126]]]], ["element", "action", ["toggleDeleteAllModal"], [], ["loc", [null, [31, 72], [31, 105]]]], ["block", "gh-spin-button", [], ["id", "sendtestemail", "class", "btn btn-blue", "action", "sendTestEmail", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [40, 112], [40, 122]]]]], [], []]], 1, null, ["loc", [null, [40, 20], [40, 147]]]], ["block", "gh-feature-flag", ["publicAPI"], [], 2, null, ["loc", [null, [50, 20], [52, 40]]]], ["block", "gh-feature-flag", ["subscribers"], [], 3, null, ["loc", [null, [53, 20], [55, 40]]]], ["block", "if", [["get", "showDeleteAllModal", ["loc", [null, [62, 6], [62, 24]]]]], [], 4, null, ["loc", [null, [62, 0], [66, 7]]]]],
       locals: [],
-      templates: [child0, child1, child2, child3]
+      templates: [child0, child1, child2, child3, child4]
     };
   })());
 });
@@ -26386,7 +31723,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26424,7 +31761,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26461,7 +31798,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -26502,7 +31839,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26533,7 +31870,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
           dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["block", "each", [["get", "navigationItems", ["loc", [null, [12, 24], [12, 39]]]]], [], 0, null, ["loc", [null, [12, 16], [14, 25]]]]],
+        statements: [["block", "each", [["get", "model.navigation", ["loc", [null, [12, 24], [12, 40]]]]], [], 0, null, ["loc", [null, [12, 16], [14, 25]]]]],
         locals: ["group"],
         templates: [child0]
       };
@@ -26543,7 +31880,7 @@ define("ghost/templates/settings/navigation", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -26641,7 +31978,7 @@ define("ghost/templates/settings/tags/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26683,7 +32020,7 @@ define("ghost/templates/settings/tags/index", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -26746,7 +32083,7 @@ define("ghost/templates/settings/tags/tag", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26790,7 +32127,7 @@ define("ghost/templates/settings/tags/tag", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["wrong-type", "multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -26838,7 +32175,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26876,7 +32213,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -26914,7 +32251,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -26955,7 +32292,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -27004,7 +32341,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27059,7 +32396,7 @@ define("ghost/templates/settings/tags", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -27135,7 +32472,7 @@ define("ghost/templates/setup/one", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27178,7 +32515,7 @@ define("ghost/templates/setup/one", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes", "wrong-type"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -27265,7 +32602,7 @@ define("ghost/templates/setup/three", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27317,7 +32654,7 @@ define("ghost/templates/setup/three", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27359,7 +32696,7 @@ define("ghost/templates/setup/three", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -27452,7 +32789,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27513,7 +32850,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27574,7 +32911,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27635,7 +32972,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27696,7 +33033,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27739,7 +33076,7 @@ define("ghost/templates/setup/two", ["exports"], function (exports) {
           "name": "missing-wrapper",
           "problems": ["multiple-nodes"]
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -27843,7 +33180,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -27881,7 +33218,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27923,7 +33260,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -27969,7 +33306,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28015,7 +33352,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28062,7 +33399,7 @@ define("ghost/templates/setup", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -28179,7 +33516,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28229,7 +33566,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -28264,7 +33601,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28319,7 +33656,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28356,7 +33693,7 @@ define("ghost/templates/signin", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -28448,7 +33785,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28509,7 +33846,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28570,7 +33907,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28631,7 +33968,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28668,7 +34005,7 @@ define("ghost/templates/signup", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -28790,13 +34127,436 @@ define("ghost/templates/signup", ["exports"], function (exports) {
     };
   })());
 });
+define("ghost/templates/subscribers/import", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 4,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/subscribers/import.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        dom.insertBoundary(fragment, 0);
+        return morphs;
+      },
+      statements: [["inline", "gh-fullscreen-modal", ["import-subscribers"], ["confirm", ["subexpr", "route-action", ["reset"], [], ["loc", [null, [2, 12], [2, 34]]]], "close", ["subexpr", "route-action", ["cancel"], [], ["loc", [null, [3, 10], [3, 33]]]]], ["loc", [null, [1, 0], [3, 35]]]]],
+      locals: [],
+      templates: []
+    };
+  })());
+});
+define("ghost/templates/subscribers/new", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 5,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/subscribers/new.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var morphs = new Array(1);
+        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+        dom.insertBoundary(fragment, 0);
+        return morphs;
+      },
+      statements: [["inline", "gh-fullscreen-modal", ["new-subscriber"], ["model", ["subexpr", "@mut", [["get", "model", ["loc", [null, [2, 10], [2, 15]]]]], [], []], "confirm", ["subexpr", "route-action", ["save"], [], ["loc", [null, [3, 12], [3, 33]]]], "close", ["subexpr", "route-action", ["cancel"], [], ["loc", [null, [4, 10], [4, 33]]]]], ["loc", [null, [1, 0], [4, 35]]]]],
+      locals: [],
+      templates: []
+    };
+  })());
+});
+define("ghost/templates/subscribers", ["exports"], function (exports) {
+  exports["default"] = Ember.HTMLBars.template((function () {
+    var child0 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 3,
+              "column": 8
+            },
+            "end": {
+              "line": 3,
+              "column": 82
+            }
+          },
+          "moduleName": "ghost/templates/subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createElement("span");
+          var el2 = dom.createTextNode("Subscribers");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child1 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 5,
+              "column": 12
+            },
+            "end": {
+              "line": 5,
+              "column": 78
+            }
+          },
+          "moduleName": "ghost/templates/subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Add Subscriber");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child2 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 22,
+              "column": 16
+            },
+            "end": {
+              "line": 22,
+              "column": 87
+            }
+          },
+          "moduleName": "ghost/templates/subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("Import CSV");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes() {
+          return [];
+        },
+        statements: [],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child3 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 41,
+              "column": 0
+            },
+            "end": {
+              "line": 47,
+              "column": 0
+            }
+          },
+          "moduleName": "ghost/templates/subscribers.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+          return morphs;
+        },
+        statements: [["inline", "gh-fullscreen-modal", ["delete-subscriber"], ["model", ["subexpr", "@mut", [["get", "subscriberToDelete", ["loc", [null, [43, 14], [43, 32]]]]], [], []], "confirm", ["subexpr", "action", ["confirmDeleteSubscriber"], [], ["loc", [null, [44, 16], [44, 50]]]], "close", ["subexpr", "action", ["cancelDeleteSubscriber"], [], ["loc", [null, [45, 14], [45, 47]]]], "modifier", "action wide"], ["loc", [null, [42, 4], [46, 32]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    return {
+      meta: {
+        "fragmentReason": {
+          "name": "missing-wrapper",
+          "problems": ["multiple-nodes", "wrong-type"]
+        },
+        "revision": "Ember@2.5.1",
+        "loc": {
+          "source": null,
+          "start": {
+            "line": 1,
+            "column": 0
+          },
+          "end": {
+            "line": 50,
+            "column": 0
+          }
+        },
+        "moduleName": "ghost/templates/subscribers.hbs"
+      },
+      isEmpty: false,
+      arity: 0,
+      cachedFragment: null,
+      hasRendered: false,
+      buildFragment: function buildFragment(dom) {
+        var el0 = dom.createDocumentFragment();
+        var el1 = dom.createElement("section");
+        dom.setAttribute(el1, "class", "gh-view view-subscribers");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("header");
+        dom.setAttribute(el2, "class", "view-header");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("div");
+        dom.setAttribute(el3, "class", "view-actions");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createComment("");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("section");
+        dom.setAttribute(el2, "class", "view-container");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createComment("");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("div");
+        dom.setAttribute(el3, "class", "subscribers-sidebar");
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "settings-menu-header");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("h4");
+        var el6 = dom.createTextNode("Import Subscribers");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "settings-menu-content subscribers-import-buttons");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createComment("");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("a");
+        dom.setAttribute(el5, "class", "btn");
+        var el6 = dom.createTextNode("Export CSV");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "settings-menu-header");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("h4");
+        var el6 = dom.createTextNode("Quick Stats");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n            ");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "settings-menu-content");
+        var el5 = dom.createTextNode("\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("ul");
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("li");
+        var el7 = dom.createTextNode("\n                        Total Subscribers:\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("span");
+        dom.setAttribute(el7, "id", "total-subscribers");
+        var el8 = dom.createComment("");
+        dom.appendChild(el7, el8);
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                    ");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                ");
+        dom.appendChild(el5, el6);
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n            ");
+        dom.appendChild(el4, el5);
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n        ");
+        dom.appendChild(el3, el4);
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createComment("");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        return el0;
+      },
+      buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+        var element0 = dom.childAt(fragment, [0]);
+        var element1 = dom.childAt(element0, [1]);
+        var element2 = dom.childAt(element0, [3]);
+        var element3 = dom.childAt(element2, [3]);
+        var element4 = dom.childAt(element3, [3]);
+        var element5 = dom.childAt(element4, [3]);
+        var morphs = new Array(8);
+        morphs[0] = dom.createMorphAt(element1, 1, 1);
+        morphs[1] = dom.createMorphAt(dom.childAt(element1, [3]), 1, 1);
+        morphs[2] = dom.createMorphAt(element2, 1, 1);
+        morphs[3] = dom.createMorphAt(element4, 1, 1);
+        morphs[4] = dom.createElementMorph(element5);
+        morphs[5] = dom.createMorphAt(dom.childAt(element3, [7, 1, 1, 1]), 0, 0);
+        morphs[6] = dom.createMorphAt(fragment, 2, 2, contextualElement);
+        morphs[7] = dom.createMorphAt(fragment, 4, 4, contextualElement);
+        return morphs;
+      },
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 100]]]], ["block", "link-to", ["subscribers.new"], ["class", "btn btn-green"], 1, null, ["loc", [null, [5, 12], [5, 90]]]], ["inline", "gh-subscribers-table", [], ["table", ["subexpr", "@mut", [["get", "table", ["loc", [null, [11, 22], [11, 27]]]]], [], []], "isLoading", ["subexpr", "@mut", [["get", "isLoading", ["loc", [null, [12, 26], [12, 35]]]]], [], []], "loadNextPage", ["subexpr", "action", ["loadNextPage"], [], ["loc", [null, [13, 29], [13, 52]]]], "sortByColumn", ["subexpr", "action", ["sortByColumn"], [], ["loc", [null, [14, 29], [14, 52]]]], "delete", ["subexpr", "action", ["deleteSubscriber"], [], ["loc", [null, [15, 23], [15, 50]]]]], ["loc", [null, [10, 8], [15, 52]]]], ["block", "link-to", ["subscribers.import"], ["class", "btn btn-hover-green"], 2, null, ["loc", [null, [22, 16], [22, 99]]]], ["element", "action", ["exportData"], [], ["loc", [null, [23, 19], [23, 42]]]], ["content", "total", ["loc", [null, [33, 53], [33, 62]]]], ["block", "if", [["get", "subscriberToDelete", ["loc", [null, [41, 6], [41, 24]]]]], [], 3, null, ["loc", [null, [41, 0], [47, 7]]]], ["content", "outlet", ["loc", [null, [49, 0], [49, 10]]]]],
+      locals: [],
+      templates: [child0, child1, child2, child3]
+    };
+  })());
+});
 define("ghost/templates/team/index", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28835,7 +34595,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -28876,7 +34636,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -28938,7 +34698,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.4.4",
+                    "revision": "Ember@2.5.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -28981,7 +34741,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.4.4",
+                    "revision": "Ember@2.5.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -29030,7 +34790,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.4.4",
+                    "revision": "Ember@2.5.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -29072,7 +34832,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
                 return {
                   meta: {
                     "fragmentReason": false,
-                    "revision": "Ember@2.4.4",
+                    "revision": "Ember@2.5.1",
                     "loc": {
                       "source": null,
                       "start": {
@@ -29128,7 +34888,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
               return {
                 meta: {
                   "fragmentReason": false,
-                  "revision": "Ember@2.4.4",
+                  "revision": "Ember@2.5.1",
                   "loc": {
                     "source": null,
                     "start": {
@@ -29214,7 +34974,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29253,7 +35013,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29308,7 +35068,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -29351,7 +35111,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
               return {
                 meta: {
                   "fragmentReason": false,
-                  "revision": "Ember@2.4.4",
+                  "revision": "Ember@2.5.1",
                   "loc": {
                     "source": null,
                     "start": {
@@ -29392,7 +35152,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29431,7 +35191,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29472,7 +35232,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29516,7 +35276,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29555,7 +35315,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -29594,7 +35354,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -29655,7 +35415,7 @@ define("ghost/templates/team/index", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -29722,7 +35482,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -29777,7 +35537,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -29827,7 +35587,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29868,7 +35628,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -29909,11 +35669,11 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
               return el0;
             },
             buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-              var element5 = dom.childAt(fragment, [1]);
-              var element6 = dom.childAt(element5, [1]);
+              var element7 = dom.childAt(fragment, [1]);
+              var element8 = dom.childAt(element7, [1]);
               var morphs = new Array(2);
-              morphs[0] = dom.createElementMorph(element6);
-              morphs[1] = dom.createMorphAt(element5, 3, 3);
+              morphs[0] = dom.createElementMorph(element8);
+              morphs[1] = dom.createMorphAt(element7, 3, 3);
               return morphs;
             },
             statements: [["element", "action", ["toggleTransferOwnerModal"], [], ["loc", [null, [17, 40], [17, 77]]]], ["block", "if", [["get", "showTransferOwnerModal", ["loc", [null, [20, 38], [20, 60]]]]], [], 0, null, ["loc", [null, [20, 32], [25, 39]]]]],
@@ -29926,7 +35686,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             return {
               meta: {
                 "fragmentReason": false,
-                "revision": "Ember@2.4.4",
+                "revision": "Ember@2.5.1",
                 "loc": {
                   "source": null,
                   "start": {
@@ -29967,7 +35727,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           return {
             meta: {
               "fragmentReason": false,
-              "revision": "Ember@2.4.4",
+              "revision": "Ember@2.5.1",
               "loc": {
                 "source": null,
                 "start": {
@@ -30009,11 +35769,11 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
               return el0;
             },
             buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-              var element3 = dom.childAt(fragment, [1]);
-              var element4 = dom.childAt(element3, [1]);
+              var element5 = dom.childAt(fragment, [1]);
+              var element6 = dom.childAt(element5, [1]);
               var morphs = new Array(2);
-              morphs[0] = dom.createElementMorph(element4);
-              morphs[1] = dom.createMorphAt(element3, 3, 3);
+              morphs[0] = dom.createElementMorph(element6);
+              morphs[1] = dom.createMorphAt(element5, 3, 3);
               return morphs;
             },
             statements: [["element", "action", ["toggleDeleteUserModal"], [], ["loc", [null, [30, 40], [30, 74]]]], ["block", "if", [["get", "showDeleteUserModal", ["loc", [null, [33, 38], [33, 57]]]]], [], 0, null, ["loc", [null, [33, 32], [38, 39]]]]],
@@ -30024,7 +35784,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -30066,7 +35826,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30104,10 +35864,10 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element7 = dom.childAt(fragment, [1]);
+          var element9 = dom.childAt(fragment, [1]);
           var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(element7, 1, 1);
-          morphs[1] = dom.createMorphAt(element7, 2, 2);
+          morphs[0] = dom.createMorphAt(element9, 1, 1);
+          morphs[1] = dom.createMorphAt(element9, 2, 2);
           return morphs;
         },
         statements: [["block", "gh-dropdown-button", [], ["dropdownName", "user-actions-menu", "classNames", "btn btn-default only-has-icon user-actions-cog", "title", "User Actions"], 0, null, ["loc", [null, [10, 20], [13, 43]]]], ["block", "gh-dropdown", [], ["name", "user-actions-menu", "tagName", "ul", "classNames", "user-actions-menu dropdown-menu dropdown-triangle-top-right"], 1, null, ["loc", [null, [14, 20], [41, 36]]]]],
@@ -30119,7 +35879,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30155,7 +35915,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30197,7 +35957,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30240,7 +36000,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -30282,7 +36042,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -30323,7 +36083,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30367,7 +36127,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.name", ["loc", [null, [82, 34], [82, 43]]]]], [], []], "id", "user-name", "class", "gh-input user-name", "placeholder", "Full Name", "autocorrect", "off", "focusOut", ["subexpr", "action", ["validate", "name"], [], ["loc", [null, [82, 137], [82, 163]]]]], ["loc", [null, [82, 20], [82, 165]]]], ["block", "if", [["get", "user.errors.name", ["loc", [null, [83, 26], [83, 42]]]]], [], 0, 1, ["loc", [null, [83, 20], [87, 27]]]]],
+        statements: [["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.name", ["loc", [null, [82, 34], [82, 43]]]]], [], []], "id", "user-name", "class", "gh-input user-name", "placeholder", "Full Name", "autocorrect", "off", "focusOut", ["subexpr", "action", ["validate", "name"], ["target", ["get", "user", ["loc", [null, [82, 170], [82, 174]]]]], ["loc", [null, [82, 137], [82, 175]]]]], ["loc", [null, [82, 20], [82, 177]]]], ["block", "if", [["get", "user.errors.name", ["loc", [null, [83, 26], [83, 42]]]]], [], 0, 1, ["loc", [null, [83, 20], [87, 27]]]]],
         locals: [],
         templates: [child0, child1]
       };
@@ -30376,7 +36136,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30426,11 +36186,11 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element2 = dom.childAt(fragment, [5]);
+          var element4 = dom.childAt(fragment, [5]);
           var morphs = new Array(4);
           morphs[0] = dom.createMorphAt(fragment, 3, 3, contextualElement);
-          morphs[1] = dom.createMorphAt(element2, 0, 0);
-          morphs[2] = dom.createMorphAt(element2, 2, 2);
+          morphs[1] = dom.createMorphAt(element4, 0, 0);
+          morphs[2] = dom.createMorphAt(element4, 2, 2);
           morphs[3] = dom.createMorphAt(fragment, 7, 7, contextualElement);
           return morphs;
         },
@@ -30444,7 +36204,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -30482,7 +36242,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
             return morphs;
           },
-          statements: [["inline", "input", [], ["type", "email", "value", ["subexpr", "@mut", [["get", "user.email", ["loc", [null, [105, 51], [105, 61]]]]], [], []], "id", "user-email", "name", "email", "class", "gh-input", "placeholder", "Email Address", "autocapitalize", "off", "autocorrect", "off", "autocomplete", "off", "focusOut", ["subexpr", "action", ["validate", "email"], [], ["loc", [null, [105, 203], [105, 230]]]]], ["loc", [null, [105, 24], [105, 232]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [106, 50], [106, 61]]]]], [], []], "property", "email"], ["loc", [null, [106, 24], [106, 80]]]]],
+          statements: [["inline", "input", [], ["type", "email", "value", ["subexpr", "@mut", [["get", "user.email", ["loc", [null, [105, 51], [105, 61]]]]], [], []], "id", "user-email", "name", "email", "class", "gh-input", "placeholder", "Email Address", "autocapitalize", "off", "autocorrect", "off", "autocomplete", "off", "focusOut", ["subexpr", "action", ["validate", "email"], ["target", ["get", "user", ["loc", [null, [105, 237], [105, 241]]]]], ["loc", [null, [105, 203], [105, 242]]]]], ["loc", [null, [105, 24], [105, 244]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [106, 50], [106, 61]]]]], [], []], "property", "email"], ["loc", [null, [106, 24], [106, 80]]]]],
           locals: [],
           templates: []
         };
@@ -30491,7 +36251,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
@@ -30534,7 +36294,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30589,7 +36349,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30659,7 +36419,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30710,7 +36470,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
           return morphs;
         },
-        statements: [["inline", "input", [], ["type", "text", "value", ["subexpr", "@mut", [["get", "user.location", ["loc", [null, [131, 46], [131, 59]]]]], [], []], "id", "user-location", "class", "gh-input", "focusOut", ["subexpr", "action", ["validate", "location"], [], ["loc", [null, [131, 105], [131, 135]]]]], ["loc", [null, [131, 20], [131, 137]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [132, 46], [132, 57]]]]], [], []], "property", "location"], ["loc", [null, [132, 20], [132, 79]]]]],
+        statements: [["inline", "input", [], ["type", "text", "value", ["subexpr", "@mut", [["get", "user.location", ["loc", [null, [131, 46], [131, 59]]]]], [], []], "id", "user-location", "class", "gh-input", "focusOut", ["subexpr", "action", ["validate", "location"], ["target", ["get", "user", ["loc", [null, [131, 142], [131, 146]]]]], ["loc", [null, [131, 105], [131, 147]]]]], ["loc", [null, [131, 20], [131, 149]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [132, 46], [132, 57]]]]], [], []], "property", "location"], ["loc", [null, [132, 20], [132, 79]]]]],
         locals: [],
         templates: []
       };
@@ -30719,7 +36479,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30770,7 +36530,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           morphs[1] = dom.createMorphAt(fragment, 5, 5, contextualElement);
           return morphs;
         },
-        statements: [["inline", "input", [], ["type", "url", "value", ["subexpr", "@mut", [["get", "user.website", ["loc", [null, [138, 45], [138, 57]]]]], [], []], "id", "user-website", "class", "gh-input", "autocapitalize", "off", "autocorrect", "off", "autocomplete", "off", "focusOut", ["subexpr", "action", ["validate", "website"], [], ["loc", [null, [138, 160], [138, 189]]]]], ["loc", [null, [138, 20], [138, 191]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [139, 46], [139, 57]]]]], [], []], "property", "website"], ["loc", [null, [139, 20], [139, 78]]]]],
+        statements: [["inline", "input", [], ["type", "url", "value", ["subexpr", "@mut", [["get", "user.website", ["loc", [null, [138, 45], [138, 57]]]]], [], []], "id", "user-website", "class", "gh-input", "autocapitalize", "off", "autocorrect", "off", "autocomplete", "off", "focusOut", ["subexpr", "action", ["validate", "website"], ["target", ["get", "user", ["loc", [null, [138, 196], [138, 200]]]]], ["loc", [null, [138, 160], [138, 201]]]]], ["loc", [null, [138, 20], [138, 203]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [139, 46], [139, 57]]]]], [], []], "property", "website"], ["loc", [null, [139, 20], [139, 78]]]]],
         locals: [],
         templates: []
       };
@@ -30779,7 +36539,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
@@ -30787,7 +36547,145 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
               "column": 16
             },
             "end": {
-              "line": 151,
+              "line": 148,
+              "column": 16
+            }
+          },
+          "moduleName": "ghost/templates/team/user.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "user-facebook");
+          var el2 = dom.createTextNode("Facebook Profile");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("input");
+          dom.setAttribute(el1, "type", "url");
+          dom.setAttribute(el1, "class", "gh-input");
+          dom.setAttribute(el1, "id", "user-facebook");
+          dom.setAttribute(el1, "name", "user[facebook]");
+          dom.setAttribute(el1, "placeholder", "https://www.facebook.com/username");
+          dom.setAttribute(el1, "autocorrect", "off");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("URL of your personal Facebook Profile");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element3 = dom.childAt(fragment, [3]);
+          var morphs = new Array(4);
+          morphs[0] = dom.createAttrMorph(element3, 'value');
+          morphs[1] = dom.createAttrMorph(element3, 'oninput');
+          morphs[2] = dom.createElementMorph(element3);
+          morphs[3] = dom.createMorphAt(fragment, 5, 5, contextualElement);
+          return morphs;
+        },
+        statements: [["attribute", "value", ["get", "user.facebook", ["loc", [null, [145, 35], [145, 48]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchFacebook", ["loc", [null, [145, 73], [145, 89]]]]], [], ["loc", [null, [145, 68], [145, 90]]]]], ["value", "target.value"], ["loc", [null, [145, 59], [145, 113]]]]], ["element", "action", ["validateFacebookUrl"], ["on", "focusOut"], ["loc", [null, [145, 114], [145, 160]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [146, 46], [146, 57]]]]], [], []], "property", "facebook"], ["loc", [null, [146, 20], [146, 79]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child12 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 150,
+              "column": 16
+            },
+            "end": {
+              "line": 155,
+              "column": 16
+            }
+          },
+          "moduleName": "ghost/templates/team/user.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "user-twitter");
+          var el2 = dom.createTextNode("Twitter Profile");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("input");
+          dom.setAttribute(el1, "type", "url");
+          dom.setAttribute(el1, "class", "gh-input");
+          dom.setAttribute(el1, "id", "user-twitter");
+          dom.setAttribute(el1, "name", "user[twitter]");
+          dom.setAttribute(el1, "placeholder", "https://twitter.com/username");
+          dom.setAttribute(el1, "autocorrect", "off");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                    ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("URL of your personal Twitter profile");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var element2 = dom.childAt(fragment, [3]);
+          var morphs = new Array(4);
+          morphs[0] = dom.createAttrMorph(element2, 'value');
+          morphs[1] = dom.createAttrMorph(element2, 'oninput');
+          morphs[2] = dom.createElementMorph(element2);
+          morphs[3] = dom.createMorphAt(fragment, 5, 5, contextualElement);
+          return morphs;
+        },
+        statements: [["attribute", "value", ["get", "user.twitter", ["loc", [null, [152, 35], [152, 47]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchTwitter", ["loc", [null, [152, 72], [152, 87]]]]], [], ["loc", [null, [152, 67], [152, 88]]]]], ["value", "target.value"], ["loc", [null, [152, 58], [152, 111]]]]], ["element", "action", ["validateTwitterUrl"], ["on", "focusOut"], ["loc", [null, [152, 112], [152, 157]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [153, 46], [153, 57]]]]], [], []], "property", "twitter"], ["loc", [null, [153, 20], [153, 78]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child13 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.5.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 157,
+              "column": 16
+            },
+            "end": {
+              "line": 165,
               "column": 16
             }
           },
@@ -30835,25 +36733,25 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           morphs[2] = dom.createMorphAt(dom.childAt(fragment, [7]), 1, 1);
           return morphs;
         },
-        statements: [["inline", "textarea", [], ["id", "user-bio", "class", "gh-input", "value", ["subexpr", "@mut", [["get", "user.bio", ["loc", [null, [145, 68], [145, 76]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "bio"], [], ["loc", [null, [145, 86], [145, 111]]]]], ["loc", [null, [145, 20], [145, 113]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [146, 46], [146, 57]]]]], [], []], "property", "bio"], ["loc", [null, [146, 20], [146, 74]]]], ["inline", "gh-count-characters", [["get", "user.bio", ["loc", [null, [149, 46], [149, 54]]]]], [], ["loc", [null, [149, 24], [149, 56]]]]],
+        statements: [["inline", "textarea", [], ["id", "user-bio", "class", "gh-input", "value", ["subexpr", "@mut", [["get", "user.bio", ["loc", [null, [159, 68], [159, 76]]]]], [], []], "focusOut", ["subexpr", "action", ["validate", "bio"], ["target", ["get", "user", ["loc", [null, [159, 118], [159, 122]]]]], ["loc", [null, [159, 86], [159, 123]]]]], ["loc", [null, [159, 20], [159, 125]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [160, 46], [160, 57]]]]], [], []], "property", "bio"], ["loc", [null, [160, 20], [160, 74]]]], ["inline", "gh-count-characters", [["get", "user.bio", ["loc", [null, [163, 46], [163, 54]]]]], [], ["loc", [null, [163, 24], [163, 56]]]]],
         locals: [],
         templates: []
       };
     })();
-    var child12 = (function () {
+    var child14 = (function () {
       var child0 = (function () {
         return {
           meta: {
             "fragmentReason": false,
-            "revision": "Ember@2.4.4",
+            "revision": "Ember@2.5.1",
             "loc": {
               "source": null,
               "start": {
-                "line": 159,
+                "line": 173,
                 "column": 20
               },
               "end": {
-                "line": 164,
+                "line": 178,
                 "column": 20
               }
             },
@@ -30892,7 +36790,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 3, 3);
             return morphs;
           },
-          statements: [["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.password", ["loc", [null, [162, 38], [162, 51]]]]], [], []], "type", "password", "id", "user-password-old", "class", "gh-input"], ["loc", [null, [162, 24], [162, 109]]]]],
+          statements: [["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.password", ["loc", [null, [176, 38], [176, 51]]]]], [], []], "type", "password", "id", "user-password-old", "class", "gh-input"], ["loc", [null, [176, 24], [176, 109]]]]],
           locals: [],
           templates: []
         };
@@ -30900,15 +36798,15 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
       return {
         meta: {
           "fragmentReason": false,
-          "revision": "Ember@2.4.4",
+          "revision": "Ember@2.5.1",
           "loc": {
             "source": null,
             "start": {
-              "line": 157,
+              "line": 171,
               "column": 12
             },
             "end": {
-              "line": 180,
+              "line": 194,
               "column": 12
             }
           },
@@ -30995,7 +36893,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
           morphs[3] = dom.createElementMorph(element1);
           return morphs;
         },
-        statements: [["block", "unless", [["get", "isNotOwnProfile", ["loc", [null, [159, 30], [159, 45]]]]], [], 0, null, ["loc", [null, [159, 20], [164, 31]]]], ["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.newPassword", ["loc", [null, [168, 38], [168, 54]]]]], [], []], "type", "password", "id", "user-password-new", "class", "gh-input"], ["loc", [null, [168, 24], [168, 112]]]], ["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.ne2Password", ["loc", [null, [173, 38], [173, 54]]]]], [], []], "type", "password", "id", "user-new-password-verification", "class", "gh-input"], ["loc", [null, [173, 24], [173, 125]]]], ["element", "action", ["password"], [], ["loc", [null, [176, 89], [176, 110]]]]],
+        statements: [["block", "unless", [["get", "isNotOwnProfile", ["loc", [null, [173, 30], [173, 45]]]]], [], 0, null, ["loc", [null, [173, 20], [178, 31]]]], ["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.newPassword", ["loc", [null, [182, 38], [182, 54]]]]], [], []], "type", "password", "id", "user-password-new", "class", "gh-input"], ["loc", [null, [182, 24], [182, 112]]]], ["inline", "input", [], ["value", ["subexpr", "@mut", [["get", "user.ne2Password", ["loc", [null, [187, 38], [187, 54]]]]], [], []], "type", "password", "id", "user-new-password-verification", "class", "gh-input"], ["loc", [null, [187, 24], [187, 125]]]], ["element", "action", ["password"], [], ["loc", [null, [190, 89], [190, 110]]]]],
         locals: [],
         templates: [child0]
       };
@@ -31005,7 +36903,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         "fragmentReason": {
           "name": "triple-curlies"
         },
-        "revision": "Ember@2.4.4",
+        "revision": "Ember@2.5.1",
         "loc": {
           "source": null,
           "start": {
@@ -31013,7 +36911,7 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 184,
+            "line": 198,
             "column": 0
           }
         },
@@ -31168,6 +37066,14 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         dom.appendChild(el4, el5);
         var el5 = dom.createComment("");
         dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createComment("");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createComment("");
+        dom.appendChild(el4, el5);
         var el5 = dom.createTextNode("\n                ");
         dom.appendChild(el4, el5);
         var el5 = dom.createElement("hr");
@@ -31193,44 +37099,77 @@ define("ghost/templates/team/user", ["exports"], function (exports) {
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element8 = dom.childAt(fragment, [0]);
-        var element9 = dom.childAt(element8, [1]);
-        var element10 = dom.childAt(element9, [3]);
-        var element11 = dom.childAt(element8, [3]);
-        var element12 = dom.childAt(element11, [1]);
-        var element13 = dom.childAt(element12, [1]);
-        var element14 = dom.childAt(element11, [3]);
-        var element15 = dom.childAt(element14, [6]);
-        var element16 = dom.childAt(element15, [1]);
-        var element17 = dom.childAt(element16, [1]);
-        var element18 = dom.childAt(element16, [3]);
-        var element19 = dom.childAt(element14, [8]);
-        var morphs = new Array(18);
-        morphs[0] = dom.createMorphAt(element9, 1, 1);
-        morphs[1] = dom.createMorphAt(element10, 1, 1);
-        morphs[2] = dom.createMorphAt(element10, 3, 3);
-        morphs[3] = dom.createAttrMorph(element12, 'style');
-        morphs[4] = dom.createElementMorph(element13);
-        morphs[5] = dom.createMorphAt(element12, 3, 3);
-        morphs[6] = dom.createAttrMorph(element17, 'style');
-        morphs[7] = dom.createMorphAt(dom.childAt(element17, [0]), 0, 0);
-        morphs[8] = dom.createElementMorph(element18);
-        morphs[9] = dom.createMorphAt(element16, 5, 5);
-        morphs[10] = dom.createMorphAt(element15, 3, 3);
-        morphs[11] = dom.createMorphAt(element19, 1, 1);
-        morphs[12] = dom.createMorphAt(element19, 3, 3);
-        morphs[13] = dom.createMorphAt(element19, 5, 5);
-        morphs[14] = dom.createMorphAt(element19, 7, 7);
-        morphs[15] = dom.createMorphAt(element19, 9, 9);
-        morphs[16] = dom.createMorphAt(element19, 11, 11);
-        morphs[17] = dom.createMorphAt(element14, 10, 10);
+        var element10 = dom.childAt(fragment, [0]);
+        var element11 = dom.childAt(element10, [1]);
+        var element12 = dom.childAt(element11, [3]);
+        var element13 = dom.childAt(element10, [3]);
+        var element14 = dom.childAt(element13, [1]);
+        var element15 = dom.childAt(element14, [1]);
+        var element16 = dom.childAt(element13, [3]);
+        var element17 = dom.childAt(element16, [6]);
+        var element18 = dom.childAt(element17, [1]);
+        var element19 = dom.childAt(element18, [1]);
+        var element20 = dom.childAt(element18, [3]);
+        var element21 = dom.childAt(element16, [8]);
+        var morphs = new Array(20);
+        morphs[0] = dom.createMorphAt(element11, 1, 1);
+        morphs[1] = dom.createMorphAt(element12, 1, 1);
+        morphs[2] = dom.createMorphAt(element12, 3, 3);
+        morphs[3] = dom.createAttrMorph(element14, 'style');
+        morphs[4] = dom.createElementMorph(element15);
+        morphs[5] = dom.createMorphAt(element14, 3, 3);
+        morphs[6] = dom.createAttrMorph(element19, 'style');
+        morphs[7] = dom.createMorphAt(dom.childAt(element19, [0]), 0, 0);
+        morphs[8] = dom.createElementMorph(element20);
+        morphs[9] = dom.createMorphAt(element18, 5, 5);
+        morphs[10] = dom.createMorphAt(element17, 3, 3);
+        morphs[11] = dom.createMorphAt(element21, 1, 1);
+        morphs[12] = dom.createMorphAt(element21, 3, 3);
+        morphs[13] = dom.createMorphAt(element21, 5, 5);
+        morphs[14] = dom.createMorphAt(element21, 7, 7);
+        morphs[15] = dom.createMorphAt(element21, 9, 9);
+        morphs[16] = dom.createMorphAt(element21, 11, 11);
+        morphs[17] = dom.createMorphAt(element21, 13, 13);
+        morphs[18] = dom.createMorphAt(element21, 15, 15);
+        morphs[19] = dom.createMorphAt(element16, 10, 10);
         return morphs;
       },
-      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [6, 26]]]], ["block", "if", [["get", "userActionsAreVisible", ["loc", [null, [8, 18], [8, 39]]]]], [], 1, null, ["loc", [null, [8, 12], [43, 19]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [45, 76], [45, 86]]]]], [], []]], 2, null, ["loc", [null, [45, 12], [45, 111]]]], ["attribute", "style", ["get", "coverImageBackground", ["loc", [null, [51, 43], [51, 63]]]]], ["element", "action", ["toggleUploadCoverModal"], [], ["loc", [null, [52, 60], [52, 95]]]], ["block", "if", [["get", "showUploadCoverModal", ["loc", [null, [53, 18], [53, 38]]]]], [], 3, null, ["loc", [null, [53, 12], [58, 19]]]], ["attribute", "style", ["get", "userImageBackground", ["loc", [null, [70, 61], [70, 80]]]]], ["content", "user.name", ["loc", [null, [70, 104], [70, 117]]]], ["element", "action", ["toggleUploadImageModal"], [], ["loc", [null, [71, 42], [71, 77]]]], ["block", "if", [["get", "showUploadImageModal", ["loc", [null, [72, 26], [72, 46]]]]], [], 4, null, ["loc", [null, [72, 20], [77, 27]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [80, 40], [80, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [80, 65], [80, 82]]]]], [], []], "property", "name", "class", "first-form-group"], 5, null, ["loc", [null, [80, 16], [88, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [94, 40], [94, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [94, 65], [94, 82]]]]], [], []], "property", "slug"], 6, null, ["loc", [null, [94, 16], [99, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [101, 40], [101, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [101, 65], [101, 82]]]]], [], []], "property", "email"], 7, null, ["loc", [null, [101, 16], [111, 34]]]], ["block", "if", [["get", "rolesDropdownIsVisible", ["loc", [null, [113, 22], [113, 44]]]]], [], 8, null, ["loc", [null, [113, 16], [127, 23]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [129, 40], [129, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [129, 65], [129, 82]]]]], [], []], "property", "location"], 9, null, ["loc", [null, [129, 16], [134, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [136, 40], [136, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [136, 65], [136, 82]]]]], [], []], "property", "website"], 10, null, ["loc", [null, [136, 16], [141, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [143, 40], [143, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [143, 65], [143, 82]]]]], [], []], "property", "bio", "class", "bio-container"], 11, null, ["loc", [null, [143, 16], [151, 34]]]], ["block", "unless", [["get", "isAdminUserOnOwnerProfile", ["loc", [null, [157, 22], [157, 47]]]]], [], 12, null, ["loc", [null, [157, 12], [180, 23]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [6, 26]]]], ["block", "if", [["get", "userActionsAreVisible", ["loc", [null, [8, 18], [8, 39]]]]], [], 1, null, ["loc", [null, [8, 12], [43, 19]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [45, 76], [45, 86]]]]], [], []]], 2, null, ["loc", [null, [45, 12], [45, 111]]]], ["attribute", "style", ["get", "coverImageBackground", ["loc", [null, [51, 43], [51, 63]]]]], ["element", "action", ["toggleUploadCoverModal"], [], ["loc", [null, [52, 60], [52, 95]]]], ["block", "if", [["get", "showUploadCoverModal", ["loc", [null, [53, 18], [53, 38]]]]], [], 3, null, ["loc", [null, [53, 12], [58, 19]]]], ["attribute", "style", ["get", "userImageBackground", ["loc", [null, [70, 61], [70, 80]]]]], ["content", "user.name", ["loc", [null, [70, 104], [70, 117]]]], ["element", "action", ["toggleUploadImageModal"], [], ["loc", [null, [71, 42], [71, 77]]]], ["block", "if", [["get", "showUploadImageModal", ["loc", [null, [72, 26], [72, 46]]]]], [], 4, null, ["loc", [null, [72, 20], [77, 27]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [80, 40], [80, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [80, 65], [80, 82]]]]], [], []], "property", "name", "class", "first-form-group"], 5, null, ["loc", [null, [80, 16], [88, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [94, 40], [94, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [94, 65], [94, 82]]]]], [], []], "property", "slug"], 6, null, ["loc", [null, [94, 16], [99, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [101, 40], [101, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [101, 65], [101, 82]]]]], [], []], "property", "email"], 7, null, ["loc", [null, [101, 16], [111, 34]]]], ["block", "if", [["get", "rolesDropdownIsVisible", ["loc", [null, [113, 22], [113, 44]]]]], [], 8, null, ["loc", [null, [113, 16], [127, 23]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [129, 40], [129, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [129, 65], [129, 82]]]]], [], []], "property", "location"], 9, null, ["loc", [null, [129, 16], [134, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [136, 40], [136, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [136, 65], [136, 82]]]]], [], []], "property", "website"], 10, null, ["loc", [null, [136, 16], [141, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [143, 40], [143, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [143, 65], [143, 82]]]]], [], []], "property", "facebook"], 11, null, ["loc", [null, [143, 16], [148, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [150, 40], [150, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [150, 65], [150, 82]]]]], [], []], "property", "twitter"], 12, null, ["loc", [null, [150, 16], [155, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "user.errors", ["loc", [null, [157, 40], [157, 51]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "user.hasValidated", ["loc", [null, [157, 65], [157, 82]]]]], [], []], "property", "bio", "class", "bio-container"], 13, null, ["loc", [null, [157, 16], [165, 34]]]], ["block", "unless", [["get", "isAdminUserOnOwnerProfile", ["loc", [null, [171, 22], [171, 47]]]]], [], 14, null, ["loc", [null, [171, 12], [194, 23]]]]],
       locals: [],
-      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10, child11, child12]
+      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10, child11, child12, child13, child14]
     };
   })());
+});
+define('ghost/transforms/facebook-url-user', ['exports', 'ember-data/transform'], function (exports, _emberDataTransform) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    exports['default'] = _emberDataTransform['default'].extend({
+        deserialize: function deserialize(serialized) {
+            if (serialized) {
+                var _serialized$match = serialized.match(/(\S+)/);
+
+                var _serialized$match2 = _slicedToArray(_serialized$match, 2);
+
+                var user = _serialized$match2[1];
+
+                return 'https://www.facebook.com/' + user;
+            }
+            return serialized;
+        },
+
+        serialize: function serialize(deserialized) {
+            if (deserialized) {
+                var _deserialized$match = deserialized.match(/(?:https:\/\/)(?:www\.)(?:facebook\.com)\/(?:#!\/)?(\w+\/?\S+)/mi);
+
+                var _deserialized$match2 = _slicedToArray(_deserialized$match, 2);
+
+                var user = _deserialized$match2[1];
+
+                return user;
+            }
+            return deserialized;
+        }
+    });
 });
 define('ghost/transforms/moment-date', ['exports', 'ember-data/transform'], function (exports, _emberDataTransform) {
     exports['default'] = _emberDataTransform['default'].extend({
@@ -31250,6 +37189,47 @@ define('ghost/transforms/moment-date', ['exports', 'ember-data/transform'], func
     });
 });
 /* global moment */
+define('ghost/transforms/navigation-settings', ['exports', 'ember', 'ember-data/transform', 'ghost/models/navigation-item'], function (exports, _ember, _emberDataTransform, _ghostModelsNavigationItem) {
+    var isArray = _ember['default'].isArray;
+
+    var emberA = _ember['default'].A;
+
+    exports['default'] = _emberDataTransform['default'].extend({
+        deserialize: function deserialize(serialized) {
+            var navItems = undefined,
+                settingsArray = undefined;
+
+            try {
+                settingsArray = JSON.parse(serialized) || [];
+            } catch (e) {
+                settingsArray = [];
+            }
+
+            navItems = settingsArray.map(function (itemDetails) {
+                return _ghostModelsNavigationItem['default'].create(itemDetails);
+            });
+
+            return emberA(navItems);
+        },
+
+        serialize: function serialize(deserialized) {
+            var settingsArray = undefined;
+
+            if (isArray(deserialized)) {
+                settingsArray = deserialized.map(function (item) {
+                    var label = item.get('label').trim();
+                    var url = item.get('url').trim();
+
+                    return { label: label, url: url };
+                }).compact();
+            } else {
+                settingsArray = [];
+            }
+
+            return JSON.stringify(settingsArray);
+        }
+    });
+});
 define('ghost/transforms/raw', ['exports', 'ember-data/transform'], function (exports, _emberDataTransform) {
     exports['default'] = _emberDataTransform['default'].extend({
         deserialize: function deserialize(serialized) {
@@ -31257,6 +37237,74 @@ define('ghost/transforms/raw', ['exports', 'ember-data/transform'], function (ex
         },
 
         serialize: function serialize(deserialized) {
+            return deserialized;
+        }
+    });
+});
+define('ghost/transforms/slack-settings', ['exports', 'ember', 'ember-data/transform', 'ghost/models/slack-integration'], function (exports, _ember, _emberDataTransform, _ghostModelsSlackIntegration) {
+    var isArray = _ember['default'].isArray;
+
+    var emberA = _ember['default'].A;
+
+    exports['default'] = _emberDataTransform['default'].extend({
+        deserialize: function deserialize(serialized) {
+            var slackObj = undefined,
+                settingsArray = undefined;
+            try {
+                settingsArray = JSON.parse(serialized) || [];
+            } catch (e) {
+                settingsArray = [];
+            }
+
+            slackObj = settingsArray.map(function (itemDetails) {
+                return _ghostModelsSlackIntegration['default'].create(itemDetails);
+            });
+            return emberA(slackObj);
+        },
+
+        serialize: function serialize(deserialized) {
+            var settingsArray = undefined;
+            if (isArray(deserialized)) {
+                settingsArray = deserialized.map(function (item) {
+                    var url = (item.get('url') || '').trim();
+
+                    return { url: url };
+                }).compact();
+            } else {
+                settingsArray = [];
+            }
+            return JSON.stringify(settingsArray);
+        }
+    });
+});
+/* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+define('ghost/transforms/twitter-url-user', ['exports', 'ember-data/transform'], function (exports, _emberDataTransform) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    exports['default'] = _emberDataTransform['default'].extend({
+        deserialize: function deserialize(serialized) {
+            if (serialized) {
+                var _serialized$match = serialized.match(/@?([^\/]*)/);
+
+                var _serialized$match2 = _slicedToArray(_serialized$match, 2);
+
+                var user = _serialized$match2[1];
+
+                return 'https://twitter.com/' + user;
+            }
+            return serialized;
+        },
+
+        serialize: function serialize(deserialized) {
+            if (deserialized) {
+                var _deserialized$match = deserialized.match(/(?:https:\/\/)(?:twitter\.com)\/(?:#!\/)?@?([^\/]*)/);
+
+                var _deserialized$match2 = _slicedToArray(_deserialized$match, 2);
+
+                var user = _deserialized$match2[1];
+
+                return '@' + user;
+            }
             return deserialized;
         }
     });
@@ -31826,11 +37874,16 @@ define('ghost/transitions', ['exports', 'liquid-tether'], function (exports, _li
         }),
         // this.use('tether', [modal options], [background options])
         this.use('tether', ['fade', { duration: 150 }], ['fade', { duration: 150 }]), this.reverse('tether', ['fade', { duration: 80 }], ['fade', { duration: 150 }]));
+
+        this.transition(this.hasClass('fade-transition'), this.use('crossFade', { duration: 100 }));
     };
 });
 define('ghost/utils/ajax', ['exports', 'ember'], function (exports, _ember) {
     exports['default'] = getRequestErrorMessage;
     var isArray = _ember['default'].isArray;
+
+    // TODO: this should be removed and instead have our app serializer properly
+    // process the response so that errors can be tied to the model
 
     // Used in API request fail handlers to parse a standard api error
     // response json for the message to display
@@ -31851,12 +37904,12 @@ define('ghost/utils/ajax', ['exports', 'ember'], function (exports, _ember) {
         if (request.status !== 200) {
             try {
                 // Try to parse out the error, or default to 'Unknown'
-                if (request.responseJSON.errors && isArray(request.responseJSON.errors)) {
-                    message = request.responseJSON.errors.map(function (errorItem) {
+                if (request.errors && isArray(request.errors)) {
+                    message = request.errors.map(function (errorItem) {
                         return errorItem.message;
                     });
                 } else {
-                    message = request.responseJSON.error || 'Unknown Error';
+                    message = request.error || 'Unknown Error';
                 }
             } catch (e) {
                 msgDetail = request.status ? request.status + ' - ' + request.statusText : 'Server was not available';
@@ -32047,27 +38100,13 @@ define('ghost/utils/ed-image-manager', ['exports'], function (exports) {
         return images;
     }
 
-    // Loop through all dropzones in the preview and find which one was the target of the upload
-    function getZoneIndex(element) {
-        var zones = document.querySelectorAll('.js-entry-preview .js-drop-zone');
-
-        for (var i = 0; i < zones.length; i += 1) {
-            if (zones.item(i) === element) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
     // Figure out the start and end of the selection range for the src in the markdown, so we know what to replace
-    function getSrcRange(content, element) {
+    function getSrcRange(content, index) {
         var images = parse(content);
-        var index = getZoneIndex(element);
         var replacement = {};
 
         if (index > -1) {
-            // [1] matches the alt test, and 2 matches the url between the ()
+            // [1] matches the alt text, and 2 matches the url between the ()
             // if the () are missing entirely, which is valid, [2] will be undefined and we'll need to treat this case
             // a little differently
             if (images[index][2] === undefined) {
@@ -32201,7 +38240,7 @@ define('ghost/utils/isNumber', ['exports'], function (exports) {
     return typeof value === 'number' || value && (typeof value === 'undefined' ? 'undefined' : _typeof(value)) === 'object' && toString.call(value) === '[object Number]' || false;
   };
 });
-define('ghost/utils/link-component', ['exports', 'ember'], function (exports, _ember) {
+define('ghost/utils/link-component', ['exports', 'ember', 'ember-invoke-action'], function (exports, _ember, _emberInvokeAction) {
     var LinkComponent = _ember['default'].LinkComponent;
     var computed = _ember['default'].computed;
 
@@ -32210,7 +38249,7 @@ define('ghost/utils/link-component', ['exports', 'ember'], function (exports, _e
             var isActive = this._super.apply(this, arguments);
 
             if (typeof this.get('alternateActive') === 'function') {
-                this.get('alternateActive')(isActive);
+                (0, _emberInvokeAction.invokeAction)(this, 'alternateActive', isActive);
             }
 
             return isActive;
@@ -32601,6 +38640,45 @@ define('ghost/validators/signin', ['exports', 'ghost/validators/base'], function
 define('ghost/validators/signup', ['exports', 'ghost/validators/new-user'], function (exports, _ghostValidatorsNewUser) {
   exports['default'] = _ghostValidatorsNewUser['default'].create();
 });
+define('ghost/validators/slack-integration', ['exports', 'ghost/validators/base'], function (exports, _ghostValidatorsBase) {
+    exports['default'] = _ghostValidatorsBase['default'].create({
+        properties: ['url'],
+
+        url: function url(model) {
+            var url = model.get('url');
+            var hasValidated = model.get('hasValidated');
+
+            var urlRegex = new RegExp(/(^https:\/\/hooks\.slack\.com\/services\/)(\S+)/);
+
+            if (!validator.empty(url) && !url.match(urlRegex)) {
+                model.get('errors').add('url', 'The URL must be in a format like ' + 'https://hooks.slack.com/services/<your personal key>');
+
+                this.invalidate();
+            }
+
+            hasValidated.addObject('url');
+        }
+    });
+});
+define('ghost/validators/subscriber', ['exports', 'ghost/validators/base'], function (exports, _ghostValidatorsBase) {
+    exports['default'] = _ghostValidatorsBase['default'].create({
+        properties: ['email'],
+
+        email: function email(model) {
+            var email = model.get('email');
+
+            if (validator.empty(email)) {
+                model.get('errors').add('email', 'Please enter an email.');
+                model.get('hasValidated').pushObject('email');
+                this.invalidate();
+            } else if (!validator.isEmail(email)) {
+                model.get('errors').add('email', 'Invalid email.');
+                model.get('hasValidated').pushObject('email');
+                this.invalidate();
+            }
+        }
+    });
+});
 define('ghost/validators/tag-settings', ['exports', 'ghost/validators/base'], function (exports, _ghostValidatorsBase) {
     exports['default'] = _ghostValidatorsBase['default'].create({
         properties: ['name', 'slug', 'description', 'metaTitle', 'metaDescription'],
@@ -32768,7 +38846,7 @@ catch(err) {
 /* jshint ignore:start */
 
 if (!runningTests) {
-  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.7.9"});
+  require("ghost/app")["default"].create({"LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost","version":"0.8.0"});
 }
 
 /* jshint ignore:end */

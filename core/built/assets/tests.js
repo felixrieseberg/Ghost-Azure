@@ -32,7 +32,7 @@ define('ghost/tests/acceptance/authentication-test', ['exports', 'mocha', 'chai'
             });
 
             (0, _mocha.it)('invalidates session on 401 API response', function () {
-                // return a 401 when attempting to retrieve tags
+                // return a 401 when attempting to retrieve users
                 server.get('/users/', function (db, request) {
                     return new _emberCliMirage['default'].Response(401, {}, {
                         errors: [{ message: 'Access denied.', errorType: 'UnauthorizedError' }]
@@ -44,6 +44,36 @@ define('ghost/tests/acceptance/authentication-test', ['exports', 'mocha', 'chai'
 
                 andThen(function () {
                     (0, _chai.expect)(currentURL(), 'url after 401').to.equal('/signin');
+                });
+            });
+
+            (0, _mocha.it)('doesn\'t show navigation menu on invalid url when not authenticated', function () {
+                (0, _ghostTestsHelpersEmberSimpleAuth.invalidateSession)(application);
+
+                visit('/');
+
+                andThen(function () {
+                    (0, _chai.expect)(currentURL(), 'current url').to.equal('/signin');
+                    (0, _chai.expect)(find('nav.gh-nav').length, 'nav menu presence').to.equal(0);
+                });
+
+                visit('/signin/invalidurl/');
+
+                andThen(function () {
+                    (0, _chai.expect)(currentURL(), 'url after invalid url').to.equal('/signin/invalidurl/');
+                    (0, _chai.expect)(currentPath(), 'path after invalid url').to.equal('error404');
+                    (0, _chai.expect)(find('nav.gh-nav').length, 'nav menu presence').to.equal(0);
+                });
+            });
+
+            (0, _mocha.it)('shows nav menu on invalid url when authenticated', function () {
+                (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+                visit('/signin/invalidurl/');
+
+                andThen(function () {
+                    (0, _chai.expect)(currentURL(), 'url after invalid url').to.equal('/signin/invalidurl/');
+                    (0, _chai.expect)(currentPath(), 'path after invalid url').to.equal('error404');
+                    (0, _chai.expect)(find('nav.gh-nav').length, 'nav menu presence').to.equal(1);
                 });
             });
         });
@@ -288,6 +318,82 @@ define('ghost/tests/acceptance/posts/post-test', ['exports', 'mocha', 'chai', 'g
 });
 /* jshint expr:true */
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+define('ghost/tests/acceptance/settings/apps-test', ['exports', 'mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth'], function (exports, _mocha, _chai, _ember, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth) {
+    var run = _ember['default'].run;
+
+    (0, _mocha.describe)('Acceptance: Settings - Apps', function () {
+        var application = undefined;
+
+        (0, _mocha.beforeEach)(function () {
+            application = (0, _ghostTestsHelpersStartApp['default'])();
+        });
+
+        (0, _mocha.afterEach)(function () {
+            (0, _ghostTestsHelpersDestroyApp['default'])(application);
+        });
+
+        (0, _mocha.it)('redirects to signin when not authenticated', function () {
+            (0, _ghostTestsHelpersEmberSimpleAuth.invalidateSession)(application);
+            visit('/settings/apps');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/signin');
+            });
+        });
+
+        (0, _mocha.it)('redirects to team page when authenticated as author', function () {
+            var role = server.create('role', { name: 'Author' });
+            var user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            visit('/settings/apps');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/team/test-user');
+            });
+        });
+
+        (0, _mocha.it)('redirects to team page when authenticated as editor', function () {
+            var role = server.create('role', { name: 'Editor' });
+            var user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            visit('/settings/apps');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/team');
+            });
+        });
+
+        (0, _mocha.describe)('when logged in', function () {
+            (0, _mocha.beforeEach)(function () {
+                var role = server.create('role', { name: 'Administrator' });
+                var user = server.create('user', { roles: [role] });
+
+                server.loadFixtures();
+
+                return (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            });
+
+            (0, _mocha.it)('it redirects to Slack when clicking on the grid', function () {
+                visit('/settings/apps');
+
+                andThen(function () {
+                    // has correct url
+                    (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/settings/apps');
+                });
+
+                click('#slack-link');
+
+                andThen(function () {
+                    // has correct url
+                    (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/settings/apps/slack');
+                });
+            });
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/acceptance/settings/code-injection-test', ['exports', 'mocha', 'chai', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth'], function (exports, _mocha, _chai, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth) {
 
     (0, _mocha.describe)('Acceptance: Settings - Code-Injection', function () {
@@ -448,16 +554,23 @@ define('ghost/tests/acceptance/settings/general-test', ['exports', 'mocha', 'cha
                     (0, _chai.expect)(find('input#permalinks').prop('checked'), 'date permalinks checkbox').to.be['false'];
                 });
 
+                fillIn('#settings-general input[name="general[title]"]', 'New Blog Title');
+                click('.view-header .btn.btn-blue');
+
+                andThen(function () {
+                    (0, _chai.expect)(document.title, 'page title').to.equal('Settings - General - New Blog Title');
+                });
+
                 click('.blog-logo');
 
                 andThen(function () {
-                    (0, _chai.expect)(find('.fullscreen-modal .modal-content .js-drop-zone').length, 'modal selector').to.equal(1);
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content .gh-image-uploader').length, 'modal selector').to.equal(1);
                 });
 
-                click('.fullscreen-modal .modal-content .js-drop-zone .js-cancel');
+                click('.fullscreen-modal .modal-content .gh-image-uploader .image-cancel');
 
                 andThen(function () {
-                    (0, _chai.expect)(find('.fullscreen-modal .modal-content .js-drop-zone .description').text()).to.equal('Add image');
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content .gh-image-uploader .description').text()).to.equal('Upload an image');
                 });
 
                 // click cancel button
@@ -470,7 +583,7 @@ define('ghost/tests/acceptance/settings/general-test', ['exports', 'mocha', 'cha
                 click('.blog-cover');
 
                 andThen(function () {
-                    (0, _chai.expect)(find('.fullscreen-modal .modal-content .js-drop-zone').length, 'modal selector').to.equal(1);
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content .gh-image-uploader').length, 'modal selector').to.equal(1);
                 });
 
                 click('.fullscreen-modal .modal-footer .js-button-accept');
@@ -478,25 +591,15 @@ define('ghost/tests/acceptance/settings/general-test', ['exports', 'mocha', 'cha
                 andThen(function () {
                     (0, _chai.expect)(find('.fullscreen-modal').length).to.equal(0);
                 });
-            });
 
-            (0, _mocha.it)('renders theme selector correctly', function () {
-                visit('/settings/general');
-
+                // renders theme selector correctly
                 andThen(function () {
-                    (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/settings/general');
-
                     (0, _chai.expect)(find('#activeTheme select option').length, 'available themes').to.equal(1);
                     (0, _chai.expect)(find('#activeTheme select option').text().trim()).to.equal('Blog - 1.0');
                 });
-            });
 
-            (0, _mocha.it)('handles private blog settings correctly', function () {
-                visit('/settings/general');
-
+                // handles private blog settings correctly
                 andThen(function () {
-                    (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/settings/general');
-
                     (0, _chai.expect)(find('input#isPrivate').prop('checked'), 'isPrivate checkbox').to.be['false'];
                 });
 
@@ -509,10 +612,157 @@ define('ghost/tests/acceptance/settings/general-test', ['exports', 'mocha', 'cha
                 });
 
                 fillIn('#settings-general input[name="general[password]"]', '');
-                click('.view-header .view-actions .btn-blue');
+                triggerEvent('#settings-general input[name="general[password]"]', 'blur');
 
                 andThen(function () {
                     (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('Password must be supplied');
+                });
+
+                fillIn('#settings-general input[name="general[password]"]', 'asdfg');
+                triggerEvent('#settings-general input[name="general[password]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                // validates a facebook url correctly
+
+                andThen(function () {
+                    // loads fixtures and performs transform
+                    (0, _chai.expect)(find('input[name="general[facebook]"]').val(), 'initial facebook value').to.equal('https://www.facebook.com/test');
+                });
+
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'focus');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    // regression test: we still have a value after the input is
+                    // focused and then blurred without any changes
+                    (0, _chai.expect)(find('input[name="general[facebook]"]').val(), 'facebook value after blur with no change').to.equal('https://www.facebook.com/test');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'facebook.com/username');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/username');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'facebook.com/pages/some-facebook-page/857469375913?ref=ts');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/pages/some-facebook-page/857469375913?ref=ts');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', '*(&*(%%))');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('The URL must be in a format like https://www.facebook.com/yourPage');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'http://github.com/username');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/username');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'http://github.com/pages/username');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/pages/username');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'testuser');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/testuser');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'ab99');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('Your Page name is not a valid Facebook Page name');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'page/ab99');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/page/ab99');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[facebook]"]', 'page/*(&*(%%))');
+                triggerEvent('#settings-general input[name="general[facebook]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[facebook]"]').val()).to.be.equal('https://www.facebook.com/page/*(&*(%%))');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                // validates a twitter url correctly
+
+                andThen(function () {
+                    // loads fixtures and performs transform
+                    (0, _chai.expect)(find('input[name="general[twitter]"]').val(), 'initial twitter value').to.equal('https://twitter.com/test');
+                });
+
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'focus');
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'blur');
+
+                andThen(function () {
+                    // regression test: we still have a value after the input is
+                    // focused and then blurred without any changes
+                    (0, _chai.expect)(find('input[name="general[twitter]"]').val(), 'twitter value after blur with no change').to.equal('https://twitter.com/test');
+                });
+
+                fillIn('#settings-general input[name="general[twitter]"]', 'twitter.com/username');
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[twitter]"]').val()).to.be.equal('https://twitter.com/username');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[twitter]"]', '*(&*(%%))');
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('The URL must be in a format like https://twitter.com/yourUsername');
+                });
+
+                fillIn('#settings-general input[name="general[twitter]"]', 'http://github.com/username');
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[twitter]"]').val()).to.be.equal('https://twitter.com/username');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                fillIn('#settings-general input[name="general[twitter]"]', 'thisusernamehasmorethan15characters');
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('Your Username is not a valid Twitter Username');
+                });
+
+                fillIn('#settings-general input[name="general[twitter]"]', 'testuser');
+                triggerEvent('#settings-general input[name="general[twitter]"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#settings-general input[name="general[twitter]"]').val()).to.be.equal('https://twitter.com/testuser');
+                    (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
                 });
             });
         });
@@ -707,7 +957,7 @@ define('ghost/tests/acceptance/settings/navigation-test', ['exports', 'mocha', '
                 andThen(function () {
                     (0, _chai.expect)(find('.gh-blognav-item').length, 'number of nav items after saving with invalid new item').to.equal(3);
 
-                    (0, _chai.expect)(find('.gh-blognav-item:last .response:visible').length, 'number of invalid fields in new item').to.equal(1);
+                    (0, _chai.expect)(find('.gh-blognav-item:last .error').length, 'number of invalid fields in new item').to.equal(1);
                 });
             });
 
@@ -791,6 +1041,117 @@ define('ghost/tests/acceptance/settings/navigation-test', ['exports', 'mocha', '
 });
 /* jshint expr:true */
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+define('ghost/tests/acceptance/settings/slack-test', ['exports', 'mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ember-cli-mirage', 'ghost/tests/helpers/ember-simple-auth'], function (exports, _mocha, _chai, _ember, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _emberCliMirage, _ghostTestsHelpersEmberSimpleAuth) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    var run = _ember['default'].run;
+
+    (0, _mocha.describe)('Acceptance: Settings - Apps - Slack', function () {
+        var application = undefined;
+
+        (0, _mocha.beforeEach)(function () {
+            application = (0, _ghostTestsHelpersStartApp['default'])();
+        });
+
+        (0, _mocha.afterEach)(function () {
+            (0, _ghostTestsHelpersDestroyApp['default'])(application);
+        });
+
+        (0, _mocha.it)('redirects to signin when not authenticated', function () {
+            (0, _ghostTestsHelpersEmberSimpleAuth.invalidateSession)(application);
+            visit('/settings/apps/slack');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/signin');
+            });
+        });
+
+        (0, _mocha.it)('redirects to team page when authenticated as author', function () {
+            var role = server.create('role', { name: 'Author' });
+            var user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            visit('/settings/apps/slack');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/team/test-user');
+            });
+        });
+
+        (0, _mocha.it)('redirects to team page when authenticated as editor', function () {
+            var role = server.create('role', { name: 'Editor' });
+            var user = server.create('user', { roles: [role], slug: 'test-user' });
+
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            visit('/settings/apps/slack');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/team');
+            });
+        });
+
+        (0, _mocha.describe)('when logged in', function () {
+            (0, _mocha.beforeEach)(function () {
+                var role = server.create('role', { name: 'Administrator' });
+                var user = server.create('user', { roles: [role] });
+
+                server.loadFixtures();
+
+                return (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            });
+
+            (0, _mocha.it)('it validates and saves a slack url properly', function () {
+                visit('/settings/apps/slack');
+
+                andThen(function () {
+                    // has correct url
+                    (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/settings/apps/slack');
+                });
+
+                fillIn('#slack-settings input[name="slack[url]"]', 'notacorrecturl');
+                click('#saveSlackIntegration');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('#slack-settings .error .response').text().trim(), 'inline validation response').to.equal('The URL must be in a format like https://hooks.slack.com/services/<your personal key>');
+                });
+
+                fillIn('#slack-settings input[name="slack[url]"]', 'https://hooks.slack.com/services/1275958430');
+                click('#sendTestNotification');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.gh-alert-blue').length, 'modal element').to.equal(1);
+                    (0, _chai.expect)(find('#slack-settings .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                andThen(function () {
+                    server.put('/settings/', function (db, request) {
+                        return new _emberCliMirage['default'].Response(402, {}, {
+                            errors: [{
+                                errorType: 'ValidationError',
+                                message: 'Test error'
+                            }]
+                        });
+                    });
+                });
+
+                click('.gh-alert-blue .gh-alert-close');
+                click('#sendTestNotification');
+
+                andThen(function () {
+                    var _server$pretender$handledRequests$slice = server.pretender.handledRequests.slice(-1);
+
+                    var _server$pretender$handledRequests$slice2 = _slicedToArray(_server$pretender$handledRequests$slice, 1);
+
+                    var lastRequest = _server$pretender$handledRequests$slice2[0];
+
+                    (0, _chai.expect)(lastRequest.url).to.not.match(/\/slack\/test/);
+                    (0, _chai.expect)(find('.gh-alert-blue').length, 'check slack alert after api validation error').to.equal(0);
+                });
+            });
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/acceptance/settings/tags-test', ['exports', 'mocha', 'chai', 'ember', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth', 'ghost/tests/helpers/adapter-error', 'ember-cli-mirage'], function (exports, _mocha, _chai, _ember, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth, _ghostTestsHelpersAdapterError, _emberCliMirage) {
     var run = _ember['default'].run;
 
@@ -1435,7 +1796,7 @@ define('ghost/tests/acceptance/signin-test', ['exports', 'mocha', 'chai', 'ghost
             });
         });
 
-        (0, _mocha.describe)('when attempting to sigin', function () {
+        (0, _mocha.describe)('when attempting to signin', function () {
             (0, _mocha.beforeEach)(function () {
                 var role = server.create('role', { name: 'Administrator' });
                 var user = server.create('user', { roles: [role], slug: 'test-user' });
@@ -1522,6 +1883,243 @@ define('ghost/tests/acceptance/signin-test', ['exports', 'mocha', 'chai', 'ghost
                 andThen(function () {
                     (0, _chai.expect)(currentURL(), 'currentURL').to.equal('/');
                 });
+            });
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/acceptance/subscribers-test', ['exports', 'mocha', 'chai', 'ghost/tests/helpers/start-app', 'ghost/tests/helpers/destroy-app', 'ghost/tests/helpers/ember-simple-auth'], function (exports, _mocha, _chai, _ghostTestsHelpersStartApp, _ghostTestsHelpersDestroyApp, _ghostTestsHelpersEmberSimpleAuth) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    (0, _mocha.describe)('Acceptance: Subscribers', function () {
+        var application = undefined;
+
+        (0, _mocha.beforeEach)(function () {
+            application = (0, _ghostTestsHelpersStartApp['default'])();
+        });
+
+        (0, _mocha.afterEach)(function () {
+            (0, _ghostTestsHelpersDestroyApp['default'])(application);
+        });
+
+        (0, _mocha.it)('redirects to signin when not authenticated', function () {
+            (0, _ghostTestsHelpersEmberSimpleAuth.invalidateSession)(application);
+            visit('/subscribers');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL()).to.equal('/signin');
+            });
+        });
+
+        (0, _mocha.it)('redirects editors to posts', function () {
+            var role = server.create('role', { name: 'Editor' });
+            var user = server.create('user', { roles: [role] });
+
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            visit('/subscribers');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL()).to.equal('/');
+                (0, _chai.expect)(find('.gh-nav-main a:contains("Subscribers")').length, 'sidebar link is visible').to.equal(0);
+            });
+        });
+
+        (0, _mocha.it)('redirects authors to posts', function () {
+            var role = server.create('role', { name: 'Author' });
+            var user = server.create('user', { roles: [role] });
+
+            (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            visit('/subscribers');
+
+            andThen(function () {
+                (0, _chai.expect)(currentURL()).to.equal('/');
+                (0, _chai.expect)(find('.gh-nav-main a:contains("Subscribers")').length, 'sidebar link is visible').to.equal(0);
+            });
+        });
+
+        (0, _mocha.describe)('an admin', function () {
+            (0, _mocha.beforeEach)(function () {
+                var role = server.create('role', { name: 'Administrator' });
+                var user = server.create('user', { roles: [role] });
+
+                server.loadFixtures();
+
+                return (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+            });
+
+            (0, _mocha.it)('can manage subscribers', function () {
+                server.createList('subscriber', 40);
+
+                (0, _ghostTestsHelpersEmberSimpleAuth.authenticateSession)(application);
+                visit('/');
+                click('.gh-nav-main a:contains("Subscribers")');
+
+                andThen(function () {
+                    // it navigates to the correct page
+                    (0, _chai.expect)(currentPath()).to.equal('subscribers.index');
+
+                    // it has correct page title
+                    (0, _chai.expect)(document.title, 'page title').to.equal('Subscribers - Test Blog');
+
+                    // it loads the first page
+                    (0, _chai.expect)(find('.subscribers-table .lt-body .lt-row').length, 'number of subscriber rows').to.equal(30);
+
+                    // it shows the total number of subscribers
+                    (0, _chai.expect)(find('#total-subscribers').text().trim(), 'displayed subscribers total').to.equal('40');
+
+                    // it defaults to sorting by created_at desc
+
+                    var _server$pretender$handledRequests$slice = server.pretender.handledRequests.slice(-1);
+
+                    var _server$pretender$handledRequests$slice2 = _slicedToArray(_server$pretender$handledRequests$slice, 1);
+
+                    var lastRequest = _server$pretender$handledRequests$slice2[0];
+
+                    (0, _chai.expect)(lastRequest.queryParams.order).to.equal('created_at desc');
+
+                    var createdAtHeader = find('.subscribers-table th:contains("Subscription Date")');
+                    (0, _chai.expect)(createdAtHeader.hasClass('is-sorted'), 'createdAt column is sorted').to.be['true'];
+                    (0, _chai.expect)(createdAtHeader.find('.icon-descending').length, 'createdAt column has descending icon').to.equal(1);
+                });
+
+                // click the column to re-order
+                click('th:contains("Subscription Date")');
+
+                andThen(function () {
+                    // it flips the directions and re-fetches
+
+                    var _server$pretender$handledRequests$slice3 = server.pretender.handledRequests.slice(-1);
+
+                    var _server$pretender$handledRequests$slice32 = _slicedToArray(_server$pretender$handledRequests$slice3, 1);
+
+                    var lastRequest = _server$pretender$handledRequests$slice32[0];
+
+                    (0, _chai.expect)(lastRequest.queryParams.order).to.equal('created_at asc');
+
+                    var createdAtHeader = find('.subscribers-table th:contains("Subscription Date")');
+                    (0, _chai.expect)(createdAtHeader.find('.icon-ascending').length, 'createdAt column has ascending icon').to.equal(1);
+
+                    // scroll to the bottom of the table to simulate infinite scroll
+                    find('.subscribers-table').scrollTop(find('.subscribers-table .ember-light-table').height());
+                });
+
+                // trigger infinite scroll
+                triggerEvent('.subscribers-table', 'scroll');
+
+                andThen(function () {
+                    // it loads the next page
+                    (0, _chai.expect)(find('.subscribers-table .lt-body .lt-row').length, 'number of subscriber rows after infinite-scroll').to.equal(40);
+                });
+
+                // click the add subscriber button
+                click('.btn:contains("Add Subscriber")');
+
+                andThen(function () {
+                    // it displays the add subscriber modal
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'add subscriber modal displayed').to.equal(1);
+                });
+
+                // cancel the modal
+                click('.fullscreen-modal .btn:contains("Cancel")');
+
+                andThen(function () {
+                    // it closes the add subscriber modal
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'add subscriber modal displayed after cancel').to.equal(0);
+                });
+
+                // save a new subscriber
+                click('.btn:contains("Add Subscriber")');
+                fillIn('.fullscreen-modal input[name="email"]', 'test@example.com');
+                click('.fullscreen-modal .btn:contains("Add")');
+
+                andThen(function () {
+                    // the add subscriber modal is closed
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'add subscriber modal displayed after save').to.equal(0);
+
+                    // the subscriber is added to the table
+                    (0, _chai.expect)(find('.subscribers-table .lt-body .lt-row:first-of-type .lt-cell:first-of-type').text().trim(), 'first email in list after addition').to.equal('test@example.com');
+
+                    // the table is scrolled to the top
+                    // TODO: implement scroll to new record after addition
+                    // expect(find('.subscribers-table').scrollTop(), 'scroll position after addition')
+                    //     .to.equal(0);
+
+                    // the subscriber total is updated
+                    (0, _chai.expect)(find('#total-subscribers').text().trim(), 'subscribers total after addition').to.equal('41');
+                });
+
+                // saving a duplicate subscriber
+                click('.btn:contains("Add Subscriber")');
+                fillIn('.fullscreen-modal input[name="email"]', 'test@example.com');
+                click('.fullscreen-modal .btn:contains("Add")');
+
+                andThen(function () {
+                    // the validation error is displayed
+                    (0, _chai.expect)(find('.fullscreen-modal .error .response').text().trim(), 'duplicate email validation').to.equal('Email already exists.');
+
+                    // the subscriber is not added to the table
+                    (0, _chai.expect)(find('.lt-cell:contains(test@example.com)').length, 'number of "test@example.com rows"').to.equal(1);
+
+                    // the subscriber total is unchanged
+                    (0, _chai.expect)(find('#total-subscribers').text().trim(), 'subscribers total after failed add').to.equal('41');
+                });
+
+                // deleting a subscriber
+                click('.fullscreen-modal .btn:contains("Cancel")');
+                click('.subscribers-table tbody tr:first-of-type button:last-of-type');
+
+                andThen(function () {
+                    // it displays the delete subscriber modal
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'delete subscriber modal displayed').to.equal(1);
+                });
+
+                // cancel the modal
+                click('.fullscreen-modal .btn:contains("Cancel")');
+
+                andThen(function () {
+                    // return pauseTest();
+                    // it closes the add subscriber modal
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'delete subscriber modal displayed after cancel').to.equal(0);
+                });
+
+                click('.subscribers-table tbody tr:first-of-type button:last-of-type');
+                click('.fullscreen-modal .btn:contains("Delete")');
+
+                andThen(function () {
+                    // the add subscriber modal is closed
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'delete subscriber modal displayed after confirm').to.equal(0);
+
+                    // the subscriber is removed from the table
+                    (0, _chai.expect)(find('.subscribers-table .lt-body .lt-row:first-of-type .lt-cell:first-of-type').text().trim(), 'first email in list after addition').to.not.equal('test@example.com');
+
+                    // the subscriber total is updated
+                    (0, _chai.expect)(find('#total-subscribers').text().trim(), 'subscribers total after addition').to.equal('40');
+                });
+
+                // click the import subscribers button
+                click('.btn:contains("Import CSV")');
+
+                andThen(function () {
+                    // it displays the import subscribers modal
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'import subscribers modal displayed').to.equal(1);
+                });
+
+                // cancel the modal
+                click('.fullscreen-modal .btn:contains("Cancel")');
+
+                andThen(function () {
+                    // it closes the import subscribers modal
+                    (0, _chai.expect)(find('.fullscreen-modal').length, 'import subscribers modal displayed after cancel').to.equal(0);
+                });
+
+                // TODO: how to simulate file upload?
+
+                // re-open import modal
+                // upload a file
+                // modal title changes
+                // modal button changes
+                // table is reset
+                // close modal
             });
         });
     });
@@ -1746,7 +2344,14 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                 var user = undefined;
 
                 (0, _mocha.beforeEach)(function () {
-                    server.create('user', { slug: 'test-1', name: 'Test User' });
+                    server.create('user', {
+                        slug: 'test-1',
+                        name: 'Test User',
+                        facebook: 'test',
+                        twitter: '@test'
+                    });
+
+                    server.loadFixtures();
                 });
 
                 (0, _mocha.it)('input fields reset and validate correctly', function () {
@@ -1763,7 +2368,7 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                     triggerEvent('.user-details-top .first-form-group input.user-name', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-top .first-form-group').hasClass('error'), 'input is in error state').to.be['true'];
+                        (0, _chai.expect)(find('.user-details-top .first-form-group').hasClass('error'), 'username input is in error state with blank input').to.be['true'];
                     });
 
                     // test too long user name
@@ -1771,7 +2376,7 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                     triggerEvent('.user-details-top .first-form-group input.user-name', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-top .first-form-group').hasClass('error'), 'input is in error state').to.be['true'];
+                        (0, _chai.expect)(find('.user-details-top .first-form-group').hasClass('error'), 'username input is in error state with too long input').to.be['true'];
                     });
 
                     // reset name field
@@ -1799,7 +2404,7 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                     triggerEvent('.user-details-bottom input[name="email"]', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(2)').hasClass('error'), 'email input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(2)').hasClass('error'), 'email input should be in error state with invalid email').to.be['true'];
                     });
 
                     fillIn('.user-details-bottom input[name="email"]', 'test@example.com');
@@ -1818,12 +2423,140 @@ define('ghost/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'ember',
                         (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(4)').hasClass('error'), 'website input should be in error state').to.be['true'];
                     });
 
+                    // Testing Facebook input
+
+                    andThen(function () {
+                        // displays initial value
+                        (0, _chai.expect)(find('#user-facebook').val(), 'initial facebook value').to.equal('https://www.facebook.com/test');
+                    });
+
+                    triggerEvent('#user-facebook', 'focus');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        // regression test: we still have a value after the input is
+                        // focused and then blurred without any changes
+                        (0, _chai.expect)(find('#user-facebook').val(), 'facebook value after blur with no change').to.equal('https://www.facebook.com/test');
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', ')(*&%^%)');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['true'];
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', 'pages/)(*&%^%)');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/pages/)(*&%^%)');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', 'testing');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/testing');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', 'somewebsite.com/pages/some-facebook-page/857469375913?ref=ts');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/pages/some-facebook-page/857469375913?ref=ts');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', 'test');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['true'];
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', 'http://twitter.com/testuser');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/testuser');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                    });
+
+                    fillIn('#user-facebook', '');
+                    fillIn('#user-facebook', 'facebook.com/testing');
+                    triggerEvent('#user-facebook', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/testing');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                    });
+
+                    // Testing Twitter input
+
+                    andThen(function () {
+                        // loads fixtures and performs transform
+                        (0, _chai.expect)(find('#user-twitter').val(), 'initial twitter value').to.equal('https://twitter.com/test');
+                    });
+
+                    triggerEvent('#user-twitter', 'focus');
+                    triggerEvent('#user-twitter', 'blur');
+
+                    andThen(function () {
+                        // regression test: we still have a value after the input is
+                        // focused and then blurred without any changes
+                        (0, _chai.expect)(find('#user-twitter').val(), 'twitter value after blur with no change').to.equal('https://twitter.com/test');
+                    });
+
+                    fillIn('#user-twitter', '');
+                    fillIn('#user-twitter', ')(*&%^%)');
+                    triggerEvent('#user-twitter', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['true'];
+                    });
+
+                    fillIn('#user-twitter', '');
+                    fillIn('#user-twitter', 'name');
+                    triggerEvent('#user-twitter', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-twitter').val()).to.be.equal('https://twitter.com/name');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['false'];
+                    });
+
+                    fillIn('#user-twitter', '');
+                    fillIn('#user-twitter', 'http://github.com/user');
+                    triggerEvent('#user-twitter', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-twitter').val()).to.be.equal('https://twitter.com/user');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['false'];
+                    });
+
+                    fillIn('#user-twitter', '');
+                    fillIn('#user-twitter', 'twitter.com/user');
+                    triggerEvent('#user-twitter', 'blur');
+
+                    andThen(function () {
+                        (0, _chai.expect)(find('#user-twitter').val()).to.be.equal('https://twitter.com/user');
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['false'];
+                    });
+
                     fillIn('#user-website', '');
                     fillIn('#user-bio', new Array(210).join('a'));
                     triggerEvent('#user-bio', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'bio input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(7)').hasClass('error'), 'bio input should be in error state').to.be['true'];
                     });
                 });
             });
@@ -1875,6 +2608,145 @@ define('ghost/tests/helpers/destroy-app', ['exports', 'ember'], function (export
     function destroyApp(application) {
         _ember['default'].run(application, 'destroy');
     }
+});
+define('ghost/tests/helpers/ember-basic-dropdown', ['exports'], function (exports) {
+  exports.clickTrigger = clickTrigger;
+  exports.tapTrigger = tapTrigger;
+
+  function clickTrigger(scope) {
+    var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+    var selector = '.ember-basic-dropdown-trigger';
+    if (scope) {
+      selector = scope + ' ' + selector;
+    }
+    var event = new window.Event('mousedown', { bubbles: true, cancelable: true, view: window });
+    Object.keys(options).forEach(function (key) {
+      return event[key] = options[key];
+    });
+    Ember.run(function () {
+      return Ember.$(selector)[0].dispatchEvent(event);
+    });
+  }
+
+  function tapTrigger(scope) {
+    var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+    var selector = '.ember-basic-dropdown-trigger';
+    if (scope) {
+      selector = scope + ' ' + selector;
+    }
+    var touchStartEvent = new window.Event('touchstart', { bubbles: true, cancelable: true, view: window });
+    Object.keys(options).forEach(function (key) {
+      return touchStartEvent[key] = options[key];
+    });
+    Ember.run(function () {
+      return Ember.$(selector)[0].dispatchEvent(touchStartEvent);
+    });
+    var touchEndEvent = new window.Event('touchend', { bubbles: true, cancelable: true, view: window });
+    Object.keys(options).forEach(function (key) {
+      return touchEndEvent[key] = options[key];
+    });
+    Ember.run(function () {
+      return Ember.$(selector)[0].dispatchEvent(touchEndEvent);
+    });
+  }
+});
+define('ghost/tests/helpers/ember-power-select', ['exports', 'ember'], function (exports, _ember) {
+  exports.triggerKeydown = triggerKeydown;
+  exports.typeInSearch = typeInSearch;
+  exports.clickTrigger = clickTrigger;
+
+  // Helpers for integration tests
+
+  function typeText(selector, text) {
+    $(selector).val(text);
+    $(selector).trigger('input');
+  }
+
+  function nativeMouseDown(selector) {
+    var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+    var event = new window.Event('mousedown', { bubbles: true, cancelable: true, view: window });
+    Object.keys(options).forEach(function (key) {
+      return event[key] = options[key];
+    });
+    _ember['default'].run(function () {
+      return _ember['default'].$(selector)[0].dispatchEvent(event);
+    });
+  }
+
+  function triggerKeydown(domElement, k) {
+    var oEvent = document.createEvent("Events");
+    oEvent.initEvent('keydown', true, true);
+    $.extend(oEvent, {
+      view: window,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      metaKey: false,
+      keyCode: k,
+      charCode: k
+    });
+    _ember['default'].run(function () {
+      domElement.dispatchEvent(oEvent);
+    });
+  }
+
+  function typeInSearch(text) {
+    _ember['default'].run(function () {
+      typeText('.ember-power-select-search input, .ember-power-select-trigger-multiple-input', text);
+    });
+  }
+
+  function clickTrigger(scope) {
+    var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+
+    var selector = '.ember-power-select-trigger';
+    if (scope) {
+      selector = scope + ' ' + selector;
+    }
+    nativeMouseDown(selector, options);
+  }
+
+  // Helpers for acceptance tests
+
+  exports['default'] = function () {
+    var isEmberOne = _ember['default'].VERSION.match(/1\.13/);
+
+    _ember['default'].Test.registerAsyncHelper('selectChoose', function (app, cssPath, value) {
+      var id = find(cssPath).find('.ember-power-select-trigger').attr('id').match(/ember-power-select-trigger-ember(\d+)/)[1];
+      // If the dropdown is closed, open it
+      if (_ember['default'].$('.ember-power-select-dropdown-ember' + id).length === 0) {
+        nativeMouseDown(cssPath + ' .ember-power-select-trigger');
+      }
+
+      // Select the option with the given text
+      click('.ember-power-select-dropdown-ember' + id + ' .ember-power-select-option:contains("' + value + '")');
+    });
+
+    _ember['default'].Test.registerAsyncHelper('selectSearch', function (app, cssPath, value) {
+      var id = find(cssPath).find('.ember-power-select-trigger').attr('id').match(/ember-power-select-trigger-ember(\d+)/)[1];
+      var isMultipleSelect = _ember['default'].$(cssPath + ' .ember-power-select-trigger-multiple-input').length > 0;
+
+      var dropdownIsClosed = _ember['default'].$('.ember-power-select-dropdown-ember' + id).length === 0;
+      if (dropdownIsClosed) {
+        nativeMouseDown(cssPath + ' .ember-power-select-trigger');
+      }
+
+      if (isMultipleSelect) {
+        fillIn(cssPath + ' .ember-power-select-trigger-multiple-input', value);
+        if (isEmberOne) {
+          triggerEvent(cssPath + ' .ember-power-select-trigger-multiple-input', 'input');
+        }
+      } else {
+        fillIn('.ember-power-select-search input', value);
+        if (isEmberOne) {
+          triggerEvent('.ember-power-select-dropdown-ember' + id + ' .ember-power-select-search input', 'input');
+        }
+      }
+    });
+  };
 });
 define('ghost/tests/helpers/ember-simple-auth', ['exports', 'ember-simple-auth/authenticators/test'], function (exports, _emberSimpleAuthAuthenticatorsTest) {
   exports.authenticateSession = authenticateSession;
@@ -1954,15 +2826,15 @@ define('ghost/tests/helpers/resolver', ['exports', 'ghost/resolver', 'ghost/conf
 });
 define('ghost/tests/helpers/start-app', ['exports', 'ember', 'ghost/app', 'ghost/config/environment'], function (exports, _ember, _ghostApp, _ghostConfigEnvironment) {
     exports['default'] = startApp;
-    var merge = _ember['default'].merge;
+    var assign = _ember['default'].assign;
     var run = _ember['default'].run;
 
     function startApp(attrs) {
-        var attributes = merge({}, _ghostConfigEnvironment['default'].APP);
+        var attributes = assign({}, _ghostConfigEnvironment['default'].APP);
         var application = undefined;
 
         // use defaults, but you can override;
-        attributes = merge(attributes, attrs);
+        attributes = assign(attributes, attrs);
 
         run(function () {
             application = _ghostApp['default'].create(attributes);
@@ -2121,7 +2993,7 @@ define('ghost/tests/integration/components/gh-alert-test', ['exports', 'chai', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2173,7 +3045,7 @@ define('ghost/tests/integration/components/gh-alert-test', ['exports', 'chai', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2252,7 +3124,7 @@ define('ghost/tests/integration/components/gh-alerts-test', ['exports', 'chai', 
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2309,7 +3181,7 @@ define('ghost/tests/integration/components/gh-alerts-test', ['exports', 'chai', 
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2370,7 +3242,7 @@ define('ghost/tests/integration/components/gh-cm-editor-test', ['exports', 'chai
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2433,35 +3305,11 @@ define('ghost/tests/integration/components/gh-cm-editor-test', ['exports', 'chai
     });
 });
 /* jshint expr:true */
-define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'chai', 'ember-mocha', 'ghost/services/feature', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _ghostServicesFeature, _pretender, _emberTestHelpersWait) {
+define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _ember, _emberTestHelpersWait) {
 
-    function stubSettings(server, labs) {
-        server.get('/ghost/api/v0.1/settings/', function () {
-            return [200, { 'Content-Type': 'application/json' }, JSON.stringify({ settings: [{
-                    id: '1',
-                    type: 'blog',
-                    key: 'labs',
-                    value: JSON.stringify(labs)
-                },
-                // postsPerPage is needed to satisfy the validation
-                {
-                    id: '2',
-                    type: 'blog',
-                    key: 'postsPerPage',
-                    value: 1
-                }] })];
-        });
-
-        server.put('/ghost/api/v0.1/settings/', function (request) {
-            return [200, { 'Content-Type': 'application/json' }, request.requestBody];
-        });
-    }
-
-    function addTestFlag() {
-        _ghostServicesFeature['default'].reopen({
-            testFlag: (0, _ghostServicesFeature.feature)('testFlag')
-        });
-    }
+    var featureStub = _ember['default'].Service.extend({
+        testFlag: true
+    });
 
     (0, _emberMocha.describeComponent)('gh-feature-flag', 'Integration: Component: gh-feature-flag', {
         integration: true
@@ -2469,25 +3317,19 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
         var server = undefined;
 
         beforeEach(function () {
-            server = new _pretender['default']();
-        });
-
-        afterEach(function () {
-            server.shutdown();
+            this.register('service:feature', featureStub);
+            this.inject.service('feature', { as: 'feature' });
         });
 
         (0, _emberMocha.it)('renders properties correctly', function () {
-            stubSettings(server, { testFlag: true });
-            addTestFlag();
-
-            this.render(Ember.HTMLBars.template((function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
                         'fragmentReason': {
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2527,19 +3369,14 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
         });
 
         (0, _emberMocha.it)('renders correctly when flag is set to true', function () {
-            var _this = this;
-
-            stubSettings(server, { testFlag: true });
-            addTestFlag();
-
-            this.render(Ember.HTMLBars.template((function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
                         'fragmentReason': {
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2575,26 +3412,20 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
                 };
             })()));
             (0, _chai.expect)(this.$()).to.have.length(1);
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                (0, _chai.expect)(_this.$('label input[type="checkbox"]').prop('checked')).to.be['true'];
-            });
+            (0, _chai.expect)(this.$('label input[type="checkbox"]').prop('checked')).to.be['true'];
         });
 
         (0, _emberMocha.it)('renders correctly when flag is set to false', function () {
-            var _this2 = this;
+            this.set('feature.testFlag', false);
 
-            stubSettings(server, { testFlag: false });
-            addTestFlag();
-
-            this.render(Ember.HTMLBars.template((function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
                         'fragmentReason': {
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2631,25 +3462,18 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
             })()));
             (0, _chai.expect)(this.$()).to.have.length(1);
 
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                (0, _chai.expect)(_this2.$('label input[type="checkbox"]').prop('checked')).to.be['false'];
-            });
+            (0, _chai.expect)(this.$('label input[type="checkbox"]').prop('checked')).to.be['false'];
         });
 
         (0, _emberMocha.it)('updates to reflect changes in flag property', function () {
-            var _this3 = this;
-
-            stubSettings(server, { testFlag: true });
-            addTestFlag();
-
-            this.render(Ember.HTMLBars.template((function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
                 return {
                     meta: {
                         'fragmentReason': {
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2686,19 +3510,1238 @@ define('ghost/tests/integration/components/gh-feature-flag-test', ['exports', 'c
             })()));
             (0, _chai.expect)(this.$()).to.have.length(1);
 
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                (0, _chai.expect)(_this3.$('label input[type="checkbox"]').prop('checked')).to.be['true'];
+            (0, _chai.expect)(this.$('label input[type="checkbox"]').prop('checked')).to.be['true'];
 
-                _this3.$('label').click();
+            this.$('label').click();
 
-                return (0, _emberTestHelpersWait['default'])();
-            }).then(function () {
-                (0, _chai.expect)(_this3.$('label input[type="checkbox"]').prop('checked')).to.be['false'];
+            (0, _chai.expect)(this.$('label input[type="checkbox"]').prop('checked')).to.be['false'];
+        });
+    });
+});
+define('ghost/tests/integration/components/gh-file-uploader-test', ['exports', 'chai', 'ember-mocha', 'ember', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _ember, _pretender, _emberTestHelpersWait) {
+    var run = _ember['default'].run;
+
+    var stubSuccessfulUpload = function stubSuccessfulUpload(server) {
+        var delay = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [200, { 'Content-Type': 'application/json' }, '"/content/images/test.png"'];
+        }, delay);
+    };
+
+    var stubFailedUpload = function stubFailedUpload(server, code, error) {
+        var delay = arguments.length <= 3 || arguments[3] === undefined ? 0 : arguments[3];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [code, { 'Content-Type': 'application/json' }, JSON.stringify({
+                errors: [{
+                    errorType: error,
+                    message: 'Error: ' + error
+                }]
+            })];
+        }, delay);
+    };
+
+    (0, _emberMocha.describeComponent)('gh-file-uploader', 'Integration: Component: gh-file-uploader', {
+        integration: true
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new _pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('renders', function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 20
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'gh-file-uploader', ['loc', [null, [1, 0], [1, 20]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('label').text().trim(), 'default label').to.equal('Select or drag-and-drop a file');
+        });
+
+        (0, _emberMocha.it)('renders form with supplied label text', function () {
+            this.set('labelText', 'My label');
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 40
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['labelText', ['subexpr', '@mut', [['get', 'labelText', ['loc', [null, [1, 29], [1, 38]]]]], [], []]], ['loc', [null, [1, 0], [1, 40]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('label').text().trim(), 'label').to.equal('My label');
+        });
+
+        (0, _emberMocha.it)('generates request to supplied endpoint', function (done) {
+            stubSuccessfulUpload(server);
+            this.set('uploadUrl', '/ghost/api/v0.1/uploads/');
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 34
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['url', ['subexpr', '@mut', [['get', 'uploadUrl', ['loc', [null, [1, 23], [1, 32]]]]], [], []]], ['loc', [null, [1, 0], [1, 34]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            this.$('input[type="file"]').trigger('change');
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(server.handledRequests.length).to.equal(1);
+                (0, _chai.expect)(server.handledRequests[0].url).to.equal('/ghost/api/v0.1/uploads/');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('handles drag over/leave', function () {
+            var _this = this;
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 20
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'gh-file-uploader', ['loc', [null, [1, 0], [1, 20]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            run(function () {
+                var dragover = _ember['default'].$.Event('dragover', {
+                    dataTransfer: {
+                        files: []
+                    }
+                });
+                _this.$('.gh-image-uploader').trigger(dragover);
+            });
+
+            (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['true'];
+
+            run(function () {
+                _this.$('.gh-image-uploader').trigger('dragleave');
+            });
+
+            (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['false'];
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/integration/components/gh-image-uploader-test', ['exports', 'ember', 'sinon', 'chai', 'ember-mocha', 'pretender', 'ember-test-helpers/wait'], function (exports, _ember, _sinon, _chai, _emberMocha, _pretender, _emberTestHelpersWait) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    var run = _ember['default'].run;
+
+    var keyCodes = {
+        enter: 13
+    };
+
+    var configStub = _ember['default'].Service.extend({
+        fileStorage: true
+    });
+
+    var sessionStub = _ember['default'].Service.extend({
+        isAuthenticated: false,
+        authorize: function authorize(authorizer, block) {
+            if (this.get('isAuthenticated')) {
+                block('Authorization', 'Bearer token');
+            }
+        }
+    });
+
+    var stubSuccessfulUpload = function stubSuccessfulUpload(server) {
+        var delay = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [200, { 'Content-Type': 'application/json' }, '"/content/images/test.png"'];
+        }, delay);
+    };
+
+    var stubFailedUpload = function stubFailedUpload(server, code, error) {
+        var delay = arguments.length <= 3 || arguments[3] === undefined ? 0 : arguments[3];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [code, { 'Content-Type': 'application/json' }, JSON.stringify({
+                errors: [{
+                    errorType: error,
+                    message: 'Error: ' + error
+                }]
+            })];
+        }, delay);
+    };
+
+    (0, _emberMocha.describeComponent)('gh-image-upload', 'Integration: Component: gh-image-uploader', {
+        integration: true
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            this.register('service:config', configStub);
+            this.register('service:session', sessionStub);
+            this.inject.service('config', { as: 'configService' });
+            this.inject.service('session', { as: 'sessionService' });
+            this.set('update', function () {});
+            server = new _pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('renders', function () {
+            this.set('image', 'http://example.com/test.png');
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 33
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []]], ['loc', [null, [1, 0], [1, 33]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+
+        (0, _emberMocha.it)('defaults to upload form', function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 33
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []]], ['loc', [null, [1, 0], [1, 33]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$('input[type="file"]').length).to.equal(1);
+        });
+
+        (0, _emberMocha.it)('defaults to url form with no filestorage config', function () {
+            this.set('configService.fileStorage', false);
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 33
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []]], ['loc', [null, [1, 0], [1, 33]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$('input[type="file"]').length).to.equal(0);
+            (0, _chai.expect)(this.$('input[type="text"].url').length).to.equal(1);
+        });
+
+        (0, _emberMocha.it)('can switch between form types', function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 33
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []]], ['loc', [null, [1, 0], [1, 33]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$('input[type="file"]').length).to.equal(1);
+            (0, _chai.expect)(this.$('input[type="text"].url').length).to.equal(0);
+
+            this.$('a.image-url').click();
+
+            (0, _chai.expect)(this.$('input[type="file"]').length, 'upload form is visible after switch to url form').to.equal(0);
+            (0, _chai.expect)(this.$('input[type="text"].url').length, 'url form is visible after switch to url form').to.equal(1);
+
+            this.$('a.image-upload').click();
+
+            (0, _chai.expect)(this.$('input[type="file"]').length, 'upload form is visible after switch to upload form').to.equal(1);
+            (0, _chai.expect)(this.$('input[type="text"].url').length, 'url form is visible after switch to upload form').to.equal(0);
+        });
+
+        (0, _emberMocha.it)('triggers formChanged action when switching between forms', function () {
+            var formChanged = _sinon['default'].spy();
+            this.set('formChanged', formChanged);
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 66
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'formChanged', ['subexpr', 'action', [['get', 'formChanged', ['loc', [null, [1, 52], [1, 63]]]]], [], ['loc', [null, [1, 44], [1, 64]]]]], ['loc', [null, [1, 0], [1, 66]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            this.$('a.image-url').click();
+            this.$('a.image-upload').click();
+
+            (0, _chai.expect)(formChanged.calledTwice).to.be['true'];
+            (0, _chai.expect)(formChanged.firstCall.args[0]).to.equal('url-input');
+            (0, _chai.expect)(formChanged.secondCall.args[0]).to.equal('upload');
+        });
+
+        describe('file upload form', function () {
+            (0, _emberMocha.it)('renders form with supplied text', function () {
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 50
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'text', 'text test'], ['loc', [null, [1, 0], [1, 50]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+                (0, _chai.expect)(this.$('.description').text().trim()).to.equal('text test');
+            });
+
+            (0, _emberMocha.it)('generates request to correct endpoint', function (done) {
+                stubSuccessfulUpload(server);
+
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 56
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'update', ['subexpr', 'action', [['get', 'update', ['loc', [null, [1, 47], [1, 53]]]]], [], ['loc', [null, [1, 39], [1, 54]]]]], ['loc', [null, [1, 0], [1, 56]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+                this.$('input[type="file"]').trigger('change');
+
+                (0, _emberTestHelpersWait['default'])().then(function () {
+                    (0, _chai.expect)(server.handledRequests.length).to.equal(1);
+                    (0, _chai.expect)(server.handledRequests[0].url).to.equal('/ghost/api/v0.1/uploads/');
+                    (0, _chai.expect)(server.handledRequests[0].requestHeaders.Authorization).to.be.undefined;
+                    done();
+                });
+            });
+
+            (0, _emberMocha.it)('adds authentication headers to request', function (done) {
+                stubSuccessfulUpload(server);
+
+                this.get('sessionService').set('isAuthenticated', true);
+
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 56
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'update', ['subexpr', 'action', [['get', 'update', ['loc', [null, [1, 47], [1, 53]]]]], [], ['loc', [null, [1, 39], [1, 54]]]]], ['loc', [null, [1, 0], [1, 56]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+                this.$('input[type="file"]').trigger('change');
+
+                (0, _emberTestHelpersWait['default'])().then(function () {
+                    var _server$handledRequests = _slicedToArray(server.handledRequests, 1);
+
+                    var request = _server$handledRequests[0];
+
+                    (0, _chai.expect)(request.requestHeaders.Authorization).to.equal('Bearer token');
+                    done();
+                });
+            });
+
+            (0, _emberMocha.it)('handles drag over/leave', function () {
+                var _this = this;
+
+                stubSuccessfulUpload(server);
+
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 56
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'update', ['subexpr', 'action', [['get', 'update', ['loc', [null, [1, 47], [1, 53]]]]], [], ['loc', [null, [1, 39], [1, 54]]]]], ['loc', [null, [1, 0], [1, 56]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                run(function () {
+                    var dragover = _ember['default'].$.Event('dragover', {
+                        dataTransfer: {
+                            files: []
+                        }
+                    });
+                    _this.$('.gh-image-uploader').trigger(dragover);
+                });
+
+                (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['true'];
+
+                run(function () {
+                    _this.$('.gh-image-uploader').trigger('dragleave');
+                });
+
+                (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['false'];
+            });
+        });
+
+        describe('URL input form', function () {
+            beforeEach(function () {
+                this.set('configService.fileStorage', false);
+            });
+
+            (0, _emberMocha.it)('displays save button by default', function () {
+                this.set('image', 'http://example.com/test.png');
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 50
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'text', 'text test'], ['loc', [null, [1, 0], [1, 50]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+                (0, _chai.expect)(this.$('button').length).to.equal(1);
+                (0, _chai.expect)(this.$('input[type="text"]').val()).to.equal('http://example.com/test.png');
+            });
+
+            (0, _emberMocha.it)('can render without a save button', function () {
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 67
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'saveButton', false, 'text', 'text test'], ['loc', [null, [1, 0], [1, 67]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+                (0, _chai.expect)(this.$('button').length).to.equal(0);
+                (0, _chai.expect)(this.$('.description').text().trim()).to.equal('text test');
+            });
+
+            (0, _emberMocha.it)('fires update action when save button clicked', function () {
+                var update = _sinon['default'].spy();
+                this.set('update', update);
+
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 56
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'update', ['subexpr', 'action', [['get', 'update', ['loc', [null, [1, 47], [1, 53]]]]], [], ['loc', [null, [1, 39], [1, 54]]]]], ['loc', [null, [1, 0], [1, 56]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                this.$('input[type="text"]').val('saved url');
+                this.$('input[type="text"]').change();
+                this.$('button.btn-blue').click();
+
+                (0, _chai.expect)(update.calledOnce).to.be['true'];
+                (0, _chai.expect)(update.firstCall.args[0]).to.equal('saved url');
+            });
+
+            (0, _emberMocha.it)('fires onInput action when typing URL', function () {
+                var onInput = _sinon['default'].spy();
+                this.set('onInput', onInput);
+
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 58
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'onInput', ['subexpr', 'action', [['get', 'onInput', ['loc', [null, [1, 48], [1, 55]]]]], [], ['loc', [null, [1, 40], [1, 56]]]]], ['loc', [null, [1, 0], [1, 58]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                this.$('input[type="text"]').val('input url');
+                this.$('input[type="text"]').change();
+
+                (0, _chai.expect)(onInput.calledOnce).to.be['true'];
+                (0, _chai.expect)(onInput.firstCall.args[0]).to.equal('input url');
+            });
+
+            (0, _emberMocha.it)('saves on enter key', function () {
+                var update = _sinon['default'].spy();
+                this.set('update', update);
+
+                this.render(_ember['default'].HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.5.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 56
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 26], [1, 31]]]]], [], []], 'update', ['subexpr', 'action', [['get', 'update', ['loc', [null, [1, 47], [1, 53]]]]], [], ['loc', [null, [1, 39], [1, 54]]]]], ['loc', [null, [1, 0], [1, 56]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                this.$('input[type="text"]').val('saved url');
+                this.$('input[type="text"]').change();
+                this.$('input[type="text"]').trigger($.Event('keyup', { keyCode: keyCodes.enter, which: keyCodes.enter }));
+
+                (0, _chai.expect)(update.calledOnce).to.be['true'];
+                (0, _chai.expect)(update.firstCall.args[0]).to.equal('saved url');
             });
         });
     });
 });
-define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (exports, _chai, _emberMocha, _ember, _ghostControllersSettingsNavigation) {
+/* jshint expr:true */
+define('ghost/tests/integration/components/gh-image-uploader-with-preview-test', ['exports', 'chai', 'ember-mocha', 'ember', 'sinon'], function (exports, _chai, _emberMocha, _ember, _sinon) {
+    var run = _ember['default'].run;
+
+    (0, _emberMocha.describeComponent)('gh-image-uploader-with-preview', 'Integration: Component: gh-image-uploader-with-preview', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders image if provided', function () {
+            this.set('image', 'http://example.com/test.png');
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 46
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader-with-preview', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 39], [1, 44]]]]], [], []]], ['loc', [null, [1, 0], [1, 46]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('.gh-image-uploader.--with-image').length).to.equal(1);
+            (0, _chai.expect)(this.$('img').attr('src')).to.equal('http://example.com/test.png');
+        });
+
+        (0, _emberMocha.it)('renders upload form when no image provided', function () {
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 46
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader-with-preview', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 39], [1, 44]]]]], [], []]], ['loc', [null, [1, 0], [1, 46]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('input[type="file"]').length).to.equal(1);
+        });
+
+        (0, _emberMocha.it)('triggers remove action when delete icon is clicked', function () {
+            var _this = this;
+
+            var remove = _sinon['default'].spy();
+            this.set('remove', remove);
+            this.set('image', 'http://example.com/test.png');
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 60
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-image-uploader-with-preview', [], ['image', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 39], [1, 44]]]]], [], []], 'remove', ['subexpr', '@mut', [['get', 'remove', ['loc', [null, [1, 52], [1, 58]]]]], [], []]], ['loc', [null, [1, 0], [1, 60]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            run(function () {
+                _this.$('.icon-trash').click();
+            });
+
+            (0, _chai.expect)(remove.calledOnce).to.be['true'];
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/models/navigation-item'], function (exports, _chai, _emberMocha, _ember, _ghostModelsNavigationItem) {
     var run = _ember['default'].run;
 
     (0, _emberMocha.describeComponent)('gh-navigation', 'Integration: Component: gh-navigation', {
@@ -2712,7 +4755,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             'fragmentReason': {
                                 'name': 'triple-curlies'
                             },
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -2754,7 +4797,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -2800,10 +4843,10 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
             var expectedOldIndex = -1;
             var expectedNewIndex = -1;
 
-            navItems.pushObject(_ghostControllersSettingsNavigation.NavItem.create({ label: 'First', url: '/first' }));
-            navItems.pushObject(_ghostControllersSettingsNavigation.NavItem.create({ label: 'Second', url: '/second' }));
-            navItems.pushObject(_ghostControllersSettingsNavigation.NavItem.create({ label: 'Third', url: '/third' }));
-            navItems.pushObject(_ghostControllersSettingsNavigation.NavItem.create({ label: '', url: '', last: true }));
+            navItems.pushObject(_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/first' }));
+            navItems.pushObject(_ghostModelsNavigationItem['default'].create({ label: 'Second', url: '/second' }));
+            navItems.pushObject(_ghostModelsNavigationItem['default'].create({ label: 'Third', url: '/third' }));
+            navItems.pushObject(_ghostModelsNavigationItem['default'].create({ label: '', url: '', last: true }));
             this.set('navigationItems', navItems);
             this.set('blogUrl', 'http://localhost:2368');
 
@@ -2819,7 +4862,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                             return {
                                 meta: {
                                     'fragmentReason': false,
-                                    'revision': 'Ember@2.4.4',
+                                    'revision': 'Ember@2.5.1',
                                     'loc': {
                                         'source': null,
                                         'start': {
@@ -2860,7 +4903,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                         return {
                             meta: {
                                 'fragmentReason': false,
-                                'revision': 'Ember@2.4.4',
+                                'revision': 'Ember@2.5.1',
                                 'loc': {
                                     'source': null,
                                     'start': {
@@ -2913,7 +4956,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -2977,7 +5020,7 @@ define('ghost/tests/integration/components/gh-navigation-test', ['exports', 'cha
     });
 });
 /* jshint expr:true */
-define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (exports, _chai, _emberMocha, _ember, _ghostControllersSettingsNavigation) {
+define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/models/navigation-item'], function (exports, _chai, _emberMocha, _ember, _ghostModelsNavigationItem) {
     var run = _ember['default'].run;
 
     (0, _emberMocha.describeComponent)('gh-navitem', 'Integration: Component: gh-navitem', {
@@ -2988,7 +5031,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         });
 
         (0, _emberMocha.it)('renders', function () {
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: 'Test', url: '/url' }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: 'Test', url: '/url' }));
 
             this.render(_ember['default'].HTMLBars.template((function () {
                 return {
@@ -2997,7 +5040,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3046,7 +5089,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         });
 
         (0, _emberMocha.it)('doesn\'t show drag handle for new items', function () {
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: 'Test', url: '/url', isNew: true }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: 'Test', url: '/url', isNew: true }));
 
             this.render(_ember['default'].HTMLBars.template((function () {
                 return {
@@ -3055,7 +5098,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3096,7 +5139,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         });
 
         (0, _emberMocha.it)('shows add button for new items', function () {
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: 'Test', url: '/url', isNew: true }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: 'Test', url: '/url', isNew: true }));
 
             this.render(_ember['default'].HTMLBars.template((function () {
                 return {
@@ -3105,7 +5148,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3149,7 +5192,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         (0, _emberMocha.it)('triggers delete action', function () {
             var _this = this;
 
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: 'Test', url: '/url' }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: 'Test', url: '/url' }));
 
             var deleteActionCallCount = 0;
             this.on('deleteItem', function (navItem) {
@@ -3164,7 +5207,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3205,7 +5248,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         });
 
         (0, _emberMocha.it)('triggers add action', function () {
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: 'Test', url: '/url', isNew: true }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: 'Test', url: '/url', isNew: true }));
 
             var addActionCallCount = 0;
             this.on('add', function () {
@@ -3219,7 +5262,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3260,7 +5303,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         });
 
         (0, _emberMocha.it)('triggers update action', function () {
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: 'Test', url: '/url' }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: 'Test', url: '/url' }));
 
             var updateActionCallCount = 0;
             this.on('update', function () {
@@ -3274,7 +5317,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3315,7 +5358,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
         });
 
         (0, _emberMocha.it)('displays inline errors', function () {
-            this.set('navItem', _ghostControllersSettingsNavigation.NavItem.create({ label: '', url: '' }));
+            this.set('navItem', _ghostModelsNavigationItem['default'].create({ label: '', url: '' }));
             this.get('navItem').validate();
 
             this.render(_ember['default'].HTMLBars.template((function () {
@@ -3325,7 +5368,7 @@ define('ghost/tests/integration/components/gh-navitem-test', ['exports', 'chai',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3399,7 +5442,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3452,7 +5495,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3506,7 +5549,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3568,7 +5611,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3625,7 +5668,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3685,7 +5728,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3745,7 +5788,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3811,7 +5854,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3874,7 +5917,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3933,7 +5976,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -3990,7 +6033,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4052,7 +6095,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4116,7 +6159,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4190,7 +6233,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4260,7 +6303,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4320,7 +6363,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4387,7 +6430,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4456,7 +6499,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4530,7 +6573,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4598,7 +6641,7 @@ define('ghost/tests/integration/components/gh-navitem-url-input-test', ['exports
                                 'name': 'missing-wrapper',
                                 'problems': ['wrong-type']
                             },
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -4677,7 +6720,7 @@ define('ghost/tests/integration/components/gh-notification-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4730,7 +6773,7 @@ define('ghost/tests/integration/components/gh-notification-test', ['exports', 'c
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4807,7 +6850,7 @@ define('ghost/tests/integration/components/gh-notifications-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4852,7 +6895,7 @@ define('ghost/tests/integration/components/gh-notifications-test', ['exports', '
     });
 });
 /* jshint expr:true */
-define('ghost/tests/integration/components/gh-profile-image-test', ['exports', 'chai', 'ember-mocha', 'ember'], function (exports, _chai, _emberMocha, _ember) {
+define('ghost/tests/integration/components/gh-profile-image-test', ['exports', 'chai', 'ember-mocha', 'ember', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _ember, _pretender, _emberTestHelpersWait) {
     var run = _ember['default'].run;
 
     var pathsStub = _ember['default'].Service.extend({
@@ -4866,12 +6909,33 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
         }
     });
 
+    var stubKnownGravatar = function stubKnownGravatar(server) {
+        server.get('http://www.gravatar.com/avatar/:md5', function () {
+            return [200, { 'Content-Type': 'image/png' }, ''];
+        });
+    };
+
+    var stubUnknownGravatar = function stubUnknownGravatar(server) {
+        server.get('http://www.gravatar.com/avatar/:md5', function () {
+            return [404, {}, ''];
+        });
+    };
+
     (0, _emberMocha.describeComponent)('gh-profile-image', 'Integration: Component: gh-profile-image', {
         integration: true
     }, function () {
+        var server = undefined;
+
         beforeEach(function () {
             this.register('service:ghost-paths', pathsStub);
             this.inject.service('ghost-paths', { as: 'ghost-paths' });
+
+            server = new _pretender['default']();
+            stubKnownGravatar(server);
+        });
+
+        afterEach(function () {
+            server.shutdown();
         });
 
         (0, _emberMocha.it)('renders', function () {
@@ -4884,7 +6948,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4935,7 +6999,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -4975,9 +7039,62 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
 
             (0, _chai.expect)(this.$()).to.have.length(1);
             (0, _chai.expect)(this.$('input')).to.have.length(0);
-        }), (0, _emberMocha.it)('immediately renders the gravatar if valid email supplied', function () {
+        }), (0, _emberMocha.it)('renders default image if no email supplied', function () {
+            this.set('email', null);
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-profile-image', [], ['email', ['subexpr', '@mut', [['get', 'email', ['loc', [null, [2, 41], [2, 46]]]]], [], []], 'size', 100, 'debounce', 50], ['loc', [null, [2, 16], [2, 69]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('.gravatar-img').attr('style'), 'gravatar image style').to.be.blank;
+        });
+
+        (0, _emberMocha.it)('renders the gravatar if valid email supplied', function (done) {
+            var _this = this;
+
             var email = 'test@example.com';
-            var expectedUrl = '//www.gravatar.com/avatar/' + md5(email) + '?s=100&d=blank';
+            var expectedUrl = '//www.gravatar.com/avatar/' + md5(email) + '?s=100&d=404';
 
             this.set('email', email);
 
@@ -4988,7 +7105,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5020,20 +7137,80 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                         morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
                         return morphs;
                     },
-                    statements: [['inline', 'gh-profile-image', [], ['email', ['subexpr', '@mut', [['get', 'email', ['loc', [null, [2, 41], [2, 46]]]]], [], []], 'size', 100, 'debounce', 300], ['loc', [null, [2, 16], [2, 70]]]]],
+                    statements: [['inline', 'gh-profile-image', [], ['email', ['subexpr', '@mut', [['get', 'email', ['loc', [null, [2, 41], [2, 46]]]]], [], []], 'size', 100, 'debounce', 50], ['loc', [null, [2, 16], [2, 69]]]]],
                     locals: [],
                     templates: []
                 };
             })()));
 
-            (0, _chai.expect)(this.$('.gravatar-img').attr('style'), 'gravatar image style').to.equal('background-image: url(' + expectedUrl + ')');
+            // wait for the ajax request to complete
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this.$('.gravatar-img').attr('style'), 'gravatar image style').to.equal('background-image: url(' + expectedUrl + ')');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('doesn\'t add background url if gravatar image doesn\'t exist', function (done) {
+            var _this2 = this;
+
+            stubUnknownGravatar(server);
+
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 3,
+                                'column': 12
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createTextNode('\n                ');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        var el1 = dom.createTextNode('\n            ');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-profile-image', [], ['email', 'test@example.com', 'size', 100, 'debounce', 50], ['loc', [null, [2, 16], [2, 82]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this2.$('.gravatar-img').attr('style'), 'gravatar image style').to.be.blank;
+                done();
+            });
         });
 
         (0, _emberMocha.it)('throttles gravatar loading as email is changed', function (done) {
-            var _this = this;
+            var _this3 = this;
 
             var email = 'test@example.com';
-            var expectedUrl = '//www.gravatar.com/avatar/' + md5(email) + '?s=100&d=blank';
+            var expectedUrl = '//www.gravatar.com/avatar/' + md5(email) + '?s=100&d=404';
 
             this.set('email', 'test');
 
@@ -5044,7 +7221,7 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5082,20 +7259,18 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
                 };
             })()));
 
-            (0, _chai.expect)(this.$('.gravatar-img').length, '.gravatar-img not shown for invalid email').to.equal(0);
-
             run(function () {
-                _this.set('email', email);
+                _this3.set('email', email);
             });
 
-            (0, _chai.expect)(this.$('.gravatar-img').length, '.gravatar-img not immediately changed on email change').to.equal(0);
+            (0, _chai.expect)(this.$('.gravatar-img').attr('style'), '.gravatar-img background not immediately changed on email change').to.be.blank;
 
-            _ember['default'].run.later(this, function () {
-                (0, _chai.expect)(this.$('.gravatar-img').length, '.gravatar-img still not shown before throttle timeout').to.equal(0);
+            run.later(this, function () {
+                (0, _chai.expect)(this.$('.gravatar-img').attr('style'), '.gravatar-img background still not changed before debounce timeout').to.be.blank;
             }, 250);
 
-            _ember['default'].run.later(this, function () {
-                (0, _chai.expect)(this.$('.gravatar-img').attr('style'), '.gravatar-img style after timeout').to.equal('background-image: url(' + expectedUrl + ')');
+            run.later(this, function () {
+                (0, _chai.expect)(this.$('.gravatar-img').attr('style'), '.gravatar-img background changed after debounce timeout').to.equal('background-image: url(' + expectedUrl + ')');
                 done();
             }, 400);
         });
@@ -5103,6 +7278,119 @@ define('ghost/tests/integration/components/gh-profile-image-test', ['exports', '
 });
 /* jshint expr:true */
 /* global md5 */
+define('ghost/tests/integration/components/gh-search-input-test', ['exports', 'chai', 'ember-mocha', 'ember'], function (exports, _chai, _emberMocha, _ember) {
+    var run = _ember['default'].run;
+
+    (0, _emberMocha.describeComponent)('gh-search-input', 'Integration: Component: gh-search-input', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            // renders the component on the page
+            this.render(_ember['default'].HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 19
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'gh-search-input', ['loc', [null, [1, 0], [1, 19]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('.ember-power-select-search input')).to.have.length(1);
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/integration/components/gh-subscribers-table-test', ['exports', 'chai', 'ember-mocha', 'ember-light-table'], function (exports, _chai, _emberMocha, _emberLightTable) {
+
+    (0, _emberMocha.describeComponent)('gh-subscribers-table', 'Integration: Component: gh-subscribers-table', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            this.set('table', new _emberLightTable['default']([], []));
+            this.set('sortByColumn', function () {});
+            this.set('delete', function () {});
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 94
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-subscribers-table', [], ['table', ['subexpr', '@mut', [['get', 'table', ['loc', [null, [1, 29], [1, 34]]]]], [], []], 'sortByColumn', ['subexpr', 'action', [['get', 'sortByColumn', ['loc', [null, [1, 56], [1, 68]]]]], [], ['loc', [null, [1, 48], [1, 69]]]], 'delete', ['subexpr', 'action', [['get', 'delete', ['loc', [null, [1, 85], [1, 91]]]]], [], ['loc', [null, [1, 77], [1, 92]]]]], ['loc', [null, [1, 0], [1, 94]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ember-data'], function (exports, _chai, _emberMocha, _ember, _emberData) {
     var run = _ember['default'].run;
 
@@ -5152,7 +7440,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5200,7 +7488,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5251,7 +7539,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5289,7 +7577,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                 };
             })()));
 
-            (0, _chai.expect)(this.$('.image-uploader').length, 'displays image uploader').to.equal(1);
+            (0, _chai.expect)(this.$('.gh-image-uploader').length, 'displays image uploader').to.equal(1);
             (0, _chai.expect)(this.$('input[name="name"]').val(), 'name field value').to.equal('Test');
             (0, _chai.expect)(this.$('input[name="slug"]').val(), 'slug field value').to.equal('test');
             (0, _chai.expect)(this.$('textarea[name="description"]').val(), 'description field value').to.equal('Description.');
@@ -5307,7 +7595,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5377,7 +7665,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5448,7 +7736,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5543,7 +7831,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5609,7 +7897,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5664,7 +7952,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5725,7 +8013,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5781,7 +8069,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5842,7 +8130,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5906,7 +8194,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -5959,7 +8247,7 @@ define('ghost/tests/integration/components/gh-tag-settings-form-test', ['exports
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6023,7 +8311,7 @@ define('ghost/tests/integration/components/gh-tags-management-container-test', [
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6059,7 +8347,7 @@ define('ghost/tests/integration/components/gh-tags-management-container-test', [
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6121,7 +8409,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6157,7 +8445,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6207,7 +8495,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6243,7 +8531,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6294,7 +8582,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6330,7 +8618,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6380,7 +8668,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                     return {
                         meta: {
                             'fragmentReason': false,
-                            'revision': 'Ember@2.4.4',
+                            'revision': 'Ember@2.5.1',
                             'loc': {
                                 'source': null,
                                 'start': {
@@ -6416,7 +8704,7 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6458,6 +8746,192 @@ define('ghost/tests/integration/components/gh-validation-status-container-test',
     });
 });
 /* jshint expr:true */
+define('ghost/tests/integration/components/modals/delete-subscriber-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeComponent)('modals/delete-subscriber', 'Integration: Component: modals/delete-subscriber', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            // Set any properties with this.set('myProperty', 'value');
+            // Handle any actions with this.on('myAction', function(val) { ... });
+            // Template block usage:
+            // this.render(hbs`
+            //   {{#modals/delete-subscriber}}
+            //     template content
+            //   {{/modals/delete-subscriber}}
+            // `);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 28
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'modals/delete-subscriber', ['loc', [null, [1, 0], [1, 28]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/integration/components/modals/import-subscribers-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeComponent)('modals/import-subscribers', 'Integration: Component: modals/import-subscribers', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            // Set any properties with this.set('myProperty', 'value');
+            // Handle any actions with this.on('myAction', function(val) { ... });
+            // Template block usage:
+            // this.render(hbs`
+            //   {{#modals/import-subscribers}}
+            //     template content
+            //   {{/modals/import-subscribers}}
+            // `);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 29
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'modals/import-subscribers', ['loc', [null, [1, 0], [1, 29]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/integration/components/modals/new-subscriber-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeComponent)('modals/new-subscriber', 'Integration: Component: modals/new-subscriber', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            // Set any properties with this.set('myProperty', 'value');
+            // Handle any actions with this.on('myAction', function(val) { ... });
+            // Template block usage:
+            // this.render(hbs`
+            //   {{#modals/new-subscriber}}
+            //     template content
+            //   {{/modals/new-subscriber}}
+            // `);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.5.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 25
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'modals/new-subscriber', ['loc', [null, [1, 0], [1, 25]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/integration/components/transfer-owner-test', ['exports', 'chai', 'ember-mocha', 'ember', 'sinon'], function (exports, _chai, _emberMocha, _ember, _sinon) {
     var RSVP = _ember['default'].RSVP;
     var run = _ember['default'].run;
@@ -6483,7 +8957,7 @@ define('ghost/tests/integration/components/transfer-owner-test', ['exports', 'ch
                             'name': 'missing-wrapper',
                             'problems': ['wrong-type']
                         },
-                        'revision': 'Ember@2.4.4',
+                        'revision': 'Ember@2.5.1',
                         'loc': {
                             'source': null,
                             'start': {
@@ -6529,11 +9003,14 @@ define('ghost/tests/integration/components/transfer-owner-test', ['exports', 'ch
     });
 });
 /* jshint expr:true */
-define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-mocha', 'pretender', 'ember-ajax/errors'], function (exports, _chai, _emberMocha, _pretender, _emberAjaxErrors) {
+define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-mocha', 'pretender', 'ember-ajax/errors', 'ghost/services/ajax'], function (exports, _chai, _emberMocha, _pretender, _emberAjaxErrors, _ghostServicesAjax) {
 
-    function stubAjaxEndpoint(server, response) {
+    function stubAjaxEndpoint(server) {
+        var response = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+        var code = arguments.length <= 2 || arguments[2] === undefined ? 500 : arguments[2];
+
         server.get('/test/', function () {
-            return [500, { 'Content-Type': 'application/json' }, JSON.stringify(response)];
+            return [code, { 'Content-Type': 'application/json' }, JSON.stringify(response)];
         });
     }
 
@@ -6606,9 +9083,7 @@ define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-
         });
 
         (0, _emberMocha.it)('returns known error object for built-in errors', function (done) {
-            server.get('/test/', function () {
-                return [401, { 'Content-Type': 'application/json' }, ''];
-            });
+            stubAjaxEndpoint(server, '', 401);
 
             var ajax = this.subject();
 
@@ -6616,6 +9091,32 @@ define('ghost/tests/integration/services/ajax-test', ['exports', 'chai', 'ember-
                 (0, _chai.expect)(false).to.be['true'];
             })['catch'](function (error) {
                 (0, _chai.expect)(error).to.be.instanceOf(_emberAjaxErrors.UnauthorizedError);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('returns RequestEntityTooLargeError object for 413 errors', function (done) {
+            stubAjaxEndpoint(server, {}, 413);
+
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true'];
+            })['catch'](function (error) {
+                (0, _chai.expect)(error).to.be.instanceOf(_ghostServicesAjax.RequestEntityTooLargeError);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('returns UnsupportedMediaTypeError object for 415 errors', function (done) {
+            stubAjaxEndpoint(server, {}, 415);
+
+            var ajax = this.subject();
+
+            ajax.request('/test/').then(function () {
+                (0, _chai.expect)(false).to.be['true'];
+            })['catch'](function (error) {
+                (0, _chai.expect)(error).to.be.instanceOf(_ghostServicesAjax.UnsupportedMediaTypeError);
                 done();
             });
         });
@@ -6685,24 +9186,12 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
 
         (0, _emberMocha.it)('loads labs settings correctly', function (done) {
             stubSettings(server, { testFlag: true });
+            addTestFlag();
 
             var service = this.subject();
 
-            service.get('labs').then(function (labs) {
-                expect(labs.testFlag).to.be['true'];
-                done();
-            });
-        });
-
-        (0, _emberMocha.it)('caches the labs promise', function (done) {
-            stubSettings(server, { testFlag: true });
-
-            var service = this.subject();
-            var calls = [service.get('labs'), service.get('labs'), service.get('labs')];
-
-            RSVP.all(calls).then(function () {
-                expect(server.handledRequests.length, 'requests after 3 calls').to.equal(1);
-
+            service.fetch().then(function () {
+                expect(service.get('testFlag')).to.be['true'];
                 done();
             });
         });
@@ -6714,20 +9203,9 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
             var service = this.subject();
             service.get('config').set('testFlag', false);
 
-            var testFlag = undefined,
-                labsTestFlag = undefined;
-
-            service.get('testFlag').then(function (result) {
-                testFlag = result;
-            });
-
-            service.get('labs').then(function (labs) {
-                labsTestFlag = labs.testFlag;
-            });
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                expect(labsTestFlag).to.be['false'];
-                expect(testFlag).to.be['false'];
+            service.fetch().then(function () {
+                expect(service.get('labs.testFlag')).to.be['false'];
+                expect(service.get('testFlag')).to.be['false'];
                 done();
             });
         });
@@ -6739,20 +9217,9 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
             var service = this.subject();
             service.get('config').set('testFlag', true);
 
-            var testFlag = undefined,
-                labsTestFlag = undefined;
-
-            service.get('testFlag').then(function (result) {
-                testFlag = result;
-            });
-
-            service.get('labs').then(function (labs) {
-                labsTestFlag = labs.testFlag;
-            });
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                expect(labsTestFlag).to.be['false'];
-                expect(testFlag).to.be['true'];
+            service.fetch().then(function () {
+                expect(service.get('labs.testFlag')).to.be['false'];
+                expect(service.get('testFlag')).to.be['true'];
                 done();
             });
         });
@@ -6764,20 +9231,9 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
             var service = this.subject();
             service.get('config').set('testFlag', false);
 
-            var testFlag = undefined,
-                labsTestFlag = undefined;
-
-            service.get('testFlag').then(function (result) {
-                testFlag = result;
-            });
-
-            service.get('labs').then(function (labs) {
-                labsTestFlag = labs.testFlag;
-            });
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                expect(labsTestFlag).to.be['true'];
-                expect(testFlag).to.be['true'];
+            service.fetch().then(function () {
+                expect(service.get('labs.testFlag')).to.be['true'];
+                expect(service.get('testFlag')).to.be['true'];
                 done();
             });
         });
@@ -6789,20 +9245,9 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
             var service = this.subject();
             service.get('config').set('testFlag', true);
 
-            var testFlag = undefined,
-                labsTestFlag = undefined;
-
-            service.get('testFlag').then(function (result) {
-                testFlag = result;
-            });
-
-            service.get('labs').then(function (labs) {
-                labsTestFlag = labs.testFlag;
-            });
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                expect(labsTestFlag).to.be['true'];
-                expect(testFlag).to.be['true'];
+            service.fetch().then(function () {
+                expect(service.get('labs.testFlag')).to.be['true'];
+                expect(service.get('testFlag')).to.be['true'];
                 done();
             });
         });
@@ -6813,21 +9258,16 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
 
             var service = this.subject();
 
-            run(function () {
-                service.get('testFlag').then(function (testFlag) {
-                    expect(testFlag).to.be['false'];
+            service.fetch().then(function () {
+                expect(service.get('testFlag')).to.be['false'];
+
+                run(function () {
+                    service.set('testFlag', true);
                 });
-            });
 
-            run(function () {
-                service.set('testFlag', true);
-            });
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                expect(server.handlers[1].numberOfCalls).to.equal(1);
-
-                service.get('testFlag').then(function (testFlag) {
-                    expect(testFlag).to.be['true'];
+                return (0, _emberTestHelpersWait['default'])().then(function () {
+                    expect(server.handlers[1].numberOfCalls).to.equal(1);
+                    expect(service.get('testFlag')).to.be['true'];
                     done();
                 });
             });
@@ -6839,23 +9279,17 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
 
             var service = this.subject();
 
-            run(function () {
-                service.get('testFlag').then(function (testFlag) {
-                    expect(testFlag).to.be['false'];
+            service.fetch().then(function () {
+                expect(service.get('testFlag')).to.be['false'];
+
+                run(function () {
+                    service.set('testFlag', true);
                 });
-            });
 
-            run(function () {
-                service.set('testFlag', true);
-            });
-
-            return (0, _emberTestHelpersWait['default'])().then(function () {
-                expect(server.handlers[1].numberOfCalls).to.equal(1);
-
-                expect(service.get('notifications.notifications').length).to.equal(1);
-
-                service.get('testFlag').then(function (testFlag) {
-                    expect(testFlag).to.be['false'];
+                return (0, _emberTestHelpersWait['default'])().then(function () {
+                    expect(server.handlers[1].numberOfCalls).to.equal(1);
+                    expect(service.get('notifications.notifications').length).to.equal(1);
+                    expect(service.get('testFlag')).to.be['false'];
                     done();
                 });
             });
@@ -6867,21 +9301,21 @@ define('ghost/tests/integration/services/feature-test', ['exports', 'ember-mocha
 
             var service = this.subject();
 
-            run(function () {
-                service.get('testFlag').then(function (testFlag) {
-                    expect(testFlag).to.be['false'];
+            service.fetch().then(function () {
+                expect(service.get('testFlag')).to.be['false'];
+
+                run(function () {
+                    expect(function () {
+                        service.set('testFlag', true);
+                    }, EmberError, 'threw validation error');
                 });
-            });
 
-            run(function () {
-                expect(function () {
-                    service.set('testFlag', true);
-                }, EmberError, 'Threw validation error');
-            });
-
-            service.get('testFlag').then(function (testFlag) {
-                expect(testFlag).to.be['false'];
-                done();
+                return (0, _emberTestHelpersWait['default'])().then(function () {
+                    // ensure validation is happening before the API is hit
+                    expect(server.handlers[1].numberOfCalls).to.equal(0);
+                    expect(service.get('testFlag')).to.be['false'];
+                    done();
+                });
             });
         });
     });
@@ -7046,6 +9480,681 @@ define('ghost/tests/unit/components/gh-editor-test', ['exports', 'chai', 'ember-
     });
 });
 /* jshint expr:true */
+define('ghost/tests/unit/components/gh-file-uploader-test', ['exports', 'chai', 'ember-mocha', 'ember', 'sinon', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _ember, _sinon, _pretender, _emberTestHelpersWait) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    var run = _ember['default'].run;
+
+    var createFile = function createFile() {
+        var content = arguments.length <= 0 || arguments[0] === undefined ? ['test'] : arguments[0];
+        var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+        var name = options.name;
+        var type = options.type;
+        var lastModifiedDate = options.lastModifiedDate;
+
+        var file = new Blob(content, { type: type ? type : 'text/plain' });
+        file.name = name ? name : 'text.txt';
+
+        return file;
+    };
+
+    var stubSuccessfulUpload = function stubSuccessfulUpload(server) {
+        var delay = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [200, { 'Content-Type': 'application/json' }, '"/content/images/test.png"'];
+        }, delay);
+    };
+
+    var stubFailedUpload = function stubFailedUpload(server, code, error) {
+        var delay = arguments.length <= 3 || arguments[3] === undefined ? 0 : arguments[3];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [code, { 'Content-Type': 'application/json' }, JSON.stringify({
+                errors: [{
+                    errorType: error,
+                    message: 'Error: ' + error
+                }]
+            })];
+        }, delay);
+    };
+
+    (0, _emberMocha.describeComponent)('gh-file-uploader', 'Unit: Component: gh-file-uploader', {
+        needs: ['service:ajax', 'service:session', // used by ajax service
+        'service:feature', 'component:x-file-input'],
+        unit: true
+    }, function () {
+        var server = undefined,
+            url = undefined;
+
+        beforeEach(function () {
+            server = new _pretender['default']();
+            url = '/ghost/api/v0.1/uploads/';
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('renders', function () {
+            // creates the component instance
+            var component = this.subject();
+            // renders the component on the page
+            this.render();
+            (0, _chai.expect)(component).to.be.ok;
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+
+        (0, _emberMocha.it)('fires uploadSuccess action on successful upload', function (done) {
+            var uploadSuccess = _sinon['default'].spy();
+            var component = this.subject({ url: url, uploadSuccess: uploadSuccess });
+            var file = createFile();
+
+            stubSuccessfulUpload(server);
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
+                (0, _chai.expect)(uploadSuccess.firstCall.args[0]).to.equal('/content/images/test.png');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires uploadStarted action on upload start', function (done) {
+            var uploadStarted = _sinon['default'].spy();
+            var component = this.subject({ url: url, uploadStarted: uploadStarted });
+            var file = createFile();
+
+            stubSuccessfulUpload(server);
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadStarted.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires uploadFinished action on successful upload', function (done) {
+            var uploadFinished = _sinon['default'].spy();
+            var component = this.subject({ url: url, uploadFinished: uploadFinished });
+            var file = createFile();
+
+            stubSuccessfulUpload(server);
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires uploadFinished action on failed upload', function (done) {
+            var uploadFinished = _sinon['default'].spy();
+            var component = this.subject({ url: url, uploadFinished: uploadFinished });
+            var file = createFile();
+
+            stubFailedUpload(server);
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays invalid file type error', function (done) {
+            var _this = this;
+
+            var component = this.subject({ url: url });
+            var file = createFile();
+
+            stubFailedUpload(server, 415, 'UnsupportedMediaTypeError');
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this.$('.failed').text()).to.match(/The file type you uploaded is not supported/);
+                (0, _chai.expect)(_this.$('.btn-green').length, 'reset button is displayed').to.equal(1);
+                (0, _chai.expect)(_this.$('.btn-green').text()).to.equal('Try Again');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays file too large for server error', function (done) {
+            var _this2 = this;
+
+            var component = this.subject({ url: url });
+            var file = createFile();
+
+            stubFailedUpload(server, 413, 'RequestEntityTooLargeError');
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this2.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this2.$('.failed').text()).to.match(/The file you uploaded was larger/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('handles file too large error directly from the web server', function (done) {
+            var _this3 = this;
+
+            var component = this.subject({ url: url });
+            var file = createFile();
+
+            server.post('/ghost/api/v0.1/uploads/', function () {
+                return [413, {}, ''];
+            });
+
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this3.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this3.$('.failed').text()).to.match(/The file you uploaded was larger/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays other server-side error with message', function (done) {
+            var _this4 = this;
+
+            var component = this.subject({ url: url });
+            var file = createFile();
+
+            stubFailedUpload(server, 400, 'UnknownError');
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this4.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this4.$('.failed').text()).to.match(/Error: UnknownError/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('handles unknown failure', function (done) {
+            var _this5 = this;
+
+            var component = this.subject({ url: url });
+            var file = createFile();
+
+            server.post('/ghost/api/v0.1/uploads/', function () {
+                return [500, { 'Content-Type': 'application/json' }, ''];
+            });
+
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this5.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this5.$('.failed').text()).to.match(/Something went wrong/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('can be reset after a failed upload', function (done) {
+            var _this6 = this;
+
+            var component = this.subject({ url: url });
+            var file = createFile();
+
+            stubFailedUpload(server, 400, 'UnknownError');
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                run(function () {
+                    _this6.$('.btn-green').click();
+                });
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this6.$('input[type="file"]').length).to.equal(1);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays upload progress', function (done) {
+            var component = this.subject({ url: url, uploadFinished: done });
+            var file = createFile();
+
+            // pretender fires a progress event every 50ms
+            stubSuccessfulUpload(server, 150);
+            this.render();
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            // after 75ms we should have had one progress event
+            run.later(this, function () {
+                (0, _chai.expect)(this.$('.progress .bar').length).to.equal(1);
+
+                var _$$attr$match = this.$('.progress .bar').attr('style').match(/width: (\d+)%?/);
+
+                var _$$attr$match2 = _slicedToArray(_$$attr$match, 2);
+
+                var _ = _$$attr$match2[0];
+                var percentageWidth = _$$attr$match2[1];
+
+                (0, _chai.expect)(percentageWidth).to.be.above(0);
+                (0, _chai.expect)(percentageWidth).to.be.below(100);
+            }, 75);
+        });
+
+        (0, _emberMocha.it)('triggers file upload on file drop', function (done) {
+            var _this7 = this;
+
+            var uploadSuccess = _sinon['default'].spy();
+            var component = this.subject({ url: url, uploadSuccess: uploadSuccess });
+            var file = createFile();
+            var drop = _ember['default'].$.Event('drop', {
+                dataTransfer: {
+                    files: [file]
+                }
+            });
+
+            stubSuccessfulUpload(server);
+            this.render();
+
+            run(function () {
+                _this7.$().trigger(drop);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
+                (0, _chai.expect)(uploadSuccess.firstCall.args[0]).to.equal('/content/images/test.png');
+                done();
+            });
+        });
+    });
+});
+/* jshint expr:true */
+/* global Blob */
+define('ghost/tests/unit/components/gh-image-uploader-test', ['exports', 'chai', 'ember-mocha', 'ember', 'sinon', 'pretender', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _ember, _sinon, _pretender, _emberTestHelpersWait) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
+    var run = _ember['default'].run;
+
+    var createFile = function createFile() {
+        var content = arguments.length <= 0 || arguments[0] === undefined ? ['test'] : arguments[0];
+        var options = arguments.length <= 1 || arguments[1] === undefined ? {} : arguments[1];
+        var name = options.name;
+        var type = options.type;
+        var lastModifiedDate = options.lastModifiedDate;
+
+        var file = new Blob(content, { type: type ? type : 'text/plain' });
+        file.name = name ? name : 'text.txt';
+
+        return file;
+    };
+
+    var stubSuccessfulUpload = function stubSuccessfulUpload(server) {
+        var delay = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [200, { 'Content-Type': 'application/json' }, '"/content/images/test.png"'];
+        }, delay);
+    };
+
+    var stubFailedUpload = function stubFailedUpload(server, code, error) {
+        var delay = arguments.length <= 3 || arguments[3] === undefined ? 0 : arguments[3];
+
+        server.post('/ghost/api/v0.1/uploads/', function () {
+            return [code, { 'Content-Type': 'application/json' }, JSON.stringify({
+                errors: [{
+                    errorType: error,
+                    message: 'Error: ' + error
+                }]
+            })];
+        }, delay);
+    };
+
+    (0, _emberMocha.describeComponent)('gh-image-uploader', 'Unit: Component: gh-image-uploader', {
+        needs: ['service:config', 'service:session', 'service:ajax', 'service:feature', 'component:x-file-input', 'component:one-way-input'],
+        unit: true
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new _pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('renders', function () {
+            // creates the component instance
+            var component = this.subject();
+            // renders the component on the page
+            this.render();
+            (0, _chai.expect)(component).to.be.ok;
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+
+        (0, _emberMocha.it)('fires update action on successful upload', function (done) {
+            var component = this.subject();
+            var update = _sinon['default'].spy();
+            var file = createFile();
+
+            stubSuccessfulUpload(server);
+
+            this.render();
+            component.attrs.update = update;
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(update.calledOnce).to.be['true'];
+                (0, _chai.expect)(update.firstCall.args[0]).to.equal('/content/images/test.png');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires uploadStarted action on upload start', function (done) {
+            var component = this.subject();
+            var uploadStarted = _sinon['default'].spy();
+            var file = createFile();
+
+            stubSuccessfulUpload(server);
+
+            this.render();
+            component.attrs.update = function () {};
+            component.attrs.uploadStarted = uploadStarted;
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadStarted.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires uploadFinished action on successful upload', function (done) {
+            var component = this.subject();
+            var uploadFinished = _sinon['default'].spy();
+            var file = createFile();
+
+            stubSuccessfulUpload(server);
+
+            this.render();
+            component.attrs.update = function () {};
+            component.attrs.uploadFinished = uploadFinished;
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires uploadFinished action on failed upload', function (done) {
+            var component = this.subject();
+            var uploadFinished = _sinon['default'].spy();
+            var file = createFile();
+
+            stubFailedUpload(server);
+
+            this.render();
+            component.attrs.update = function () {};
+            component.attrs.uploadFinished = uploadFinished;
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays invalid file type error', function (done) {
+            var _this = this;
+
+            var component = this.subject();
+            var file = createFile();
+
+            stubFailedUpload(server, 415, 'UnsupportedMediaTypeError');
+
+            this.render();
+            component.attrs.update = function () {};
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this.$('.failed').text()).to.match(/The image type you uploaded is not supported/);
+                (0, _chai.expect)(_this.$('.btn-green').length, 'reset button is displayed').to.equal(1);
+                (0, _chai.expect)(_this.$('.btn-green').text()).to.equal('Try Again');
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays file too large for server error', function (done) {
+            var _this2 = this;
+
+            var component = this.subject();
+            var file = createFile();
+
+            stubFailedUpload(server, 413, 'RequestEntityTooLargeError');
+
+            this.render();
+            component.attrs.update = function () {};
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this2.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this2.$('.failed').text()).to.match(/The image you uploaded was larger/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('handles file too large error directly from the web server', function (done) {
+            var _this3 = this;
+
+            var component = this.subject();
+            var file = createFile();
+
+            server.post('/ghost/api/v0.1/uploads/', function () {
+                return [413, {}, ''];
+            });
+
+            this.render();
+            component.attrs.update = function () {};
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this3.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this3.$('.failed').text()).to.match(/The image you uploaded was larger/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays other server-side error with message', function (done) {
+            var _this4 = this;
+
+            var component = this.subject();
+            var file = createFile();
+
+            stubFailedUpload(server, 400, 'UnknownError');
+
+            this.render();
+            component.attrs.update = function () {};
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this4.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this4.$('.failed').text()).to.match(/Error: UnknownError/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('handles unknown failure', function (done) {
+            var _this5 = this;
+
+            var component = this.subject();
+            var file = createFile();
+
+            server.post('/ghost/api/v0.1/uploads/', function () {
+                return [500, { 'Content-Type': 'application/json' }, ''];
+            });
+
+            this.render();
+            component.attrs.update = function () {};
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this5.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this5.$('.failed').text()).to.match(/Something went wrong/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('can be reset after a failed upload', function (done) {
+            var _this6 = this;
+
+            var component = this.subject();
+            var file = createFile();
+
+            stubFailedUpload(server, 400, 'UnknownError');
+
+            this.render();
+            component.attrs.update = function () {};
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                run(function () {
+                    _this6.$('.btn-green').click();
+                });
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(_this6.$('input[type="file"]').length).to.equal(1);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('displays upload progress', function (done) {
+            var component = this.subject();
+            var file = createFile();
+
+            // pretender fires a progress event every 50ms
+            stubSuccessfulUpload(server, 150);
+
+            this.render();
+            component.attrs.update = function () {};
+            component.attrs.uploadFinished = done;
+
+            run(function () {
+                component.send('fileSelected', [file]);
+            });
+
+            // after 75ms we should have had one progress event
+            run.later(this, function () {
+                (0, _chai.expect)(this.$('.progress .bar').length).to.equal(1);
+
+                var _$$attr$match = this.$('.progress .bar').attr('style').match(/width: (\d+)%?/);
+
+                var _$$attr$match2 = _slicedToArray(_$$attr$match, 2);
+
+                var _ = _$$attr$match2[0];
+                var percentageWidth = _$$attr$match2[1];
+
+                (0, _chai.expect)(percentageWidth).to.be.above(0);
+                (0, _chai.expect)(percentageWidth).to.be.below(100);
+            }, 75);
+        });
+
+        (0, _emberMocha.it)('triggers file upload on file drop', function (done) {
+            var _this7 = this;
+
+            var component = this.subject();
+            var file = createFile();
+            var update = _sinon['default'].spy();
+            var drop = _ember['default'].$.Event('drop', {
+                dataTransfer: {
+                    files: [file]
+                }
+            });
+
+            stubSuccessfulUpload(server);
+
+            this.render();
+            component.attrs.update = update;
+
+            run(function () {
+                _this7.$().trigger(drop);
+            });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(update.calledOnce).to.be['true'];
+                (0, _chai.expect)(update.firstCall.args[0]).to.equal('/content/images/test.png');
+                done();
+            });
+        });
+    });
+});
+/* jshint expr:true */
+/* global Blob */
 define('ghost/tests/unit/components/gh-infinite-scroll-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
 
     (0, _emberMocha.describeComponent)('gh-infinite-scroll', 'Unit: Component: gh-infinite-scroll', {
@@ -7146,24 +10255,6 @@ define('ghost/tests/unit/components/gh-posts-list-item-test', ['exports', 'chai'
             // creates the component instance
             var component = this.subject();
 
-            (0, _chai.expect)(component._state).to.equal('preRender');
-
-            // renders the component on the page
-            this.render();
-            (0, _chai.expect)(component._state).to.equal('inDOM');
-        });
-    });
-});
-/* jshint expr:true */
-define('ghost/tests/unit/components/gh-search-input-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
-
-    (0, _emberMocha.describeComponent)('gh-search-input', 'Unit: Component: gh-search-input', {
-        unit: true,
-        needs: ['component:gh-selectize']
-    }, function () {
-        (0, _emberMocha.it)('renders', function () {
-            // creates the component instance
-            var component = this.subject();
             (0, _chai.expect)(component._state).to.equal('preRender');
 
             // renders the component on the page
@@ -8143,14 +11234,14 @@ define('ghost/tests/unit/controllers/settings/general-test', ['exports', 'ember'
         });
     });
 });
-define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/controllers/settings/navigation'], function (exports, _chai, _emberMocha, _ember, _ghostControllersSettingsNavigation) {
+define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/models/navigation-item'], function (exports, _chai, _emberMocha, _ember, _ghostModelsNavigationItem) {
     var run = _ember['default'].run;
 
     var navSettingJSON = '[\n    {"label":"Home","url":"/"},\n    {"label":"JS Test","url":"javascript:alert(\'hello\');"},\n    {"label":"About","url":"/about"},\n    {"label":"Sub Folder","url":"/blah/blah"},\n    {"label":"Telephone","url":"tel:01234-567890"},\n    {"label":"Mailto","url":"mailto:test@example.com"},\n    {"label":"External","url":"https://example.com/testing?query=test#anchor"},\n    {"label":"No Protocol","url":"//example.com"}\n]';
 
     (0, _emberMocha.describeModule)('controller:settings/navigation', 'Unit: Controller: settings/navigation', {
         // Specify the other units that are required for this test.
-        needs: ['service:config', 'service:notifications']
+        needs: ['service:config', 'service:notifications', 'model:navigation-item']
     }, function () {
         (0, _emberMocha.it)('blogUrl: captures config and ensures trailing slash', function () {
             var ctrl = this.subject();
@@ -8173,31 +11264,19 @@ define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'cha
             (0, _chai.expect)(ctrl.get('blogUrl')).to.equal('http://localhost:2368/blog/');
         });
 
-        (0, _emberMocha.it)('navigationItems: generates list of NavItems', function () {
-            var ctrl = this.subject();
-
-            run(function () {
-                ctrl.set('model', _ember['default'].Object.create({ navigation: navSettingJSON }));
-                (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(8);
-                (0, _chai.expect)(ctrl.get('navigationItems.firstObject.label')).to.equal('Home');
-                (0, _chai.expect)(ctrl.get('navigationItems.firstObject.url')).to.equal('/');
-                (0, _chai.expect)(ctrl.get('navigationItems.firstObject.isNew')).to.be['false'];
-            });
-        });
-
         (0, _emberMocha.it)('save: validates nav items', function (done) {
             var ctrl = this.subject();
 
             run(function () {
-                ctrl.set('model', _ember['default'].Object.create({ navigation: '[\n                    {"label":"First",   "url":"/"},\n                    {"label":"",        "url":"/second"},\n                    {"label":"Third",   "url":""}\n                ]' }));
+                ctrl.set('model', _ember['default'].Object.create({ navigation: [_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/' }), _ghostModelsNavigationItem['default'].create({ label: '', url: '/second' }), _ghostModelsNavigationItem['default'].create({ label: 'Third', url: '' })] }));
                 // blank item won't get added because the last item is incomplete
-                (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(3);
+                (0, _chai.expect)(ctrl.get('model.navigation.length')).to.equal(3);
 
                 ctrl.save().then(function passedValidation() {
                     (0, _chai.assert)(false, 'navigationItems weren\'t validated on save');
                     done();
                 })['catch'](function failedValidation() {
-                    var navItems = ctrl.get('navigationItems');
+                    var navItems = ctrl.get('model.navigation');
                     (0, _chai.expect)(navItems[0].get('errors').toArray()).to.be.empty;
                     (0, _chai.expect)(navItems[1].get('errors.firstObject.attribute')).to.equal('label');
                     (0, _chai.expect)(navItems[2].get('errors.firstObject.attribute')).to.equal('url');
@@ -8210,47 +11289,16 @@ define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'cha
             var ctrl = this.subject();
 
             run(function () {
-                ctrl.set('model', _ember['default'].Object.create({ navigation: '[\n                    {"label":"First",   "url":"/"},\n                    {"label":"",        "url":""}\n                ]' }));
+                ctrl.set('model', _ember['default'].Object.create({ navigation: [_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/' }), _ghostModelsNavigationItem['default'].create({ label: '', url: '' })] }));
 
-                (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(2);
+                (0, _chai.expect)(ctrl.get('model.navigation.length')).to.equal(2);
 
                 ctrl.save().then(function passedValidation() {
                     (0, _chai.assert)(false, 'navigationItems weren\'t validated on save');
                     done();
                 })['catch'](function failedValidation() {
-                    var navItems = ctrl.get('navigationItems');
+                    var navItems = ctrl.get('model.navigation');
                     (0, _chai.expect)(navItems[0].get('errors').toArray()).to.be.empty;
-                    done();
-                });
-            });
-        });
-
-        (0, _emberMocha.it)('save: generates new navigation JSON', function (done) {
-            var ctrl = this.subject();
-            var model = _ember['default'].Object.create({ navigation: {} });
-            var expectedJSON = '[{"label":"New","url":"/new"}]';
-
-            model.save = function () {
-                var _this = this;
-
-                return new _ember['default'].RSVP.Promise(function (resolve, reject) {
-                    return resolve(_this);
-                });
-            };
-
-            run(function () {
-                ctrl.set('model', model);
-
-                // remove inserted blank item so validation works
-                ctrl.get('navigationItems').removeObject(ctrl.get('navigationItems.firstObject'));
-                // add new object
-                ctrl.get('navigationItems').addObject(_ghostControllersSettingsNavigation.NavItem.create({ label: 'New', url: '/new' }));
-
-                ctrl.save().then(function success() {
-                    (0, _chai.expect)(ctrl.get('model.navigation')).to.equal(expectedJSON);
-                    done();
-                }, function failure() {
-                    (0, _chai.assert)(false, 'save failed with valid data');
                     done();
                 });
             });
@@ -8260,10 +11308,10 @@ define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'cha
             var ctrl = this.subject();
 
             run(function () {
-                ctrl.set('navigationItems', [_ghostControllersSettingsNavigation.NavItem.create({ label: 'First', url: '/first', last: true })]);
+                ctrl.set('model', _ember['default'].Object.create({ navigation: [_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/first', last: true })] }));
             });
 
-            (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(1);
+            (0, _chai.expect)(ctrl.get('model.navigation.length')).to.equal(1);
 
             ctrl.set('newNavItem.label', 'New');
             ctrl.set('newNavItem.url', '/new');
@@ -8272,10 +11320,10 @@ define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'cha
                 ctrl.send('addItem');
             });
 
-            (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(2);
-            (0, _chai.expect)(ctrl.get('navigationItems.lastObject.label')).to.equal('New');
-            (0, _chai.expect)(ctrl.get('navigationItems.lastObject.url')).to.equal('/new');
-            (0, _chai.expect)(ctrl.get('navigationItems.lastObject.isNew')).to.be['false'];
+            (0, _chai.expect)(ctrl.get('model.navigation.length')).to.equal(2);
+            (0, _chai.expect)(ctrl.get('model.navigation.lastObject.label')).to.equal('New');
+            (0, _chai.expect)(ctrl.get('model.navigation.lastObject.url')).to.equal('/new');
+            (0, _chai.expect)(ctrl.get('model.navigation.lastObject.isNew')).to.be['false'];
             (0, _chai.expect)(ctrl.get('newNavItem.label')).to.be.blank;
             (0, _chai.expect)(ctrl.get('newNavItem.url')).to.be.blank;
             (0, _chai.expect)(ctrl.get('newNavItem.isNew')).to.be['true'];
@@ -8285,47 +11333,60 @@ define('ghost/tests/unit/controllers/settings/navigation-test', ['exports', 'cha
             var ctrl = this.subject();
 
             run(function () {
-                ctrl.set('navigationItems', [_ghostControllersSettingsNavigation.NavItem.create({ label: '', url: '', last: true })]);
-                (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(1);
+                ctrl.set('model', _ember['default'].Object.create({ navigation: [_ghostModelsNavigationItem['default'].create({ label: '', url: '', last: true })] }));
+                (0, _chai.expect)(ctrl.get('model.navigation.length')).to.equal(1);
                 ctrl.send('addItem');
-                (0, _chai.expect)(ctrl.get('navigationItems.length')).to.equal(1);
+                (0, _chai.expect)(ctrl.get('model.navigation.length')).to.equal(1);
             });
         });
 
         (0, _emberMocha.it)('action - deleteItem: removes item from navigationItems', function () {
             var ctrl = this.subject();
-            var navItems = [_ghostControllersSettingsNavigation.NavItem.create({ label: 'First', url: '/first' }), _ghostControllersSettingsNavigation.NavItem.create({ label: 'Second', url: '/second', last: true })];
+            var navItems = [_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/first' }), _ghostModelsNavigationItem['default'].create({ label: 'Second', url: '/second', last: true })];
 
             run(function () {
-                ctrl.set('navigationItems', navItems);
-                (0, _chai.expect)(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['First', 'Second']);
-                ctrl.send('deleteItem', ctrl.get('navigationItems.firstObject'));
-                (0, _chai.expect)(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['Second']);
+                ctrl.set('model', _ember['default'].Object.create({ navigation: navItems }));
+                (0, _chai.expect)(ctrl.get('model.navigation').mapBy('label')).to.deep.equal(['First', 'Second']);
+                ctrl.send('deleteItem', ctrl.get('model.navigation.firstObject'));
+                (0, _chai.expect)(ctrl.get('model.navigation').mapBy('label')).to.deep.equal(['Second']);
             });
         });
 
         (0, _emberMocha.it)('action - reorderItems: updates navigationItems list', function () {
             var ctrl = this.subject();
-            var navItems = [_ghostControllersSettingsNavigation.NavItem.create({ label: 'First', url: '/first' }), _ghostControllersSettingsNavigation.NavItem.create({ label: 'Second', url: '/second', last: true })];
+            var navItems = [_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/first' }), _ghostModelsNavigationItem['default'].create({ label: 'Second', url: '/second', last: true })];
 
             run(function () {
-                ctrl.set('navigationItems', navItems);
-                (0, _chai.expect)(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['First', 'Second']);
+                ctrl.set('model', _ember['default'].Object.create({ navigation: navItems }));
+                (0, _chai.expect)(ctrl.get('model.navigation').mapBy('label')).to.deep.equal(['First', 'Second']);
                 ctrl.send('reorderItems', navItems.reverseObjects());
-                (0, _chai.expect)(ctrl.get('navigationItems').mapBy('label')).to.deep.equal(['Second', 'First']);
+                (0, _chai.expect)(ctrl.get('model.navigation').mapBy('label')).to.deep.equal(['Second', 'First']);
             });
         });
 
         (0, _emberMocha.it)('action - updateUrl: updates URL on navigationItem', function () {
             var ctrl = this.subject();
-            var navItems = [_ghostControllersSettingsNavigation.NavItem.create({ label: 'First', url: '/first' }), _ghostControllersSettingsNavigation.NavItem.create({ label: 'Second', url: '/second', last: true })];
+            var navItems = [_ghostModelsNavigationItem['default'].create({ label: 'First', url: '/first' }), _ghostModelsNavigationItem['default'].create({ label: 'Second', url: '/second', last: true })];
 
             run(function () {
-                ctrl.set('navigationItems', navItems);
-                (0, _chai.expect)(ctrl.get('navigationItems').mapBy('url')).to.deep.equal(['/first', '/second']);
-                ctrl.send('updateUrl', '/new', ctrl.get('navigationItems.firstObject'));
-                (0, _chai.expect)(ctrl.get('navigationItems').mapBy('url')).to.deep.equal(['/new', '/second']);
+                ctrl.set('model', _ember['default'].Object.create({ navigation: navItems }));
+                (0, _chai.expect)(ctrl.get('model.navigation').mapBy('url')).to.deep.equal(['/first', '/second']);
+                ctrl.send('updateUrl', '/new', ctrl.get('model.navigation.firstObject'));
+                (0, _chai.expect)(ctrl.get('model.navigation').mapBy('url')).to.deep.equal(['/new', '/second']);
             });
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/controllers/subscribers-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeModule)('controller:subscribers', 'Unit: Controller: subscribers', {
+        needs: ['service:notifications']
+    }, function () {
+        // Replace this with your real tests.
+        (0, _emberMocha.it)('exists', function () {
+            var controller = this.subject();
+            (0, _chai.expect)(controller).to.be.ok;
         });
     });
 });
@@ -8386,6 +11447,18 @@ define('ghost/tests/unit/helpers/gh-user-can-admin-test', ['exports', 'ember-moc
         });
     });
 });
+define('ghost/tests/unit/helpers/highlighted-text-test', ['exports', 'chai', 'mocha', 'ghost/helpers/highlighted-text'], function (exports, _chai, _mocha, _ghostHelpersHighlightedText) {
+
+    (0, _mocha.describe)('Unit: Helper: highlighted-text', function () {
+
+        (0, _mocha.it)('works', function () {
+            var result = (0, _ghostHelpersHighlightedText.highlightedText)(['Test', 'e']);
+            (0, _chai.expect)(result).to.be.an('object');
+            (0, _chai.expect)(result.string).to.equal('T<span class="highlight">e</span>st');
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/unit/helpers/is-equal-test', ['exports', 'chai', 'mocha', 'ghost/helpers/is-equal'], function (exports, _chai, _mocha, _ghostHelpersIsEqual) {
 
     (0, _mocha.describe)('Unit: Helper: is-equal', function () {
@@ -8456,6 +11529,68 @@ define('ghost/tests/unit/mixins/validation-engine-test', ['exports', 'chai', 'mo
             (0, _mocha.it)('rejects with validation errors');
             (0, _mocha.it)('calls object\'s #save if validation passes');
             (0, _mocha.it)('skips validation if it\'s a deletion');
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/models/navigation-item-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeModule)('model:navigation-item', 'Unit: Model: navigation-item', {
+        // Specify the other units that are required for this test.
+        needs: []
+    }, function () {
+        (0, _emberMocha.it)('isComplete is true when label and url are filled', function () {
+            var model = this.subject();
+
+            model.set('label', 'test');
+            model.set('url', 'test');
+
+            (0, _chai.expect)(model.get('isComplete')).to.be['true'];
+        });
+
+        (0, _emberMocha.it)('isComplete is false when label is blank', function () {
+            var model = this.subject();
+
+            model.set('label', '');
+            model.set('url', 'test');
+
+            (0, _chai.expect)(model.get('isComplete')).to.be['false'];
+        });
+
+        (0, _emberMocha.it)('isComplete is false when url is blank', function () {
+            var model = this.subject();
+
+            model.set('label', 'test');
+            model.set('url', '');
+
+            (0, _chai.expect)(model.get('isComplete')).to.be['false'];
+        });
+
+        (0, _emberMocha.it)('isBlank is true when label and url are blank', function () {
+            var model = this.subject();
+
+            model.set('label', '');
+            model.set('url', '');
+
+            (0, _chai.expect)(model.get('isBlank')).to.be['true'];
+        });
+
+        (0, _emberMocha.it)('isBlank is false when label is present', function () {
+            var model = this.subject();
+
+            model.set('label', 'test');
+            model.set('url', '');
+
+            (0, _chai.expect)(model.get('isBlank')).to.be['false'];
+        });
+
+        (0, _emberMocha.it)('isBlank is false when url is present', function () {
+            var model = this.subject();
+
+            model.set('label', '');
+            model.set('url', 'test');
+
+            (0, _chai.expect)(model.get('isBlank')).to.be['false'];
         });
     });
 });
@@ -8566,6 +11701,21 @@ define('ghost/tests/unit/models/setting-test', ['exports', 'ember-mocha'], funct
         });
     });
 });
+define('ghost/tests/unit/models/subscriber-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeModel)('subscriber', 'Unit: Model: subscriber', {
+        // Specify the other units that are required for this test.
+        needs: ['model:post']
+    }, function () {
+        // Replace this with your real tests.
+        (0, _emberMocha.it)('exists', function () {
+            var model = this.subject();
+            // var store = this.store();
+            (0, _chai.expect)(model).to.be.ok;
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/unit/models/tag-test', ['exports', 'ember-mocha'], function (exports, _emberMocha) {
 
     (0, _emberMocha.describeModel)('tag', 'Unit: Model: tag', function () {
@@ -8733,6 +11883,43 @@ define('ghost/tests/unit/models/user-test', ['exports', 'ember', 'ember-mocha'],
         });
     });
 });
+define('ghost/tests/unit/routes/subscribers/import-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeModule)('route:subscribers/import', 'SubscribersImportRoute', {
+        // Specify the other units that are required for this test.
+        needs: ['service:notifications']
+    }, function () {
+        (0, _emberMocha.it)('exists', function () {
+            var route = this.subject();
+            (0, _chai.expect)(route).to.be.ok;
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/routes/subscribers/new-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeModule)('route:subscribers/new', 'Unit: Route: subscribers/new', {
+        needs: ['service:notifications']
+    }, function () {
+        (0, _emberMocha.it)('exists', function () {
+            var route = this.subject();
+            (0, _chai.expect)(route).to.be.ok;
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/routes/subscribers-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeModule)('route:subscribers', 'Unit: Route: subscribers', {
+        needs: ['service:notifications']
+    }, function () {
+        (0, _emberMocha.it)('exists', function () {
+            var route = this.subject();
+            (0, _chai.expect)(route).to.be.ok;
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/unit/services/config-test', ['exports', 'chai', 'ember-mocha', 'ember'], function (exports, _chai, _emberMocha, _ember) {
 
     (0, _emberMocha.describeModule)('service:config', 'Unit: Service: config', {
@@ -9147,6 +12334,118 @@ define('ghost/tests/unit/services/notifications-test', ['exports', 'ember', 'sin
     });
 });
 /* jshint expr:true */
+define('ghost/tests/unit/transforms/facebook-url-user-test', ['exports', 'chai', 'ember-mocha', 'ember'], function (exports, _chai, _emberMocha, _ember) {
+
+    var emberA = _ember['default'].A;
+
+    (0, _emberMocha.describeModule)('transform:facebook-url-user', 'Unit: Transform: facebook-url-user', {
+        // Specify the other units that are required for this test.
+        // needs: ['transform:foo']
+    }, function () {
+        (0, _emberMocha.it)('deserializes facebook url', function () {
+            var transform = this.subject();
+            var serialized = 'testuser';
+            var result = transform.deserialize(serialized);
+
+            (0, _chai.expect)(result).to.equal('https://www.facebook.com/testuser');
+        });
+
+        (0, _emberMocha.it)('serializes url to facebook username', function () {
+            var transform = this.subject();
+            var deserialized = 'https://www.facebook.com/testuser';
+            var result = transform.serialize(deserialized);
+
+            (0, _chai.expect)(result).to.equal('testuser');
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/transforms/navigation-settings-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/models/navigation-item'], function (exports, _chai, _emberMocha, _ember, _ghostModelsNavigationItem) {
+
+    var emberA = _ember['default'].A;
+
+    (0, _emberMocha.describeModule)('transform:navigation-settings', 'Unit: Transform: navigation-settings', {
+        // Specify the other units that are required for this test.
+        // needs: ['transform:foo']
+    }, function () {
+        (0, _emberMocha.it)('deserializes navigation json', function () {
+            var transform = this.subject();
+            var serialized = '[{"label":"One","url":"/one"},{"label":"Two","url":"/two"}]';
+            var result = transform.deserialize(serialized);
+
+            (0, _chai.expect)(result.length).to.equal(2);
+            (0, _chai.expect)(result[0]).to.be['instanceof'](_ghostModelsNavigationItem['default']);
+            (0, _chai.expect)(result[0].get('label')).to.equal('One');
+            (0, _chai.expect)(result[0].get('url')).to.equal('/one');
+            (0, _chai.expect)(result[1]).to.be['instanceof'](_ghostModelsNavigationItem['default']);
+            (0, _chai.expect)(result[1].get('label')).to.equal('Two');
+            (0, _chai.expect)(result[1].get('url')).to.equal('/two');
+        });
+
+        (0, _emberMocha.it)('serializes array of NavigationItems', function () {
+            var transform = this.subject();
+            var deserialized = emberA([_ghostModelsNavigationItem['default'].create({ label: 'One', url: '/one' }), _ghostModelsNavigationItem['default'].create({ label: 'Two', url: '/two' })]);
+            var result = transform.serialize(deserialized);
+
+            (0, _chai.expect)(result).to.equal('[{"label":"One","url":"/one"},{"label":"Two","url":"/two"}]');
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/transforms/slack-settings-test', ['exports', 'chai', 'ember-mocha', 'ember', 'ghost/models/slack-integration'], function (exports, _chai, _emberMocha, _ember, _ghostModelsSlackIntegration) {
+
+    var emberA = _ember['default'].A;
+
+    (0, _emberMocha.describeModule)('transform:slack-settings', 'Unit: Transform: slack-settings', {
+        // Specify the other units that are required for this test.
+        // needs: ['transform:foo']
+    }, function () {
+        (0, _emberMocha.it)('deserializes settings json', function () {
+            var transform = this.subject();
+            var serialized = '[{"url":"http://myblog.com/blogpost1"}]';
+            var result = transform.deserialize(serialized);
+
+            (0, _chai.expect)(result.length).to.equal(1);
+            (0, _chai.expect)(result[0]).to.be['instanceof'](_ghostModelsSlackIntegration['default']);
+            (0, _chai.expect)(result[0].get('url')).to.equal('http://myblog.com/blogpost1');
+        });
+
+        (0, _emberMocha.it)('serializes array of Slack settings', function () {
+            var transform = this.subject();
+            var deserialized = emberA([_ghostModelsSlackIntegration['default'].create({ url: 'http://myblog.com/blogpost1' })]);
+            var result = transform.serialize(deserialized);
+
+            (0, _chai.expect)(result).to.equal('[{"url":"http://myblog.com/blogpost1"}]');
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/transforms/twitter-url-user-test', ['exports', 'chai', 'ember-mocha', 'ember'], function (exports, _chai, _emberMocha, _ember) {
+
+    var emberA = _ember['default'].A;
+
+    (0, _emberMocha.describeModule)('transform:twitter-url-user', 'Unit: Transform: twitter-url-user', {
+        // Specify the other units that are required for this test.
+        // needs: ['transform:foo']
+    }, function () {
+        (0, _emberMocha.it)('deserializes twitter url', function () {
+            var transform = this.subject();
+            var serialized = '@testuser';
+            var result = transform.deserialize(serialized);
+
+            (0, _chai.expect)(result).to.equal('https://twitter.com/testuser');
+        });
+
+        (0, _emberMocha.it)('serializes url to twitter username', function () {
+            var transform = this.subject();
+            var deserialized = 'https://twitter.com/testuser';
+            var result = transform.serialize(deserialized);
+
+            (0, _chai.expect)(result).to.equal('@testuser');
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost/tests/unit/utils/ghost-paths-test', ['exports', 'ghost/utils/ghost-paths'], function (exports, _ghostUtilsGhostPaths) {
 
     describe('Unit: Util: ghost-paths', function () {
@@ -9206,10 +12505,10 @@ define('ghost/tests/unit/utils/ghost-paths-test', ['exports', 'ghost/utils/ghost
         });
     });
 });
-define('ghost/tests/unit/validators/nav-item-test', ['exports', 'chai', 'mocha', 'ghost/validators/nav-item', 'ghost/controllers/settings/navigation'], function (exports, _chai, _mocha, _ghostValidatorsNavItem, _ghostControllersSettingsNavigation) {
+define('ghost/tests/unit/validators/nav-item-test', ['exports', 'chai', 'mocha', 'ghost/validators/nav-item', 'ghost/models/navigation-item'], function (exports, _chai, _mocha, _ghostValidatorsNavItem, _ghostModelsNavigationItem) {
 
     var testInvalidUrl = function testInvalidUrl(url) {
-        var navItem = _ghostControllersSettingsNavigation.NavItem.create({ url: url });
+        var navItem = _ghostModelsNavigationItem['default'].create({ url: url });
 
         _ghostValidatorsNavItem['default'].check(navItem, 'url');
 
@@ -9222,7 +12521,7 @@ define('ghost/tests/unit/validators/nav-item-test', ['exports', 'chai', 'mocha',
     };
 
     var testValidUrl = function testValidUrl(url) {
-        var navItem = _ghostControllersSettingsNavigation.NavItem.create({ url: url });
+        var navItem = _ghostModelsNavigationItem['default'].create({ url: url });
 
         _ghostValidatorsNavItem['default'].check(navItem, 'url');
 
@@ -9232,7 +12531,7 @@ define('ghost/tests/unit/validators/nav-item-test', ['exports', 'chai', 'mocha',
 
     (0, _mocha.describe)('Unit: Validator: nav-item', function () {
         (0, _mocha.it)('requires label presence', function () {
-            var navItem = _ghostControllersSettingsNavigation.NavItem.create();
+            var navItem = _ghostModelsNavigationItem['default'].create();
 
             _ghostValidatorsNavItem['default'].check(navItem, 'label');
 
@@ -9245,7 +12544,7 @@ define('ghost/tests/unit/validators/nav-item-test', ['exports', 'chai', 'mocha',
         });
 
         (0, _mocha.it)('requires url presence', function () {
-            var navItem = _ghostControllersSettingsNavigation.NavItem.create();
+            var navItem = _ghostModelsNavigationItem['default'].create();
 
             _ghostValidatorsNavItem['default'].check(navItem, 'url');
 
@@ -9274,13 +12573,136 @@ define('ghost/tests/unit/validators/nav-item-test', ['exports', 'chai', 'mocha',
         });
 
         (0, _mocha.it)('validates url and label by default', function () {
-            var navItem = _ghostControllersSettingsNavigation.NavItem.create();
+            var navItem = _ghostModelsNavigationItem['default'].create();
 
             _ghostValidatorsNavItem['default'].check(navItem);
 
             (0, _chai.expect)(navItem.get('errors').errorsFor('label')).to.not.be.empty;
             (0, _chai.expect)(navItem.get('errors').errorsFor('url')).to.not.be.empty;
             (0, _chai.expect)(_ghostValidatorsNavItem['default'].get('passed')).to.be['false'];
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/validators/slack-integration-test', ['exports', 'chai', 'mocha', 'ghost/validators/slack-integration', 'ghost/models/slack-integration'], function (exports, _chai, _mocha, _ghostValidatorsSlackIntegration, _ghostModelsSlackIntegration) {
+
+    var testInvalidUrl = function testInvalidUrl(url) {
+        var slackObject = _ghostModelsSlackIntegration['default'].create({ url: url });
+
+        _ghostValidatorsSlackIntegration['default'].check(slackObject, 'url');
+
+        (0, _chai.expect)(_ghostValidatorsSlackIntegration['default'].get('passed'), '"' + url + '" passed').to.be['false'];
+        (0, _chai.expect)(slackObject.get('errors').errorsFor('url')).to.deep.equal([{
+            attribute: 'url',
+            message: 'The URL must be in a format like https://hooks.slack.com/services/<your personal key>'
+        }]);
+        (0, _chai.expect)(slackObject.get('hasValidated')).to.include('url');
+    };
+
+    var testValidUrl = function testValidUrl(url) {
+        var slackObject = _ghostModelsSlackIntegration['default'].create({ url: url });
+
+        _ghostValidatorsSlackIntegration['default'].check(slackObject, 'url');
+
+        (0, _chai.expect)(_ghostValidatorsSlackIntegration['default'].get('passed'), '"' + url + '" failed').to.be['true'];
+        (0, _chai.expect)(slackObject.get('hasValidated')).to.include('url');
+    };
+
+    (0, _mocha.describe)('Unit: Validator: slack-integration', function () {
+        (0, _mocha.it)('fails on invalid url values', function () {
+            var invalidUrls = ['test@example.com', '/has spaces', 'no-leading-slash', 'http://example.com/with spaces'];
+
+            invalidUrls.forEach(function (url) {
+                testInvalidUrl(url);
+            });
+        });
+
+        (0, _mocha.it)('passes on valid url values', function () {
+            var validUrls = ['https://hooks.slack.com/services/;alskdjf', 'https://hooks.slack.com/services/123445678', 'https://hooks.slack.com/services/some_webhook'];
+
+            validUrls.forEach(function (url) {
+                testValidUrl(url);
+            });
+        });
+
+        (0, _mocha.it)('validates url by default', function () {
+            var slackObject = _ghostModelsSlackIntegration['default'].create();
+
+            _ghostValidatorsSlackIntegration['default'].check(slackObject);
+
+            (0, _chai.expect)(slackObject.get('errors').errorsFor('url')).to.be.empty;
+            (0, _chai.expect)(_ghostValidatorsSlackIntegration['default'].get('passed')).to.be['true'];
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost/tests/unit/validators/subscriber-test', ['exports', 'chai', 'mocha', 'ember', 'ghost/mixins/validation-engine'], function (exports, _chai, _mocha, _ember, _ghostMixinsValidationEngine) {
+    var run = _ember['default'].run;
+
+    var Subscriber = _ember['default'].Object.extend(_ghostMixinsValidationEngine['default'], {
+        validationType: 'subscriber',
+
+        email: null
+    });
+
+    (0, _mocha.describe)('Unit: Validator: subscriber', function () {
+        (0, _mocha.it)('validates email by default', function () {
+            var subscriber = Subscriber.create({});
+            var properties = subscriber.get('validators.subscriber.properties');
+
+            console.log(subscriber);
+
+            (0, _chai.expect)(properties, 'properties').to.include('email');
+        });
+
+        (0, _mocha.it)('passes with a valid email', function () {
+            var subscriber = Subscriber.create({ email: 'test@example.com' });
+            var passed = false;
+
+            run(function () {
+                subscriber.validate({ property: 'email' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            (0, _chai.expect)(passed, 'passed').to.be['true'];
+            (0, _chai.expect)(subscriber.get('hasValidated'), 'hasValidated').to.include('email');
+        });
+
+        (0, _mocha.it)('validates email presence', function () {
+            var subscriber = Subscriber.create({});
+            var passed = false;
+
+            run(function () {
+                subscriber.validate({ property: 'email' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var emailErrors = subscriber.get('errors').errorsFor('email').get(0);
+            (0, _chai.expect)(emailErrors.attribute, 'errors.email.attribute').to.equal('email');
+            (0, _chai.expect)(emailErrors.message, 'errors.email.message').to.equal('Please enter an email.');
+
+            (0, _chai.expect)(passed, 'passed').to.be['false'];
+            (0, _chai.expect)(subscriber.get('hasValidated'), 'hasValidated').to.include('email');
+        });
+
+        (0, _mocha.it)('validates email', function () {
+            var subscriber = Subscriber.create({ email: 'foo' });
+            var passed = false;
+
+            run(function () {
+                subscriber.validate({ property: 'email' }).then(function () {
+                    passed = true;
+                });
+            });
+
+            var emailErrors = subscriber.get('errors').errorsFor('email').get(0);
+            (0, _chai.expect)(emailErrors.attribute, 'errors.email.attribute').to.equal('email');
+            (0, _chai.expect)(emailErrors.message, 'errors.email.message').to.equal('Invalid email.');
+
+            (0, _chai.expect)(passed, 'passed').to.be['false'];
+            (0, _chai.expect)(subscriber.get('hasValidated'), 'hasValidated').to.include('email');
         });
     });
 });
@@ -9582,7 +13004,6 @@ define('ghost/tests/unit/validators/tag-settings-test', ['exports', 'chai', 'moc
         });
     });
 });
-/* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
 /* jshint expr:true */
 
 // import validator from 'ghost/validators/tag-settings';
