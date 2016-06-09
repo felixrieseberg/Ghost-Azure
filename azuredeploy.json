@@ -77,6 +77,28 @@
         },
         "properties": {
             "serverFarmId": "[parameters('hostingPlanName')]",
+            "siteConfig": {
+                "webSocketsEnabled": true,
+                "appSettings": [{
+                    "name": "websiteUrl",
+                    "value": ""
+                }, {
+                    "name": "emailService",
+                    "value": "[parameters('Email Service')]"
+                }, {
+                    "name": "emailUsername",
+                    "value": "[parameters('Email Username')]"
+                }, {
+                    "name": "emailPassword",
+                    "value": "[parameters('Email Password')]"
+                }, {
+                    "name": "siteName",
+                    "value": "[parameters('siteName')]"
+                }, {
+                    "name": "WEBSITE_NODE_DEFAULT_VERSION",
+                    "value": "4.4.1"
+                }]
+            }
         },
         "resources": [{
             "apiVersion": "2015-08-01",
@@ -90,36 +112,6 @@
                 "branch": "[parameters('branch')]",
                 "IsManualIntegration": true
             }
-        },
-        { 
-           "apiVersion": "2014-04-01", 
-           "type": "config", 
-           "name": "web", 
-           "dependsOn": [
-             "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]",
-             "[concat('Microsoft.Web/Sites/', parameters('siteName'), '/sourcecontrols/web')]" 
-           ], 
-           "properties": { 
-             "webSocketsEnabled": true,
-             "appSettings": [{
-                  "name": "websiteUrl",
-                  "value": ""
-              }, {
-                  "name": "emailService",
-                  "value": "[parameters('Email Service')]"
-              }, {
-                  "name": "emailUsername",
-                  "value": "[parameters('Email Username')]"
-              }, {
-                  "name": "emailPassword",
-                  "value": "[parameters('Email Password')]"
-              }, {
-                  "name": "siteName",
-                  "value": "[parameters('siteName')]"
-              }],
-            "requestTracingEnabled": false,
-            "httpLoggingEnabled": false
-           }
-       }]
+        }]
     }]
 }
