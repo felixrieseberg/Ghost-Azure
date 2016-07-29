@@ -2417,6 +2417,25 @@ table td,
   background: rgb(242, 246, 233);
 }
 
+/* Schedule notification top
+/* ---------------------------------------------------------- */
+
+.gh-notification-schedule {
+  display: inline-block;
+  margin: 0;
+  padding: 7px 10px;
+  width: auto;
+  border: #e2edf2 1px solid;
+  border-radius: 2px;
+  box-shadow: none;
+  vertical-align: middle;
+  line-height: 1.3em;
+}
+
+.gh-notification-schedule:hover {
+  cursor: default;
+}
+
 /* Alerts
 /* ---------------------------------------------------------- */
 
@@ -2434,7 +2453,7 @@ table td,
 /* Base alert style */
 
 .gh-alert {
-  z-index: 1000;
+  z-index: 9999;
   -ms-flex-positive: 1;
   flex-grow: 1;
   display: -ms-flexbox;
@@ -4055,33 +4074,8 @@ body > .ember-view:not(.liquid-target-container) {
   margin: 0 15px 10px;
 }
 
-.gh-nav-search .selectize-control {
-  display: -ms-flexbox;
-  display: flex;
-}
-
-.gh-nav-search-input .selectize-input {
-  padding: 4px 8px;
-  padding-right: 30px;
-  height: auto;
-}
-
-.gh-nav-search-input .selectize-input,
-.gh-nav-search-input .selectize-input input,
-.gh-nav-search-input .selectize-dropdown {
-  font-size: 1.3rem;
-}
-
-.gh-nav-search .selectize-input.dropdown-active {
-  border-bottom: #fff 1px solid;
-}
-
-.gh-nav-search .selectize-input.dropdown-active:before {
-  display: none;
-}
-
-.gh-nav-search .selectize-dropdown-content {
-  max-height: calc(100vh - 150px);
+.gh-nav-search .ember-power-select-trigger {
+  outline: 0;
 }
 
 .gh-nav-search-button {
@@ -5148,6 +5142,11 @@ body > .ember-view:not(.liquid-target-container) {
   line-height: 18px;
 }
 
+.content-list .entry-meta .internal-tags-list {
+  margin-top: 5px;
+  line-height: 22px;
+}
+
 .content-list .avatar {
   position: relative;
   float: left;
@@ -5195,7 +5194,7 @@ body > .ember-view:not(.liquid-target-container) {
 }
 
 .content-list .status .scheduled {
-  color: #f2a925;
+  color: #9fbb58;
 }
 
 .content-list ol {
@@ -6530,6 +6529,18 @@ a.user-list-item {
 .gh-contributors a:hover:before,
 .gh-contributors a:hover:after {
   opacity: 1;
+}
+
+/* Upgrade
+/* ---------------------------------------------------------- */
+
+.gh-upgrade-notification {
+  color: #e25440;
+}
+
+.gh-upgrade-notification a {
+  color: #e25440;
+  text-decoration: underline;
 }
 
 /* Copyright Info
