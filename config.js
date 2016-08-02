@@ -40,7 +40,8 @@ config = {
                      user: process.env.emailUsername, // mailgun username
                      pass: process.env.emailPassword  // mailgun password
                  }
-             }
+             },
+             from: process.env.emailFromAddress // 'from' address when sending emails
          },
 
         database: {
@@ -78,7 +79,8 @@ config = {
                  user: process.env.emailUsername, // mailgun username
                  pass: process.env.emailPassword  // mailgun password
              }
-         }
+         },
+         from: process.env.emailFromAddress // 'from' address when sending emails
         },
         database: {
             client: 'sqlite3',

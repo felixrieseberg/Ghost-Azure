@@ -1,6 +1,6 @@
 {
     "$schema": "http://schema.management.azure.com/schemas/2014-04-01-preview/deploymentTemplate.json#",
-    "contentVersion": "1.0.0.0",
+    "contentVersion": "1.0.0.1",
     "parameters": {
         "siteName": {
             "type": "string"
@@ -44,6 +44,10 @@
             "defaultValue": ""
         },
         "Email Password": {
+            "type": "string",
+            "defaultValue": ""
+        },
+        "Email From Address": {
             "type": "string",
             "defaultValue": ""
         },
@@ -91,6 +95,9 @@
                 }, {
                     "name": "emailPassword",
                     "value": "[parameters('Email Password')]"
+                }, {
+                    "name": "emailFromAddress",
+                    "value": "[parameters('Email From Address')]"
                 }, {
                     "name": "siteName",
                     "value": "[parameters('siteName')]"
