@@ -1,14 +1,16 @@
 <div class="sidebar" role="aside" {{#if @blog.cover}}style="background-image: url({{@blog.cover}})"{{/if}}>
 	<header class="header">
 		<h1 class="title">
-			<a href="/">{{@blog.title}}</a>
+			<a href="/">
+			<div class="text">
+				{{@blog.title}}
+			</div>
+			{{#if @blog.logo}}
+				<img id="blog" class="logo" alt="Spencer Schneidenbach" src="{{@blog.logo}}">
+			{{/if}}
+			</a>
 		</h1>
-		{{#if @blog.logo}}
-		<a href="/">
-			<img id="blog" class="logo" src="{{@blog.logo}}">
-		</a>
-		{{/if}}
-
+		<div style="clear: both"></div>
 		{{ navigation }}
 
 		<div class="social-icons">
