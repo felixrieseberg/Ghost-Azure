@@ -3,11 +3,12 @@
 
 {{! Everything inside the #post tags pulls data from the post }}
 {{#post}}
-	
 
+	{{#is "post"}}
 	{{! Everything below outputs content of the the post which has been published }}
 	<span class="post-meta"><time datetime="{{date format="YYYY-MM-DD"}}">{{date format='DD MMM YYYY'}}</time> {{#if tags}}on {{tags separator=" | "}}{{/if}}</span>
-
+	{{/is}}
+	
 	<h2 class="post-title">{{{title}}}</h2>
 	
 	{{#if image}}
