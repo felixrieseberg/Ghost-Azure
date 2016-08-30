@@ -6,11 +6,15 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
 
 	{{! Page Meta }}
-	<title>{{meta_title}}</title>
+	{{#if post}}
+	<title>{{meta_title}} - Spencer Schneidenbach</title>
+	{{else}}
+	<title>Spencer Schneidenbach - web developer, speaker, instructor, mentor, writer, husband, dad. JavaScript, AngularJS, ASP.NET, Node, C#</title>
+	{{/if}}
 	{{#if post}}
 	<meta name="keywords" content="{{#each post.tags}}{{name}},{{/each}}">
 	{{else}}
-	<meta name="keywords" content="android, javascript, sublime, freelance">
+	<meta name="keywords" content="csharp, dotnet, angularjs, javascript, asp.net, node, .net, c#, angular2, typescript, speaking, teaching, consulting, web">
 	{{/if}}
 
 	<meta name="description" content="{{meta_description}}" />
