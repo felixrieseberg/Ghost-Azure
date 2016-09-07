@@ -621,25 +621,27 @@ define('ghost-admin/tests/acceptance/editor-test', ['exports', 'mocha', 'chai', 
 /* jshint expr:true */
 define('ghost-admin/tests/acceptance/ghost-desktop-test', ['exports', 'mocha', 'chai', 'ghost-admin/tests/helpers/start-app', 'ghost-admin/tests/helpers/destroy-app', 'ghost-admin/tests/helpers/ember-simple-auth'], function (exports, _mocha, _chai, _ghostAdminTestsHelpersStartApp, _ghostAdminTestsHelpersDestroyApp, _ghostAdminTestsHelpersEmberSimpleAuth) {
 
-    var originalUserAgent = window.navigator.userAgent;
+    var originalAgent = window.navigator.userAgent;
 
-    var _setUserAgent = function _setUserAgent(userAgent) {
-        var userAgentProp = { get: function get() {
+    var setUserAgent = function setUserAgent(userAgent) {
+        var userAgentProp = {
+            get: function get() {
                 return userAgent;
-            }, configurable: true };
-        Object.defineProperty(window.navigator, 'userAgent', userAgentProp);
-    };
+            },
+            configurable: true
+        };
 
-    var stubUserAgent = function stubUserAgent(userAgent) {
-        if (window.navigator.userAgent !== userAgent) {
-            _setUserAgent(userAgent);
+        try {
+            Object.defineProperty(window.navigator, 'userAgent', userAgentProp);
+        } catch (e) {
+            window.navigator = Object.create(window.navigator, {
+                userAgent: userAgentProp
+            });
         }
     };
 
     var restoreUserAgent = function restoreUserAgent() {
-        if (window.navigator.userAgent !== originalUserAgent) {
-            _setUserAgent(originalUserAgent);
-        }
+        setUserAgent(originalAgent);
     };
 
     (0, _mocha.describe)('Acceptance: Ghost Desktop', function () {
@@ -668,7 +670,7 @@ define('ghost-admin/tests/acceptance/ghost-desktop-test', ['exports', 'mocha', '
             });
 
             (0, _mocha.it)('displays alert for broken version', function () {
-                stubUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) ghost-desktop/0.4.0 Chrome/51.0.2704.84 Electron/1.2.2 Safari/537.36');
+                setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) ghost-desktop/0.4.0 Chrome/51.0.2704.84 Electron/1.2.2 Safari/537.36');
 
                 visit('/');
 
@@ -680,7 +682,7 @@ define('ghost-admin/tests/acceptance/ghost-desktop-test', ['exports', 'mocha', '
             });
 
             (0, _mocha.it)('doesn\'t display alert for working version', function () {
-                stubUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) ghost-desktop/0.5.1 Chrome/51.0.2704.84 Electron/1.2.2 Safari/537.36');
+                setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) ghost-desktop/0.5.1 Chrome/51.0.2704.84 Electron/1.2.2 Safari/537.36');
 
                 visit('/');
 
@@ -1002,7 +1004,7 @@ define('ghost-admin/tests/acceptance/settings/code-injection-test', ['exports', 
     });
 });
 /* jshint expr:true */
-define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha', 'chai', 'jquery', 'ember-runloop', 'ghost-admin/tests/helpers/start-app', 'ghost-admin/tests/helpers/destroy-app', 'ghost-admin/tests/helpers/ember-simple-auth'], function (exports, _mocha, _chai, _jquery, _emberRunloop, _ghostAdminTestsHelpersStartApp, _ghostAdminTestsHelpersDestroyApp, _ghostAdminTestsHelpersEmberSimpleAuth) {
+define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha', 'chai', 'jquery', 'ember-runloop', 'ghost-admin/tests/helpers/start-app', 'ghost-admin/tests/helpers/destroy-app', 'ghost-admin/tests/helpers/ember-simple-auth', 'ember-cli-mirage', 'ghost-admin/mirage/config/themes'], function (exports, _mocha, _chai, _jquery, _emberRunloop, _ghostAdminTestsHelpersStartApp, _ghostAdminTestsHelpersDestroyApp, _ghostAdminTestsHelpersEmberSimpleAuth, _emberCliMirage, _ghostAdminMirageConfigThemes) {
 
     (0, _mocha.describe)('Acceptance: Settings - General', function () {
         var application = undefined;
@@ -1115,12 +1117,6 @@ define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha'
 
                 andThen(function () {
                     (0, _chai.expect)(find('.fullscreen-modal').length).to.equal(0);
-                });
-
-                // renders theme selector correctly
-                andThen(function () {
-                    (0, _chai.expect)(find('#activeTheme select option').length, 'available themes').to.equal(1);
-                    (0, _chai.expect)(find('#activeTheme select option').text().trim()).to.equal('Blog - 1.0');
                 });
             });
 
@@ -1311,6 +1307,211 @@ define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha'
                 andThen(function () {
                     (0, _chai.expect)(find('#settings-general input[name="general[twitter]"]').val()).to.be.equal('https://twitter.com/testuser');
                     (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+            });
+
+            (0, _mocha.it)('allows management of themes', function () {
+                // lists available themes + active theme is highlighted
+
+                // theme upload
+                // - displays modal
+                // - validates mime type
+                // - validates casper.zip
+                // - handles validation errors
+                // - handles upload and close
+                // - handles upload and activate
+                // - displays overwrite warning if theme already exists
+
+                // theme activation
+                // - switches theme
+
+                // theme deletion
+                // - displays modal
+                // - deletes theme and refreshes list
+
+                visit('/settings/general');
+
+                // lists available themes (themes are specified in mirage/fixtures/settings)
+                andThen(function () {
+                    (0, _chai.expect)(find('.theme-list-item').length, 'shows correct number of themes').to.equal(3);
+
+                    (0, _chai.expect)(find('.theme-list-item:contains("Blog")').hasClass('theme-list-item--active'), 'Blog theme marked as active');
+                });
+
+                // theme upload displays modal
+                click('a:contains("Upload a theme")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content:contains("Upload a theme")').length, 'theme upload modal displayed after button click').to.equal(1);
+                });
+
+                // cancelling theme upload closes modal
+                click('.fullscreen-modal button:contains("Cancel")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal').length === 0, 'upload theme modal is closed when cancelling').to.be['true'];
+                });
+
+                // theme upload validates mime type
+                click('a:contains("Upload a theme")');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { type: 'text/csv' });
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal .failed').text(), 'validation error is shown for invalid mime type').to.match(/is not supported/);
+                });
+
+                // theme upload validates casper.zip
+                click('button:contains("Try Again")');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'casper.zip', type: 'application/zip' });
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal .failed').text(), 'validation error is shown when uploading casper.zip').to.match(/default Casper theme cannot be overwritten/);
+                });
+
+                // theme upload handles upload errors
+                andThen(function () {
+                    server.post('/themes/upload/', function () {
+                        return new _emberCliMirage['default'].Response(422, {}, {
+                            errors: [{
+                                message: 'Invalid theme'
+                            }]
+                        });
+                    });
+                });
+                click('button:contains("Try Again")');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'error.zip', type: 'application/zip' });
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal .failed').text().trim(), 'validation error is passed through from server').to.equal('Invalid theme');
+
+                    // reset to default mirage handlers
+                    (0, _ghostAdminMirageConfigThemes['default'])(server);
+                });
+
+                // theme upload handles validation errors
+                andThen(function () {
+                    server.post('/themes/upload/', function () {
+                        return new _emberCliMirage['default'].Response(422, {}, {
+                            errors: [{
+                                message: 'Theme is not compatible or contains errors.',
+                                errorType: 'ThemeValidationError',
+                                errorDetails: [{
+                                    level: 'error',
+                                    rule: 'Templates must contain valid Handlebars.',
+                                    failures: [{
+                                        ref: 'index.hbs',
+                                        message: 'The partial index_meta could not be found'
+                                    }, {
+                                        ref: 'tag.hbs',
+                                        message: 'The partial index_meta could not be found'
+                                    }]
+                                }, {
+                                    level: 'error',
+                                    rule: 'Assets such as CSS & JS must use the <code>{{asset}}</code> helper',
+                                    details: '<p>The listed files should be included using the <code>{{asset}}</code> helper.</p>',
+                                    failures: [{
+                                        ref: '/assets/javascripts/ui.js'
+                                    }]
+                                }]
+                            }]
+                        });
+                    });
+                });
+                click('button:contains("Try Again")');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'bad-theme.zip', type: 'application/zip' });
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal h1').text().trim(), 'modal title after uploading invalid theme').to.equal('Invalid theme');
+
+                    (0, _chai.expect)(find('.theme-validation-errors').text(), 'top-level errors are displayed').to.match(/Templates must contain valid Handlebars/);
+
+                    (0, _chai.expect)(find('.theme-validation-errors').text(), 'top-level errors do not escape HTML').to.match(/The listed files should be included using the {{asset}} helper/);
+
+                    (0, _chai.expect)(find('.theme-validation-errors').text(), 'individual failures are displayed').to.match(/index\.hbs: The partial index_meta could not be found/);
+
+                    // reset to default mirage handlers
+                    (0, _ghostAdminMirageConfigThemes['default'])(server);
+                });
+                click('button:contains("Try Again")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.theme-validation-errors').length, '"Try Again" resets form after theme validation error').to.equal(0);
+
+                    (0, _chai.expect)(find('.gh-image-uploader').length, '"Try Again" resets form after theme validation error').to.equal(1);
+
+                    (0, _chai.expect)(find('.fullscreen-modal h1').text().trim(), '"Try Again" resets form after theme validation error').to.equal('Upload a theme');
+                });
+
+                // theme upload handles success then close
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'theme-1.zip', type: 'application/zip' });
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal h1').text().trim(), 'modal header after successful upload').to.equal('Upload successful!');
+
+                    (0, _chai.expect)(find('.modal-body').text(), 'modal displays theme name after successful upload').to.match(/"Test 1 - 0\.1" uploaded successfully/);
+
+                    (0, _chai.expect)(find('.theme-list-item').length, 'number of themes in list grows after upload').to.equal(4);
+
+                    (0, _chai.expect)(find('.theme-list-item:contains("Test 1 - 0.1")').hasClass('theme-list-item--active'), 'newly uploaded theme is active').to.be['false'];
+                });
+                click('.fullscreen-modal button:contains("Close")');
+
+                // theme upload handles success then activate
+                click('a:contains("Upload a theme")');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'theme-2.zip', type: 'application/zip' });
+                click('button:contains("Activate Now")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.theme-list-item').length, 'number of themes in list grows after upload and activate').to.equal(5);
+
+                    (0, _chai.expect)(find('.theme-list-item:contains("Test 2 - 0.1")').hasClass('theme-list-item--active'), 'newly uploaded+activated theme is active').to.be['true'];
+                });
+
+                // theme activation switches active theme
+                click('.theme-list-item:contains("Blog") a:contains("Activate")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.theme-list-item:contains("Test 2 - 0.1")').hasClass('theme-list-item--active'), 'previously active theme is not active').to.be['false'];
+
+                    (0, _chai.expect)(find('.theme-list-item:contains("Blog")').hasClass('theme-list-item--active'), 'activated theme is active').to.be['true'];
+                });
+
+                // theme deletion displays modal
+                click('.theme-list-item:contains("Test 1") a:contains("Delete")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content:contains("delete this theme")').length, 'theme deletion modal displayed after button click').to.equal(1);
+                });
+
+                // cancelling theme deletion closes modal
+                click('.fullscreen-modal button:contains("Cancel")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal').length === 0, 'delete theme modal is closed when cancelling').to.be['true'];
+                });
+
+                // confirming theme deletion closes modal and refreshes list
+                click('.theme-list-item:contains("Test 1") a:contains("Delete")');
+                click('.fullscreen-modal button:contains("Delete")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal').length === 0, 'delete theme modal closes after deletion').to.be['true'];
+                });
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.theme-list-item').length, 'number of themes in list shrinks after delete').to.equal(4);
+
+                    (0, _chai.expect)(find('.theme-list-item .name').text(), 'correct theme is removed from theme list after deletion').to.not.match(/Test 1/);
+                });
+
+                // validation errors are handled when deleting a theme
+                andThen(function () {
+                    server.del('/themes/:theme/', function () {
+                        return new _emberCliMirage['default'].Response(422, {}, {
+                            errors: [{
+                                message: 'Can\'t delete theme'
+                            }]
+                        });
+                    });
+                });
+                click('.theme-list-item:contains("Test 2") a:contains("Delete")');
+                click('.fullscreen-modal button:contains("Delete")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal').length === 0, 'delete theme modal closes after failed deletion').to.be['true'];
+
+                    (0, _chai.expect)(find('.gh-alert').length, 'alert is shown when deletion fails').to.equal(1);
+
+                    (0, _chai.expect)(find('.gh-alert').text(), 'failed deletion alert has correct text').to.match(/Can't delete theme/);
+
+                    // restore default mirage handlers
+                    (0, _ghostAdminMirageConfigThemes['default'])(server);
                 });
             });
         });
@@ -2779,7 +2980,7 @@ define('ghost-admin/tests/acceptance/subscribers-test', ['exports', 'mocha', 'ch
                 });
 
                 click('.btn:contains("Import CSV")');
-                fileUpload('.fullscreen-modal input[type="file"]');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { type: 'text/csv' });
 
                 andThen(function () {
                     // modal title changes
@@ -2866,7 +3067,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
             var admin = undefined;
 
             (0, _mocha.beforeEach)(function () {
-                var role = server.create('role', { name: 'Admininstrator' });
+                var role = server.create('role', { name: 'Administrator' });
                 admin = server.create('user', { roles: [role] });
 
                 server.loadFixtures();
@@ -3029,6 +3230,51 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                 });
             });
 
+            (0, _mocha.it)('can delete users', function () {
+                /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+                var user1 = server.create('user');
+                var user2 = server.create('user');
+                var post1 = server.create('post', { author_id: user2.id });
+                /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+
+                visit('/team');
+                click('a.user-list-item:contains("' + user1.name + '")');
+
+                // user deletion displays modal
+                click('button.delete');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content:contains("delete this user")').length, 'user deletion modal displayed after button click').to.equal(1);
+
+                    // user has no posts so no warning about post deletion
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content:contains("is the author of")').length, 'deleting user with no posts has no post count').to.equal(0);
+                });
+
+                // cancelling user deletion closes modal
+                click('.fullscreen-modal button:contains("Cancel")');
+                andThen(function () {
+                    (0, _chai.expect)(find('.fullscreen-modal').length === 0, 'delete user modal is closed when cancelling').to.be['true'];
+                });
+
+                // deleting a user with posts
+                visit('/team');
+                click('a.user-list-item:contains("' + user2.name + '")');
+
+                click('button.delete');
+                andThen(function () {
+                    // user has  posts so should warn about post deletion
+                    (0, _chai.expect)(find('.fullscreen-modal .modal-content:contains("is the author of 1 post")').length, 'deleting user with posts has post count').to.equal(1);
+                });
+
+                click('.fullscreen-modal button:contains("Delete")');
+                andThen(function () {
+                    // redirected to team page
+                    (0, _chai.expect)(currentURL()).to.equal('/team');
+
+                    // deleted user is not in list
+                    (0, _chai.expect)(find('.user-list-item .name:contains("' + user2.name + '")').length, 'deleted user is not in user list after deletion').to.equal(0);
+                });
+            });
+
             (0, _mocha.describe)('existing user', function () {
                 var user = undefined;
 
@@ -3101,7 +3347,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                     triggerEvent('#user-location', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(3)').hasClass('error'), 'location input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('#user-location').closest('.form-group').hasClass('error'), 'location input should be in error state').to.be['true'];
                     });
 
                     fillIn('#user-location', '');
@@ -3109,7 +3355,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                     triggerEvent('#user-website', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(4)').hasClass('error'), 'website input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('#user-website').closest('.form-group').hasClass('error'), 'website input should be in error state').to.be['true'];
                     });
 
                     // Testing Facebook input
@@ -3133,7 +3379,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                     triggerEvent('#user-facebook', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['true'];
                     });
 
                     fillIn('#user-facebook', '');
@@ -3142,7 +3388,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/pages/)(*&%^%)');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-facebook', '');
@@ -3151,7 +3397,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/testing');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-facebook', '');
@@ -3160,7 +3406,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/pages/some-facebook-page/857469375913?ref=ts');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-facebook', '');
@@ -3168,7 +3414,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                     triggerEvent('#user-facebook', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['true'];
                     });
 
                     fillIn('#user-facebook', '');
@@ -3177,7 +3423,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/testuser');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-facebook', '');
@@ -3186,7 +3432,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-facebook').val()).to.be.equal('https://www.facebook.com/testing');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(5)').hasClass('error'), 'facebook input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-facebook').closest('.form-group').hasClass('error'), 'facebook input should be in error state').to.be['false'];
                     });
 
                     // Testing Twitter input
@@ -3210,7 +3456,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                     triggerEvent('#user-twitter', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('#user-twitter').closest('.form-group').hasClass('error'), 'twitter input should be in error state').to.be['true'];
                     });
 
                     fillIn('#user-twitter', '');
@@ -3219,7 +3465,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-twitter').val()).to.be.equal('https://twitter.com/name');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-twitter').closest('.form-group').hasClass('error'), 'twitter input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-twitter', '');
@@ -3228,7 +3474,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-twitter').val()).to.be.equal('https://twitter.com/user');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-twitter').closest('.form-group').hasClass('error'), 'twitter input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-twitter', '');
@@ -3237,7 +3483,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
 
                     andThen(function () {
                         (0, _chai.expect)(find('#user-twitter').val()).to.be.equal('https://twitter.com/user');
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(6)').hasClass('error'), 'twitter input should be in error state').to.be['false'];
+                        (0, _chai.expect)(find('#user-twitter').closest('.form-group').hasClass('error'), 'twitter input should be in error state').to.be['false'];
                     });
 
                     fillIn('#user-website', '');
@@ -3245,7 +3491,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                     triggerEvent('#user-bio', 'blur');
 
                     andThen(function () {
-                        (0, _chai.expect)(find('.user-details-bottom .form-group:nth-of-type(7)').hasClass('error'), 'bio input should be in error state').to.be['true'];
+                        (0, _chai.expect)(find('#user-bio').closest('.form-group').hasClass('error'), 'bio input should be in error state').to.be['true'];
                     });
 
                     // password reset ------
@@ -3343,7 +3589,7 @@ define('ghost-admin/tests/acceptance/team-test', ['exports', 'mocha', 'chai', 'g
                 });
             });
 
-            (0, _mocha.it)('redirects to 404 when tag does not exist', function () {
+            (0, _mocha.it)('redirects to 404 when user does not exist', function () {
                 server.get('/users/slug/unknown/', function () {
                     return new _emberCliMirage['default'].Response(404, { 'Content-Type': 'application/json' }, { errors: [{ message: 'User not found.', errorType: 'NotFoundError' }] });
                 });
@@ -3457,7 +3703,7 @@ define('ghost-admin/tests/acceptance/version-mismatch-test', ['exports', 'mocha'
 
                 visit('/subscribers');
                 click('.btn:contains("Import CSV")');
-                fileUpload('.fullscreen-modal input[type="file"]');
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { type: 'text/csv' });
 
                 andThen(function () {
                     // alert is shown
@@ -4566,7 +4812,7 @@ define('ghost-admin/tests/integration/components/gh-feature-flag-test', ['export
         });
     });
 });
-define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['exports', 'chai', 'ember-mocha', 'jquery', 'ember-runloop', 'pretender', 'ember-test-helpers/wait', 'sinon', 'ghost-admin/tests/helpers/file-upload', 'ember-service'], function (exports, _chai, _emberMocha, _jquery, _emberRunloop, _pretender, _emberTestHelpersWait, _sinon, _ghostAdminTestsHelpersFileUpload, _emberService) {
+define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['exports', 'chai', 'ember-mocha', 'jquery', 'ember-runloop', 'pretender', 'ember-test-helpers/wait', 'sinon', 'ghost-admin/tests/helpers/file-upload', 'ember-service', 'ghost-admin/services/ajax'], function (exports, _chai, _emberMocha, _jquery, _emberRunloop, _pretender, _emberTestHelpersWait, _sinon, _ghostAdminTestsHelpersFileUpload, _emberService, _ghostAdminServicesAjax) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
     var notificationsStub = _emberService['default'].extend({
@@ -4658,6 +4904,96 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
             })()));
 
             (0, _chai.expect)(this.$('label').text().trim(), 'default label').to.equal('Select or drag-and-drop a file');
+        });
+
+        (0, _emberMocha.it)('allows file input "accept" attribute to be changed', function () {
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 20
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'gh-file-uploader', ['loc', [null, [1, 0], [1, 20]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$('input[type="file"]').attr('accept'), 'default "accept" attribute').to.equal('text/csv');
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 45
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['accept', 'application/zip'], ['loc', [null, [1, 0], [1, 45]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$('input[type="file"]').attr('accept'), 'specified "accept" attribute').to.equal('application/zip');
         });
 
         (0, _emberMocha.it)('renders form with supplied label text', function () {
@@ -4753,7 +5089,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(server.handledRequests.length).to.equal(1);
@@ -4810,7 +5146,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
@@ -4867,10 +5203,67 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadSuccess.calledOnce).to.be['false'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('fires fileSelected action on file selection', function (done) {
+            var fileSelected = _sinon['default'].spy();
+            this.set('fileSelected', fileSelected);
+
+            stubSuccessfulUpload(server);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 69
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['url', ['subexpr', '@mut', [['get', 'uploadUrl', ['loc', [null, [1, 23], [1, 32]]]]], [], []], 'fileSelected', ['subexpr', 'action', [['get', 'fileSelected', ['loc', [null, [1, 54], [1, 66]]]]], [], ['loc', [null, [1, 46], [1, 67]]]]], ['loc', [null, [1, 0], [1, 69]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(fileSelected.calledOnce).to.be['true'];
+                (0, _chai.expect)(fileSelected.args[0]).to.not.be.blank;
                 done();
             });
         });
@@ -4923,7 +5316,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadStarted.calledOnce).to.be['true'];
@@ -4979,7 +5372,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -5035,7 +5428,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -5089,7 +5482,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5146,7 +5539,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this2.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5203,7 +5596,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this3.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5258,7 +5651,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this4.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5315,7 +5708,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this5.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5372,7 +5765,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(showAPIError.calledOnce).to.be['true'];
@@ -5427,7 +5820,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(showAPIError.called).to.be['false'];
@@ -5481,7 +5874,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _emberRunloop['default'])(function () {
@@ -5543,7 +5936,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             // after 75ms we should have had one progress event
             _emberRunloop['default'].later(this, function () {
@@ -5631,7 +6024,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
             var uploadSuccess = _sinon['default'].spy();
             var drop = _jquery['default'].Event('drop', {
                 dataTransfer: {
-                    files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)()]
+                    files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)(['test'], { type: 'text/csv' })]
                 }
             });
 
@@ -5691,10 +6084,204 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                 done();
             });
         });
+
+        (0, _emberMocha.it)('validates "accept" mime type by default', function (done) {
+            var _this9 = this;
+
+            var uploadSuccess = _sinon['default'].spy();
+            var uploadFailed = _sinon['default'].spy();
+
+            this.set('uploadSuccess', uploadSuccess);
+            this.set('uploadFailed', uploadFailed);
+
+            stubSuccessfulUpload(server);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 4,
+                                'column': 52
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['url', ['subexpr', '@mut', [['get', 'uploadUrl', ['loc', [null, [2, 20], [2, 29]]]]], [], []], 'uploadSuccess', ['subexpr', 'action', [['get', 'uploadSuccess', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'uploadFailed', ['subexpr', 'action', [['get', 'uploadFailed', ['loc', [null, [4, 37], [4, 49]]]]], [], ['loc', [null, [4, 29], [4, 50]]]]], ['loc', [null, [1, 0], [4, 52]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'application/plain' });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(uploadSuccess.called).to.be['false'];
+                (0, _chai.expect)(uploadFailed.calledOnce).to.be['true'];
+                (0, _chai.expect)(_this9.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this9.$('.failed').text()).to.match(/The file type you uploaded is not supported/);
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('uploads if validate action supplied and returns true', function (done) {
+            var validate = _sinon['default'].stub().returns(true);
+            var uploadSuccess = _sinon['default'].spy();
+
+            this.set('validate', validate);
+            this.set('uploadSuccess', uploadSuccess);
+
+            stubSuccessfulUpload(server);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 4,
+                                'column': 44
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['url', ['subexpr', '@mut', [['get', 'uploadUrl', ['loc', [null, [2, 20], [2, 29]]]]], [], []], 'uploadSuccess', ['subexpr', 'action', [['get', 'uploadSuccess', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'validate', ['subexpr', 'action', [['get', 'validate', ['loc', [null, [4, 33], [4, 41]]]]], [], ['loc', [null, [4, 25], [4, 42]]]]], ['loc', [null, [1, 0], [4, 44]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(validate.calledOnce).to.be['true'];
+                (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
+                done();
+            });
+        });
+
+        (0, _emberMocha.it)('skips upload and displays error if validate action supplied and doesn\'t return true', function (done) {
+            var _this10 = this;
+
+            var validate = _sinon['default'].stub().returns(new _ghostAdminServicesAjax.UnsupportedMediaTypeError());
+            var uploadSuccess = _sinon['default'].spy();
+            var uploadFailed = _sinon['default'].spy();
+
+            this.set('validate', validate);
+            this.set('uploadSuccess', uploadSuccess);
+            this.set('uploadFailed', uploadFailed);
+
+            stubSuccessfulUpload(server);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 5,
+                                'column': 44
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-file-uploader', [], ['url', ['subexpr', '@mut', [['get', 'uploadUrl', ['loc', [null, [2, 20], [2, 29]]]]], [], []], 'uploadSuccess', ['subexpr', 'action', [['get', 'uploadSuccess', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'uploadFailed', ['subexpr', 'action', [['get', 'uploadFailed', ['loc', [null, [4, 37], [4, 49]]]]], [], ['loc', [null, [4, 29], [4, 50]]]], 'validate', ['subexpr', 'action', [['get', 'validate', ['loc', [null, [5, 33], [5, 41]]]]], [], ['loc', [null, [5, 25], [5, 42]]]]], ['loc', [null, [1, 0], [5, 44]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
+
+            (0, _emberTestHelpersWait['default'])().then(function () {
+                (0, _chai.expect)(validate.calledOnce).to.be['true'];
+                (0, _chai.expect)(uploadSuccess.called).to.be['false'];
+                (0, _chai.expect)(uploadFailed.calledOnce).to.be['true'];
+                (0, _chai.expect)(_this10.$('.failed').length, 'error message is displayed').to.equal(1);
+                (0, _chai.expect)(_this10.$('.failed').text()).to.match(/The file type you uploaded is not supported/);
+                done();
+            });
+        });
     });
 });
 /* jshint expr:true */
-define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['exports', 'sinon', 'chai', 'ember-mocha', 'pretender', 'ember-test-helpers/wait', 'ghost-admin/tests/helpers/file-upload', 'jquery', 'ember-runloop', 'ember-service'], function (exports, _sinon, _chai, _emberMocha, _pretender, _emberTestHelpersWait, _ghostAdminTestsHelpersFileUpload, _jquery, _emberRunloop, _emberService) {
+define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['exports', 'sinon', 'chai', 'ember-mocha', 'pretender', 'ember-test-helpers/wait', 'ghost-admin/tests/helpers/file-upload', 'jquery', 'ember-runloop', 'ember-service', 'ghost-admin/services/ajax'], function (exports, _sinon, _chai, _emberMocha, _pretender, _emberTestHelpersWait, _ghostAdminTestsHelpersFileUpload, _jquery, _emberRunloop, _emberService, _ghostAdminServicesAjax) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
     var keyCodes = {
@@ -6152,7 +6739,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(server.handledRequests.length).to.equal(1);
@@ -6209,7 +6796,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     var _server$handledRequests = _slicedToArray(server.handledRequests, 1);
@@ -6269,7 +6856,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(update.calledOnce).to.be['true'];
@@ -6326,10 +6913,67 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(update.calledOnce).to.be['false'];
+                    done();
+                });
+            });
+
+            (0, _emberMocha.it)('fires fileSelected action on file selection', function (done) {
+                var fileSelected = _sinon['default'].spy();
+                this.set('fileSelected', fileSelected);
+
+                stubSuccessfulUpload(server);
+
+                this.render(Ember.HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.6.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 89
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['url', ['subexpr', '@mut', [['get', 'image', ['loc', [null, [1, 24], [1, 29]]]]], [], []], 'fileSelected', ['subexpr', 'action', [['get', 'fileSelected', ['loc', [null, [1, 51], [1, 63]]]]], [], ['loc', [null, [1, 43], [1, 64]]]], 'update', ['subexpr', 'action', [['get', 'update', ['loc', [null, [1, 80], [1, 86]]]]], [], ['loc', [null, [1, 72], [1, 87]]]]], ['loc', [null, [1, 0], [1, 89]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
+
+                (0, _emberTestHelpersWait['default'])().then(function () {
+                    (0, _chai.expect)(fileSelected.calledOnce).to.be['true'];
+                    (0, _chai.expect)(fileSelected.args[0]).to.not.be.blank;
                     done();
                 });
             });
@@ -6382,7 +7026,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadStarted.calledOnce).to.be['true'];
@@ -6438,7 +7082,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -6494,7 +7138,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -6548,7 +7192,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -6605,7 +7249,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this2.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -6662,7 +7306,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this3.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -6717,7 +7361,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this4.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -6774,7 +7418,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this5.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -6831,7 +7475,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(showAPIError.calledOnce).to.be['true'];
@@ -6886,7 +7530,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(showAPIError.called).to.be['false'];
@@ -6940,7 +7584,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _emberRunloop['default'])(function () {
@@ -7002,7 +7646,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'));
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 // after 75ms we should have had one progress event
                 _emberRunloop['default'].later(this, function () {
@@ -7092,7 +7736,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                 var uploadSuccess = _sinon['default'].spy();
                 var drop = _jquery['default'].Event('drop', {
                     dataTransfer: {
-                        files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)()]
+                        files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)(['test'], { type: 'image/png' })]
                     }
                 });
 
@@ -7149,6 +7793,200 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
                     (0, _chai.expect)(uploadSuccess.firstCall.args[0]).to.equal('/content/images/test.png');
+                    done();
+                });
+            });
+
+            (0, _emberMocha.it)('validates "accept" mime type by default', function (done) {
+                var _this9 = this;
+
+                var uploadSuccess = _sinon['default'].spy();
+                var uploadFailed = _sinon['default'].spy();
+
+                this.set('uploadSuccess', uploadSuccess);
+                this.set('uploadFailed', uploadFailed);
+
+                stubSuccessfulUpload(server);
+
+                this.render(Ember.HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.6.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 3,
+                                    'column': 56
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['uploadSuccess', ['subexpr', 'action', [['get', 'uploadSuccess', ['loc', [null, [2, 42], [2, 55]]]]], [], ['loc', [null, [2, 34], [2, 56]]]], 'uploadFailed', ['subexpr', 'action', [['get', 'uploadFailed', ['loc', [null, [3, 41], [3, 53]]]]], [], ['loc', [null, [3, 33], [3, 54]]]]], ['loc', [null, [1, 0], [3, 56]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'application/plain' });
+
+                (0, _emberTestHelpersWait['default'])().then(function () {
+                    (0, _chai.expect)(uploadSuccess.called).to.be['false'];
+                    (0, _chai.expect)(uploadFailed.calledOnce).to.be['true'];
+                    (0, _chai.expect)(_this9.$('.failed').length, 'error message is displayed').to.equal(1);
+                    (0, _chai.expect)(_this9.$('.failed').text()).to.match(/The image type you uploaded is not supported/);
+                    done();
+                });
+            });
+
+            (0, _emberMocha.it)('uploads if validate action supplied and returns true', function (done) {
+                var validate = _sinon['default'].stub().returns(true);
+                var uploadSuccess = _sinon['default'].spy();
+
+                this.set('validate', validate);
+                this.set('uploadSuccess', uploadSuccess);
+
+                stubSuccessfulUpload(server);
+
+                this.render(Ember.HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.6.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 3,
+                                    'column': 48
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['uploadSuccess', ['subexpr', 'action', [['get', 'uploadSuccess', ['loc', [null, [2, 42], [2, 55]]]]], [], ['loc', [null, [2, 34], [2, 56]]]], 'validate', ['subexpr', 'action', [['get', 'validate', ['loc', [null, [3, 37], [3, 45]]]]], [], ['loc', [null, [3, 29], [3, 46]]]]], ['loc', [null, [1, 0], [3, 48]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'application/plain' });
+
+                (0, _emberTestHelpersWait['default'])().then(function () {
+                    (0, _chai.expect)(validate.calledOnce).to.be['true'];
+                    (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
+                    done();
+                });
+            });
+
+            (0, _emberMocha.it)('skips upload and displays error if validate action supplied and doesn\'t return true', function (done) {
+                var _this10 = this;
+
+                var validate = _sinon['default'].stub().returns(new _ghostAdminServicesAjax.UnsupportedMediaTypeError());
+                var uploadSuccess = _sinon['default'].spy();
+                var uploadFailed = _sinon['default'].spy();
+
+                this.set('validate', validate);
+                this.set('uploadSuccess', uploadSuccess);
+                this.set('uploadFailed', uploadFailed);
+
+                stubSuccessfulUpload(server);
+
+                this.render(Ember.HTMLBars.template((function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.6.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 4,
+                                    'column': 48
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createComment('');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                            var morphs = new Array(1);
+                            morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                            dom.insertBoundary(fragment, 0);
+                            dom.insertBoundary(fragment, null);
+                            return morphs;
+                        },
+                        statements: [['inline', 'gh-image-uploader', [], ['uploadSuccess', ['subexpr', 'action', [['get', 'uploadSuccess', ['loc', [null, [2, 42], [2, 55]]]]], [], ['loc', [null, [2, 34], [2, 56]]]], 'uploadFailed', ['subexpr', 'action', [['get', 'uploadFailed', ['loc', [null, [3, 41], [3, 53]]]]], [], ['loc', [null, [3, 33], [3, 54]]]], 'validate', ['subexpr', 'action', [['get', 'validate', ['loc', [null, [4, 37], [4, 45]]]]], [], ['loc', [null, [4, 29], [4, 46]]]]], ['loc', [null, [1, 0], [4, 48]]]]],
+                        locals: [],
+                        templates: []
+                    };
+                })()));
+
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
+
+                (0, _emberTestHelpersWait['default'])().then(function () {
+                    (0, _chai.expect)(validate.calledOnce).to.be['true'];
+                    (0, _chai.expect)(uploadSuccess.called).to.be['false'];
+                    (0, _chai.expect)(uploadFailed.calledOnce).to.be['true'];
+                    (0, _chai.expect)(_this10.$('.failed').length, 'error message is displayed').to.equal(1);
+                    (0, _chai.expect)(_this10.$('.failed').text()).to.match(/The image type you uploaded is not supported/);
                     done();
                 });
             });
@@ -11298,6 +12136,418 @@ define('ghost-admin/tests/integration/components/gh-tags-management-container-te
     });
 });
 /* jshint expr:true */
+define('ghost-admin/tests/integration/components/gh-task-button-test', ['exports', 'chai', 'ember-mocha', 'ember-concurrency', 'ember-object', 'ember-test-helpers/wait'], function (exports, _chai, _emberMocha, _emberConcurrency, _emberObject, _emberTestHelpersWait) {
+
+    (0, _emberMocha.describeComponent)('gh-task-button', 'Integration: Component: gh-task-button', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            this.render(Ember.HTMLBars.template((function () {
+                var child0 = (function () {
+                    return {
+                        meta: {
+                            'fragmentReason': {
+                                'name': 'missing-wrapper',
+                                'problems': ['wrong-type']
+                            },
+                            'revision': 'Ember@2.6.1',
+                            'loc': {
+                                'source': null,
+                                'start': {
+                                    'line': 1,
+                                    'column': 0
+                                },
+                                'end': {
+                                    'line': 1,
+                                    'column': 23
+                                }
+                            }
+                        },
+                        isEmpty: false,
+                        arity: 0,
+                        cachedFragment: null,
+                        hasRendered: false,
+                        buildFragment: function buildFragment(dom) {
+                            var el0 = dom.createDocumentFragment();
+                            var el1 = dom.createTextNode('Test');
+                            dom.appendChild(el0, el1);
+                            return el0;
+                        },
+                        buildRenderNodes: function buildRenderNodes() {
+                            return [];
+                        },
+                        statements: [],
+                        locals: [],
+                        templates: []
+                    };
+                })();
+
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 42
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['block', 'gh-task-button', [], [], 0, null, ['loc', [null, [1, 0], [1, 42]]]]],
+                    locals: [],
+                    templates: [child0]
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+            (0, _chai.expect)(this.$().text().trim()).to.equal('Test');
+        });
+
+        // TODO: figure out how to test concurrency behavior
+    });
+});
+/* jshint expr:true */
+define('ghost-admin/tests/integration/components/gh-theme-table-test', ['exports', 'chai', 'ember-mocha', 'jquery', 'sinon', 'ember-runloop'], function (exports, _chai, _emberMocha, _jquery, _sinon, _emberRunloop) {
+
+    (0, _emberMocha.describeComponent)('gh-theme-table', 'Integration: Component: gh-theme-table', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            this.set('availableThemes', [{ name: 'Daring', 'package': { name: 'Daring', version: '0.1.4' }, active: true }, { name: 'casper', 'package': { name: 'Casper', version: '1.3.1' } }, { name: 'oscar-ghost-1.1.0', 'package': { name: 'Lanyon', version: '1.1.0' } }, { name: 'foo' }]);
+            this.set('actionHandler', _sinon['default'].spy());
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 6,
+                                'column': 14
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-theme-table', [], ['availableThemes', ['subexpr', '@mut', [['get', 'availableThemes', ['loc', [null, [2, 32], [2, 47]]]]], [], []], 'activateTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'downloadTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [4, 38], [4, 51]]]]], [], ['loc', [null, [4, 30], [4, 52]]]], 'deleteTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [5, 36], [5, 49]]]]], [], ['loc', [null, [5, 28], [5, 50]]]]], ['loc', [null, [1, 0], [6, 14]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _chai.expect)(this.$('.theme-list').length, '.theme-list is present').to.equal(1);
+            (0, _chai.expect)(this.$('.theme-list-item').length, 'number of rows').to.equal(4);
+
+            var packageNames = this.$('.theme-list-item-body .name').map(function (i, name) {
+                return (0, _jquery['default'])(name).text().trim();
+            }).toArray();
+
+            (0, _chai.expect)(packageNames, 'themes are ordered by label, casper has "default", package versions are shown').to.deep.equal(['Casper - 1.3.1 (default)', 'Daring - 0.1.4', 'foo', 'Lanyon - 1.1.0']);
+
+            (0, _chai.expect)(this.$('.theme-list-item:contains("Daring")').hasClass('theme-list-item--active'), 'active theme is highlighted').to.be['true'];
+
+            (0, _chai.expect)(this.$('.theme-list-item:not(:contains("Daring"))').find('a:contains("Activate")').length === 3, 'non-active themes have an activate link').to.be['true'];
+
+            (0, _chai.expect)(this.$('.theme-list-item:contains("Daring")').find('a:contains("Activate")').length === 0, 'active theme doesn\'t have an activate link').to.be['true'];
+
+            (0, _chai.expect)(this.$('a:contains("Download")').length, 'all themes have a download link').to.equal(4);
+
+            (0, _chai.expect)(this.$('.theme-list-item:contains("foo")').find('a:contains("Delete")').length === 1, 'non-active, non-casper theme has delete link').to.be['true'];
+
+            (0, _chai.expect)(this.$('.theme-list-item:contains("Casper")').find('a:contains("Delete")').length === 0, 'casper doesn\'t have delete link').to.be['true'];
+
+            (0, _chai.expect)(this.$('.theme-list-item--active').find('a:contains("Delete")').length === 0, 'active theme doesn\'t have delete link').to.be['true'];
+        });
+
+        (0, _emberMocha.it)('delete link triggers passed in action', function () {
+            var _this = this;
+
+            var deleteAction = _sinon['default'].spy();
+            var actionHandler = _sinon['default'].spy();
+
+            this.set('availableThemes', [{ name: 'Foo', active: true }, { name: 'Bar' }]);
+            this.set('deleteAction', deleteAction);
+            this.set('actionHandler', actionHandler);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 6,
+                                'column': 14
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-theme-table', [], ['availableThemes', ['subexpr', '@mut', [['get', 'availableThemes', ['loc', [null, [2, 32], [2, 47]]]]], [], []], 'activateTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'downloadTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [4, 38], [4, 51]]]]], [], ['loc', [null, [4, 30], [4, 52]]]], 'deleteTheme', ['subexpr', 'action', [['get', 'deleteAction', ['loc', [null, [5, 36], [5, 48]]]]], [], ['loc', [null, [5, 28], [5, 49]]]]], ['loc', [null, [1, 0], [6, 14]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _emberRunloop['default'])(function () {
+                _this.$('.theme-list-item:contains("Bar") a:contains("Delete")').click();
+            });
+
+            (0, _chai.expect)(deleteAction.calledOnce).to.be['true'];
+            (0, _chai.expect)(deleteAction.firstCall.args[0].name).to.equal('Bar');
+        });
+
+        (0, _emberMocha.it)('download link triggers passed in action', function () {
+            var _this2 = this;
+
+            var downloadAction = _sinon['default'].spy();
+            var actionHandler = _sinon['default'].spy();
+
+            this.set('availableThemes', [{ name: 'Foo', active: true }, { name: 'Bar' }]);
+            this.set('downloadAction', downloadAction);
+            this.set('actionHandler', actionHandler);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 6,
+                                'column': 14
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-theme-table', [], ['availableThemes', ['subexpr', '@mut', [['get', 'availableThemes', ['loc', [null, [2, 32], [2, 47]]]]], [], []], 'activateTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'downloadTheme', ['subexpr', 'action', [['get', 'downloadAction', ['loc', [null, [4, 38], [4, 52]]]]], [], ['loc', [null, [4, 30], [4, 53]]]], 'deleteTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [5, 36], [5, 49]]]]], [], ['loc', [null, [5, 28], [5, 50]]]]], ['loc', [null, [1, 0], [6, 14]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _emberRunloop['default'])(function () {
+                _this2.$('.theme-list-item:contains("Foo") a:contains("Download")').click();
+            });
+
+            (0, _chai.expect)(downloadAction.calledOnce).to.be['true'];
+            (0, _chai.expect)(downloadAction.firstCall.args[0].name).to.equal('Foo');
+        });
+
+        (0, _emberMocha.it)('activate link triggers passed in action', function () {
+            var _this3 = this;
+
+            var activateAction = _sinon['default'].spy();
+            var actionHandler = _sinon['default'].spy();
+
+            this.set('availableThemes', [{ name: 'Foo', active: true }, { name: 'Bar' }]);
+            this.set('activateAction', activateAction);
+            this.set('actionHandler', actionHandler);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 6,
+                                'column': 14
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-theme-table', [], ['availableThemes', ['subexpr', '@mut', [['get', 'availableThemes', ['loc', [null, [2, 32], [2, 47]]]]], [], []], 'activateTheme', ['subexpr', 'action', [['get', 'activateAction', ['loc', [null, [3, 38], [3, 52]]]]], [], ['loc', [null, [3, 30], [3, 53]]]], 'downloadTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [4, 38], [4, 51]]]]], [], ['loc', [null, [4, 30], [4, 52]]]], 'deleteTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [5, 36], [5, 49]]]]], [], ['loc', [null, [5, 28], [5, 50]]]]], ['loc', [null, [1, 0], [6, 14]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            (0, _emberRunloop['default'])(function () {
+                _this3.$('.theme-list-item:contains("Bar") a:contains("Activate")').click();
+            });
+
+            (0, _chai.expect)(activateAction.calledOnce).to.be['true'];
+            (0, _chai.expect)(activateAction.firstCall.args[0].name).to.equal('Bar');
+        });
+
+        (0, _emberMocha.it)('displays folder names if there are duplicate package names', function () {
+            this.set('availableThemes', [{ name: 'daring', 'package': { name: 'Daring', version: '0.1.4' }, active: true }, { name: 'daring-0.1.5', 'package': { name: 'Daring', version: '0.1.4' } }, { name: 'casper', 'package': { name: 'Casper', version: '1.3.1' } }, { name: 'another', 'package': { name: 'Casper', version: '1.3.1' } }, { name: 'mine', 'package': { name: 'Casper', version: '1.3.1' } }, { name: 'foo' }]);
+            this.set('actionHandler', _sinon['default'].spy());
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 6,
+                                'column': 14
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['inline', 'gh-theme-table', [], ['availableThemes', ['subexpr', '@mut', [['get', 'availableThemes', ['loc', [null, [2, 32], [2, 47]]]]], [], []], 'activateTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [3, 38], [3, 51]]]]], [], ['loc', [null, [3, 30], [3, 52]]]], 'downloadTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [4, 38], [4, 51]]]]], [], ['loc', [null, [4, 30], [4, 52]]]], 'deleteTheme', ['subexpr', 'action', [['get', 'actionHandler', ['loc', [null, [5, 36], [5, 49]]]]], [], ['loc', [null, [5, 28], [5, 50]]]]], ['loc', [null, [1, 0], [6, 14]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+
+            var packageNames = this.$('.theme-list-item-body .name').map(function (i, name) {
+                return (0, _jquery['default'])(name).text().trim();
+            }).toArray();
+
+            console.log(packageNames);
+
+            (0, _chai.expect)(packageNames, 'themes are ordered by label, folder names shown for duplicates').to.deep.equal(['Casper - 1.3.1 (another)', 'Casper - 1.3.1 (default)', 'Casper - 1.3.1 (mine)', 'Daring - 0.1.4 (daring)', 'Daring - 0.1.4 (daring-0.1.5)', 'foo']);
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost-admin/tests/integration/components/gh-timezone-select-test', ['exports', 'chai', 'ember-mocha', 'ember-runloop', 'ember-test-helpers/wait', 'sinon'], function (exports, _chai, _emberMocha, _emberRunloop, _emberTestHelpersWait, _sinon) {
 
     (0, _emberMocha.describeComponent)('gh-timezone-select', 'Integration: Component: gh-timezone-select', {
@@ -12269,6 +13519,68 @@ define('ghost-admin/tests/integration/components/modals/new-subscriber-test', ['
     });
 });
 /* jshint expr:true */
+define('ghost-admin/tests/integration/components/modals/upload-theme-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
+
+    (0, _emberMocha.describeComponent)('modals/upload-theme', 'Integration: Component: modals/upload-theme', {
+        integration: true
+    }, function () {
+        (0, _emberMocha.it)('renders', function () {
+            // Set any properties with this.set('myProperty', 'value');
+            // Handle any actions with this.on('myAction', function(val) { ... });
+            // Template block usage:
+            // this.render(hbs`
+            //   {{#modals/upload-theme}}
+            //     template content
+            //   {{/modals/upload-theme}}
+            // `);
+
+            this.render(Ember.HTMLBars.template((function () {
+                return {
+                    meta: {
+                        'fragmentReason': {
+                            'name': 'missing-wrapper',
+                            'problems': ['wrong-type']
+                        },
+                        'revision': 'Ember@2.6.1',
+                        'loc': {
+                            'source': null,
+                            'start': {
+                                'line': 1,
+                                'column': 0
+                            },
+                            'end': {
+                                'line': 1,
+                                'column': 23
+                            }
+                        }
+                    },
+                    isEmpty: false,
+                    arity: 0,
+                    cachedFragment: null,
+                    hasRendered: false,
+                    buildFragment: function buildFragment(dom) {
+                        var el0 = dom.createDocumentFragment();
+                        var el1 = dom.createComment('');
+                        dom.appendChild(el0, el1);
+                        return el0;
+                    },
+                    buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                        var morphs = new Array(1);
+                        morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+                        dom.insertBoundary(fragment, 0);
+                        dom.insertBoundary(fragment, null);
+                        return morphs;
+                    },
+                    statements: [['content', 'modals/upload-theme', ['loc', [null, [1, 0], [1, 23]]]]],
+                    locals: [],
+                    templates: []
+                };
+            })()));
+            (0, _chai.expect)(this.$()).to.have.length(1);
+        });
+    });
+});
+/* jshint expr:true */
 define('ghost-admin/tests/integration/components/transfer-owner-test', ['exports', 'chai', 'ember-mocha', 'ember-runloop', 'rsvp', 'sinon'], function (exports, _chai, _emberMocha, _emberRunloop, _rsvp, _sinon) {
 
     (0, _emberMocha.describeComponent)('transfer-owner', 'Integration: Component: modals/transfer-owner', {
@@ -13182,8 +14494,8 @@ define('ghost-admin/tests/unit/components/gh-selectize-test', ['exports', 'chai'
                 component._selectize.setValue(['item 3', 'item 2']);
             });
 
-            (0, _chai.expect)(component.get('value'), 'component value').to.deep.equal(['item 3', 'item 2']);
-            (0, _chai.expect)(component.get('selection'), 'component selection').to.deep.equal(['item 3', 'item 2']);
+            (0, _chai.expect)(component.get('value').toArray(), 'component value').to.deep.equal(['item 3', 'item 2']);
+            (0, _chai.expect)(component.get('selection').toArray(), 'component selection').to.deep.equal(['item 3', 'item 2']);
         });
     });
 });
@@ -13685,149 +14997,6 @@ define('ghost-admin/tests/unit/controllers/post-settings-menu-test', ['exports',
             });
         });
 
-        describe('generateAndSetSlug', function () {
-            (0, _emberMocha.it)('should generate a slug and set it on the destination', function (done) {
-                var controller = this.subject({
-                    slugGenerator: _emberObject['default'].create({
-                        generateSlug: function generateSlug(slugType, str) {
-                            return _rsvp['default'].resolve(str + '-slug');
-                        }
-                    }),
-                    model: _emberObject['default'].create({ slug: '' })
-                });
-
-                (0, _emberRunloop['default'])(function () {
-                    controller.set('model.titleScratch', 'title');
-                    controller.generateAndSetSlug('model.slug');
-
-                    expect(controller.get('model.slug')).to.equal('');
-
-                    _rsvp['default'].resolve(controller.get('lastPromise')).then(function () {
-                        expect(controller.get('model.slug')).to.equal('title-slug');
-
-                        done();
-                    })['catch'](done);
-                });
-            });
-
-            (0, _emberMocha.it)('should not set the destination if the title is "(Untitled)" and the post already has a slug', function (done) {
-                var controller = this.subject({
-                    slugGenerator: _emberObject['default'].create({
-                        generateSlug: function generateSlug(slugType, str) {
-                            return _rsvp['default'].resolve(str + '-slug');
-                        }
-                    }),
-                    model: _emberObject['default'].create({
-                        slug: 'whatever'
-                    })
-                });
-
-                expect(controller.get('model.slug')).to.equal('whatever');
-
-                (0, _emberRunloop['default'])(function () {
-                    controller.set('model.titleScratch', 'title');
-
-                    _rsvp['default'].resolve(controller.get('lastPromise')).then(function () {
-                        expect(controller.get('model.slug')).to.equal('whatever');
-
-                        done();
-                    })['catch'](done);
-                });
-            });
-        });
-
-        describe('titleObserver', function () {
-            (0, _emberMocha.it)('should invoke generateAndSetSlug if the post is new and a title has not been set', function (done) {
-                var controller = this.subject({
-                    model: _emberObject['default'].create({ isNew: true }),
-                    invoked: 0,
-                    generateAndSetSlug: function generateAndSetSlug() {
-                        this.incrementProperty('invoked');
-                    }
-                });
-
-                expect(controller.get('invoked')).to.equal(0);
-                expect(controller.get('model.title')).to.not.be.ok;
-
-                (0, _emberRunloop['default'])(function () {
-                    controller.set('model.titleScratch', 'test');
-
-                    controller.titleObserver();
-
-                    // since titleObserver invokes generateAndSetSlug with a delay of 700ms
-                    // we need to make sure this assertion runs after that.
-                    // probably a better way to handle this?
-                    _emberRunloop['default'].later(function () {
-                        expect(controller.get('invoked')).to.equal(1);
-
-                        done();
-                    }, 800);
-                });
-            });
-
-            (0, _emberMocha.it)('should invoke generateAndSetSlug if the post title is "(Untitled)"', function (done) {
-                var controller = this.subject({
-                    model: _emberObject['default'].create({
-                        isNew: false,
-                        title: '(Untitled)'
-                    }),
-                    invoked: 0,
-                    generateAndSetSlug: function generateAndSetSlug() {
-                        this.incrementProperty('invoked');
-                    }
-                });
-
-                expect(controller.get('invoked')).to.equal(0);
-                expect(controller.get('model.title')).to.equal('(Untitled)');
-
-                (0, _emberRunloop['default'])(function () {
-                    controller.set('model.titleScratch', 'test');
-
-                    controller.titleObserver();
-
-                    // since titleObserver invokes generateAndSetSlug with a delay of 700ms
-                    // we need to make sure this assertion runs after that.
-                    // probably a better way to handle this?
-                    _emberRunloop['default'].later(function () {
-                        expect(controller.get('invoked')).to.equal(1);
-
-                        done();
-                    }, 800);
-                });
-            });
-
-            (0, _emberMocha.it)('should not invoke generateAndSetSlug if the post is new but has a title', function (done) {
-                var controller = this.subject({
-                    model: _emberObject['default'].create({
-                        isNew: true,
-                        title: 'a title'
-                    }),
-                    invoked: 0,
-                    generateAndSetSlug: function generateAndSetSlug() {
-                        this.incrementProperty('invoked');
-                    }
-                });
-
-                expect(controller.get('invoked')).to.equal(0);
-                expect(controller.get('model.title')).to.equal('a title');
-
-                (0, _emberRunloop['default'])(function () {
-                    controller.set('model.titleScratch', 'test');
-
-                    controller.titleObserver();
-
-                    // since titleObserver invokes generateAndSetSlug with a delay of 700ms
-                    // we need to make sure this assertion runs after that.
-                    // probably a better way to handle this?
-                    _emberRunloop['default'].later(function () {
-                        expect(controller.get('invoked')).to.equal(0);
-
-                        done();
-                    }, 800);
-                });
-            });
-        });
-
         describe('updateSlug', function () {
             (0, _emberMocha.it)('should reset slugValue to the previous slug when the new slug is blank or unchanged', function () {
                 var controller = this.subject({
@@ -14054,44 +15223,6 @@ define('ghost-admin/tests/unit/controllers/settings/general-test', ['exports', '
                 expect(controller.get('isDatedPermalinks')).to.be.ok;
                 expect(controller.get('model.permalinks')).to.equal('/:year/:month/:day/:slug/');
             });
-        });
-
-        (0, _emberMocha.it)('themes should be correct', function () {
-            var themes = [];
-            var controller = undefined;
-
-            themes.push({
-                name: 'casper',
-                active: true,
-                'package': {
-                    name: 'Casper',
-                    version: '1.1.5'
-                }
-            });
-
-            themes.push({
-                name: 'rasper',
-                'package': {
-                    name: 'Rasper',
-                    version: '1.0.0'
-                }
-            });
-
-            controller = this.subject({
-                model: EmberObject.create({
-                    availableThemes: themes
-                })
-            });
-
-            themes = controller.get('themes');
-            expect(themes).to.be.an.Array;
-            expect(themes.length).to.equal(2);
-            expect(themes.objectAt(0).name).to.equal('casper');
-            expect(themes.objectAt(0).active).to.be.ok;
-            expect(themes.objectAt(0).label).to.equal('Casper - 1.1.5');
-            expect(themes.objectAt(1).name).to.equal('rasper');
-            expect(themes.objectAt(1).active).to.not.be.ok;
-            expect(themes.objectAt(1).label).to.equal('Rasper - 1.0.0');
         });
     });
 });
@@ -14388,6 +15519,208 @@ define('ghost-admin/tests/unit/helpers/is-not-test', ['exports', 'chai', 'mocha'
             var result = (0, _ghostAdminHelpersIsNot.isNot)(false);
 
             (0, _chai.expect)(result).to.be.ok;
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost-admin/tests/unit/mixins/editor-base-controller-test', ['exports', 'chai', 'mocha', 'ember-object', 'rsvp', 'ember-runloop', 'ember-concurrency', 'ghost-admin/mixins/editor-base-controller'], function (exports, _chai, _mocha, _emberObject, _rsvp, _emberRunloop, _emberConcurrency, _ghostAdminMixinsEditorBaseController) {
+    var resolve = _rsvp['default'].resolve;
+
+    (0, _mocha.describe)('Unit: Mixin: editor-base-controller', function () {
+        (0, _mocha.describe)('generateSlug', function () {
+            (0, _mocha.it)('should generate a slug and set it on the model', function (done) {
+                var object = _emberObject['default'].extend(_ghostAdminMixinsEditorBaseController['default'], {
+                    slugGenerator: _emberObject['default'].create({
+                        generateSlug: function generateSlug(slugType, str) {
+                            return _rsvp['default'].resolve(str + '-slug');
+                        }
+                    }),
+                    model: _emberObject['default'].create({ slug: '' })
+                }).create();
+
+                object.set('model.titleScratch', 'title');
+
+                (0, _emberRunloop['default'])(function () {
+                    var promise = object.get('generateSlug').perform();
+
+                    (0, _chai.expect)(object.get('model.slug')).to.equal('');
+
+                    promise.then(function () {
+                        (0, _chai.expect)(object.get('model.slug')).to.equal('title-slug');
+
+                        done();
+                    })['catch'](done);
+                });
+            });
+
+            (0, _mocha.it)('should not set the destination if the title is "(Untitled)" and the post already has a slug', function (done) {
+                var object = _emberObject['default'].extend(_ghostAdminMixinsEditorBaseController['default'], {
+                    slugGenerator: _emberObject['default'].create({
+                        generateSlug: function generateSlug(slugType, str) {
+                            return _rsvp['default'].resolve(str + '-slug');
+                        }
+                    }),
+                    model: _emberObject['default'].create({
+                        slug: 'whatever'
+                    })
+                }).create();
+
+                (0, _chai.expect)(object.get('model.slug')).to.equal('whatever');
+
+                object.set('model.titleScratch', '(Untitled)');
+
+                (0, _emberRunloop['default'])(function () {
+                    object.get('generateSlug').perform().then(function () {
+                        (0, _chai.expect)(object.get('model.slug')).to.equal('whatever');
+
+                        done();
+                    })['catch'](done);
+                });
+            });
+        });
+
+        (0, _mocha.describe)('updateTitle', function () {
+            (0, _mocha.it)('should invoke generateSlug if the post is new and a title has not been set', function (done) {
+                var object = _emberObject['default'].extend(_ghostAdminMixinsEditorBaseController['default'], {
+                    model: _emberObject['default'].create({ isNew: true }),
+                    generateSlug: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$3$0() {
+                        return regeneratorRuntime.wrap(function callee$3$0$(context$4$0) {
+                            while (1) switch (context$4$0.prev = context$4$0.next) {
+                                case 0:
+                                    this.set('model.slug', 'test-slug');
+                                    context$4$0.next = 3;
+                                    return resolve();
+
+                                case 3:
+                                case 'end':
+                                    return context$4$0.stop();
+                            }
+                        }, callee$3$0, this);
+                    }))
+                }).create();
+
+                (0, _chai.expect)(object.get('model.isNew')).to.be['true'];
+                (0, _chai.expect)(object.get('model.titleScratch')).to.not.be.ok;
+
+                (0, _emberRunloop['default'])(function () {
+                    object.get('updateTitle').perform('test');
+
+                    (0, _emberRunloop.later)(function () {
+                        (0, _chai.expect)(object.get('model.titleScratch')).to.equal('test');
+                        (0, _chai.expect)(object.get('model.slug')).to.equal('test-slug');
+
+                        done();
+                    }, 800);
+                });
+            });
+
+            (0, _mocha.it)('should invoke generateSlug if the post is not new and a title is "(Untitled)"', function (done) {
+                var object = _emberObject['default'].extend(_ghostAdminMixinsEditorBaseController['default'], {
+                    model: _emberObject['default'].create({ isNew: false }),
+                    generateSlug: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$3$0() {
+                        return regeneratorRuntime.wrap(function callee$3$0$(context$4$0) {
+                            while (1) switch (context$4$0.prev = context$4$0.next) {
+                                case 0:
+                                    this.set('model.slug', 'test-slug');
+                                    context$4$0.next = 3;
+                                    return resolve();
+
+                                case 3:
+                                case 'end':
+                                    return context$4$0.stop();
+                            }
+                        }, callee$3$0, this);
+                    }))
+                }).create();
+
+                (0, _chai.expect)(object.get('model.isNew')).to.be['false'];
+                (0, _chai.expect)(object.get('model.titleScratch')).to.not.be.ok;
+
+                (0, _emberRunloop['default'])(function () {
+                    object.get('updateTitle').perform('(Untitled)');
+
+                    (0, _emberRunloop.later)(function () {
+                        (0, _chai.expect)(object.get('model.titleScratch')).to.equal('(Untitled)');
+                        (0, _chai.expect)(object.get('model.slug')).to.equal('test-slug');
+
+                        done();
+                    }, 800);
+                });
+            });
+
+            (0, _mocha.it)('should not invoke generateSlug if the post is new but has a title', function (done) {
+                var object = _emberObject['default'].extend(_ghostAdminMixinsEditorBaseController['default'], {
+                    model: _emberObject['default'].create({
+                        isNew: true,
+                        title: 'a title'
+                    }),
+                    generateSlug: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$3$0() {
+                        return regeneratorRuntime.wrap(function callee$3$0$(context$4$0) {
+                            while (1) switch (context$4$0.prev = context$4$0.next) {
+                                case 0:
+                                    (0, _chai.expect)(false, 'generateSlug should not be called').to.equal(true);
+
+                                    context$4$0.next = 3;
+                                    return resolve();
+
+                                case 3:
+                                case 'end':
+                                    return context$4$0.stop();
+                            }
+                        }, callee$3$0, this);
+                    }))
+                }).create();
+
+                (0, _chai.expect)(object.get('model.isNew')).to.be['true'];
+                (0, _chai.expect)(object.get('model.title')).to.equal('a title');
+                (0, _chai.expect)(object.get('model.titleScratch')).to.not.be.ok;
+
+                (0, _emberRunloop['default'])(function () {
+                    object.get('updateTitle').perform('test');
+
+                    (0, _emberRunloop.later)(function () {
+                        (0, _chai.expect)(object.get('model.titleScratch')).to.equal('test');
+                        (0, _chai.expect)(object.get('model.slug')).to.not.be.ok;
+
+                        done();
+                    }, 800);
+                });
+            });
+
+            (0, _mocha.it)('should not invoke generateSlug if the post is not new and the title is not "(Untitled)"', function (done) {
+                var object = _emberObject['default'].extend(_ghostAdminMixinsEditorBaseController['default'], {
+                    model: _emberObject['default'].create({ isNew: false }),
+                    generateSlug: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$3$0() {
+                        return regeneratorRuntime.wrap(function callee$3$0$(context$4$0) {
+                            while (1) switch (context$4$0.prev = context$4$0.next) {
+                                case 0:
+                                    (0, _chai.expect)(false, 'generateSlug should not be called').to.equal(true);
+
+                                    context$4$0.next = 3;
+                                    return resolve();
+
+                                case 3:
+                                case 'end':
+                                    return context$4$0.stop();
+                            }
+                        }, callee$3$0, this);
+                    }))
+                }).create();
+
+                (0, _chai.expect)(object.get('model.isNew')).to.be['false'];
+                (0, _chai.expect)(object.get('model.title')).to.not.be.ok;
+
+                (0, _emberRunloop['default'])(function () {
+                    object.get('updateTitle').perform('title');
+
+                    (0, _emberRunloop.later)(function () {
+                        (0, _chai.expect)(object.get('model.titleScratch')).to.equal('title');
+                        (0, _chai.expect)(object.get('model.slug')).to.not.be.ok;
+
+                        done();
+                    }, 800);
+                });
+            });
         });
     });
 });
@@ -14839,6 +16172,45 @@ define('ghost-admin/tests/unit/routes/subscribers/new-test', ['exports', 'chai',
     });
 });
 /* jshint expr:true */
+define('ghost-admin/tests/unit/serializers/notification-test', ['exports', 'chai', 'ember-mocha', 'ember-runloop', 'pretender'], function (exports, _chai, _emberMocha, _emberRunloop, _pretender) {
+
+    (0, _emberMocha.describeModel)('notification', 'Unit: Serializer: notification', {
+        // Specify the other units that are required for this test.
+        needs: ['serializer:notification']
+    }, function () {
+        var server = undefined;
+
+        beforeEach(function () {
+            server = new _pretender['default']();
+        });
+
+        afterEach(function () {
+            server.shutdown();
+        });
+
+        (0, _emberMocha.it)('converts location->key when deserializing', function () {
+            server.get('/notifications', function () {
+                var response = {
+                    notifications: [{
+                        id: 1,
+                        dismissible: false,
+                        status: 'alert',
+                        type: 'info',
+                        location: 'test.foo',
+                        message: 'This is a test'
+                    }]
+                };
+
+                return [200, { 'Content-Type': 'application/json' }, JSON.stringify(response)];
+            });
+
+            return this.store().findAll('notification').then(function (notifications) {
+                (0, _chai.expect)(notifications.get('length')).to.equal(1);
+                (0, _chai.expect)(notifications.get('firstObject.key')).to.equal('test.foo');
+            });
+        });
+    });
+});
 define('ghost-admin/tests/unit/serializers/post-test', ['exports', 'chai', 'ember-mocha'], function (exports, _chai, _emberMocha) {
 
     (0, _emberMocha.describeModel)('post', 'Unit:Serializer: post', {
@@ -14956,6 +16328,28 @@ define('ghost-admin/tests/unit/services/config-test', ['exports', 'chai', 'ember
             var service = this.subject();
 
             (0, _chai.expect)(service.get('clientSecret')).to.equal('23e435234423');
+        });
+    });
+});
+/* jshint expr:true */
+define('ghost-admin/tests/unit/services/event-bus-test', ['exports', 'chai', 'ember-mocha', 'sinon'], function (exports, _chai, _emberMocha, _sinon) {
+
+    (0, _emberMocha.describeModule)('service:event-bus', 'Unit: Service: event-bus', {}, function () {
+        (0, _emberMocha.it)('works', function () {
+            var service = this.subject();
+            var eventHandler = _sinon['default'].spy();
+
+            service.subscribe('test-event', eventHandler);
+
+            service.publish('test-event', 'test');
+
+            service.unsubscribe('test-event', eventHandler);
+
+            service.publish('test-event', 'test two');
+
+            (0, _chai.expect)(eventHandler.calledOnce, 'event handler only triggered once').to.be['true'];
+
+            (0, _chai.expect)(eventHandler.calledWith('test'), 'event handler was passed correct arguments').to.be['true'];
         });
     });
 });
@@ -15135,14 +16529,14 @@ define('ghost-admin/tests/unit/services/notifications-test', ['exports', 'ember-
                 notifications.showAPIError(resp);
             });
 
-            (0, _chai.expect)(notifications.get('content')).to.deep.equal([{ message: 'There was a problem on the server, please try again.', status: 'alert', type: 'error', key: 'api-error' }]);
+            (0, _chai.expect)(notifications.get('content').toArray()).to.deep.equal([{ message: 'There was a problem on the server, please try again.', status: 'alert', type: 'error', key: 'api-error' }]);
 
             notifications.set('content', (0, _emberArrayUtils.A)());
 
             (0, _emberRunloop['default'])(function () {
                 notifications.showAPIError(resp, { defaultErrorText: 'Overridden default' });
             });
-            (0, _chai.expect)(notifications.get('content')).to.deep.equal([{ message: 'Overridden default', status: 'alert', type: 'error', key: 'api-error' }]);
+            (0, _chai.expect)(notifications.get('content').toArray()).to.deep.equal([{ message: 'Overridden default', status: 'alert', type: 'error', key: 'api-error' }]);
         });
 
         (0, _emberMocha.it)('#showAPIError sets correct key when passed a base key', function () {
@@ -15540,7 +16934,7 @@ define('ghost-admin/tests/unit/validators/nav-item-test', ['exports', 'chai', 'm
         _ghostAdminValidatorsNavItem['default'].check(navItem, 'url');
 
         (0, _chai.expect)(_ghostAdminValidatorsNavItem['default'].get('passed'), '"' + url + '" passed').to.be['false'];
-        (0, _chai.expect)(navItem.get('errors').errorsFor('url')).to.deep.equal([{
+        (0, _chai.expect)(navItem.get('errors').errorsFor('url').toArray()).to.deep.equal([{
             attribute: 'url',
             message: 'You must specify a valid URL or relative path'
         }]);
@@ -15563,7 +16957,7 @@ define('ghost-admin/tests/unit/validators/nav-item-test', ['exports', 'chai', 'm
             _ghostAdminValidatorsNavItem['default'].check(navItem, 'label');
 
             (0, _chai.expect)(_ghostAdminValidatorsNavItem['default'].get('passed')).to.be['false'];
-            (0, _chai.expect)(navItem.get('errors').errorsFor('label')).to.deep.equal([{
+            (0, _chai.expect)(navItem.get('errors').errorsFor('label').toArray()).to.deep.equal([{
                 attribute: 'label',
                 message: 'You must specify a label'
             }]);
@@ -15576,7 +16970,7 @@ define('ghost-admin/tests/unit/validators/nav-item-test', ['exports', 'chai', 'm
             _ghostAdminValidatorsNavItem['default'].check(navItem, 'url');
 
             (0, _chai.expect)(_ghostAdminValidatorsNavItem['default'].get('passed')).to.be['false'];
-            (0, _chai.expect)(navItem.get('errors').errorsFor('url')).to.deep.equal([{
+            (0, _chai.expect)(navItem.get('errors').errorsFor('url').toArray()).to.deep.equal([{
                 attribute: 'url',
                 message: 'You must specify a URL or relative path'
             }]);
@@ -15619,7 +17013,7 @@ define('ghost-admin/tests/unit/validators/slack-integration-test', ['exports', '
         _ghostAdminValidatorsSlackIntegration['default'].check(slackObject, 'url');
 
         (0, _chai.expect)(_ghostAdminValidatorsSlackIntegration['default'].get('passed'), '"' + url + '" passed').to.be['false'];
-        (0, _chai.expect)(slackObject.get('errors').errorsFor('url')).to.deep.equal([{
+        (0, _chai.expect)(slackObject.get('errors').errorsFor('url').toArray()).to.deep.equal([{
             attribute: 'url',
             message: 'The URL must be in a format like https://hooks.slack.com/services/<your personal key>'
         }]);
