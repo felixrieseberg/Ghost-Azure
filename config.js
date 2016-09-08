@@ -12,7 +12,7 @@ var path = require('path'),
 // If the App Setting 'websiteUrl' is set, Ghost will use that URL as base.
 // If it isn't set, we'll go with the default sitename.
 if (!websiteUrl || websiteUrl === '' ||  websiteUrl.length === 0) {
-    websiteUrl = 'http://' + process.env.siteName + '.azurewebsites.net';
+    websiteUrl = 'http://schneids.net';
     console.log(websiteUrl);
 }
 
