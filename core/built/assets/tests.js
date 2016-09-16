@@ -1435,50 +1435,7 @@ define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha'
                     (0, _chai.expect)(find('.fullscreen-modal h1').text().trim(), '"Try Again" resets form after theme validation error').to.equal('Upload a theme');
                 });
 
-                // theme upload handles validation warnings
-                andThen(function () {
-                    server.post('/themes/upload/', function () {
-                        return new _emberCliMirage['default'].Response(200, {}, {
-                            themes: [{
-                                name: 'blackpalm',
-                                'package': {
-                                    name: 'BlackPalm',
-                                    version: '1.0.0'
-                                },
-                                warnings: [{
-                                    level: 'warning',
-                                    rule: 'Assets such as CSS & JS must use the <code>{{asset}}</code> helper',
-                                    details: '<p>The listed files should be included using the <code>{{asset}}</code> helper.  For more information, please see the <a href="http://themes.ghost.org/docs/asset">asset helper documentation</a>.</p>',
-                                    failures: [{
-                                        ref: '/assets/dist/img/apple-touch-icon.png'
-                                    }, {
-                                        ref: '/assets/dist/img/favicon.ico'
-                                    }, {
-                                        ref: '/assets/dist/css/blackpalm.min.css'
-                                    }, {
-                                        ref: '/assets/dist/js/blackpalm.min.js'
-                                    }],
-                                    code: 'GS030-ASSET-REQ'
-                                }]
-                            }]
-                        });
-                    });
-                });
-                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'warning-theme.zip', type: 'application/zip' });
-                andThen(function () {
-                    (0, _chai.expect)(find('.fullscreen-modal h1').text().trim(), 'modal title after uploading theme with warnings').to.equal('Uploaded with warnings');
-
-                    (0, _chai.expect)(find('.theme-validation-errors').text(), 'top-level warnings are displayed').to.match(/The listed files should be included using the {{asset}} helper/);
-
-                    (0, _chai.expect)(find('.theme-validation-errors').text(), 'individual warning failures are displayed').to.match(/\/assets\/dist\/img\/apple-touch-icon\.png/);
-
-                    // reset to default mirage handlers
-                    (0, _ghostAdminMirageConfigThemes['default'])(server);
-                });
-                click('button:contains("Close")');
-
                 // theme upload handles success then close
-                click('a:contains("Upload a theme")');
                 fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'theme-1.zip', type: 'application/zip' });
                 andThen(function () {
                     (0, _chai.expect)(find('.fullscreen-modal h1').text().trim(), 'modal header after successful upload').to.equal('Upload successful!');
@@ -3023,7 +2980,7 @@ define('ghost-admin/tests/acceptance/subscribers-test', ['exports', 'mocha', 'ch
                 });
 
                 click('.btn:contains("Import CSV")');
-                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'test.csv' });
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { type: 'text/csv' });
 
                 andThen(function () {
                     // modal title changes
@@ -3746,7 +3703,7 @@ define('ghost-admin/tests/acceptance/version-mismatch-test', ['exports', 'mocha'
 
                 visit('/subscribers');
                 click('.btn:contains("Import CSV")');
-                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { name: 'test.csv' });
+                fileUpload('.fullscreen-modal input[type="file"]', ['test'], { type: 'text/csv' });
 
                 andThen(function () {
                     // alert is shown
@@ -5132,7 +5089,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(server.handledRequests.length).to.equal(1);
@@ -5189,7 +5146,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadSuccess.calledOnce).to.be['true'];
@@ -5246,7 +5203,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadSuccess.calledOnce).to.be['false'];
@@ -5302,7 +5259,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(fileSelected.calledOnce).to.be['true'];
@@ -5359,7 +5316,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadStarted.calledOnce).to.be['true'];
@@ -5415,7 +5372,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -5471,7 +5428,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -5525,7 +5482,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5582,7 +5539,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this2.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5639,7 +5596,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this3.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5694,7 +5651,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this4.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5751,7 +5708,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(_this5.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -5808,7 +5765,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(showAPIError.calledOnce).to.be['true'];
@@ -5863,7 +5820,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(showAPIError.called).to.be['false'];
@@ -5917,7 +5874,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _emberRunloop['default'])(function () {
@@ -5979,7 +5936,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                     templates: []
                 };
             })()));
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             // after 75ms we should have had one progress event
             _emberRunloop['default'].later(this, function () {
@@ -6067,7 +6024,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
             var uploadSuccess = _sinon['default'].spy();
             var drop = _jquery['default'].Event('drop', {
                 dataTransfer: {
-                    files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)(['test'], { name: 'test.csv' })]
+                    files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)(['test'], { type: 'text/csv' })]
                 }
             });
 
@@ -6128,7 +6085,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
             });
         });
 
-        (0, _emberMocha.it)('validates extension by default', function (done) {
+        (0, _emberMocha.it)('validates "accept" mime type by default', function (done) {
             var _this9 = this;
 
             var uploadSuccess = _sinon['default'].spy();
@@ -6182,7 +6139,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                 };
             })()));
 
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.txt' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'application/plain' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(uploadSuccess.called).to.be['false'];
@@ -6245,7 +6202,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                 };
             })()));
 
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(validate.calledOnce).to.be['true'];
@@ -6310,7 +6267,7 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                 };
             })()));
 
-            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.csv' });
+            (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'text/csv' });
 
             (0, _emberTestHelpersWait['default'])().then(function () {
                 (0, _chai.expect)(validate.calledOnce).to.be['true'];
@@ -6782,7 +6739,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(server.handledRequests.length).to.equal(1);
@@ -6839,7 +6796,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     var _server$handledRequests = _slicedToArray(server.handledRequests, 1);
@@ -6899,7 +6856,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(update.calledOnce).to.be['true'];
@@ -6956,7 +6913,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(update.calledOnce).to.be['false'];
@@ -7012,7 +6969,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(fileSelected.calledOnce).to.be['true'];
@@ -7069,7 +7026,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadStarted.calledOnce).to.be['true'];
@@ -7125,7 +7082,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -7181,7 +7138,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadFinished.calledOnce).to.be['true'];
@@ -7235,7 +7192,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -7292,7 +7249,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this2.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -7349,7 +7306,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this3.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -7404,7 +7361,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this4.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -7461,7 +7418,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(_this5.$('.failed').length, 'error message is displayed').to.equal(1);
@@ -7518,7 +7475,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(showAPIError.calledOnce).to.be['true'];
@@ -7573,7 +7530,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(showAPIError.called).to.be['false'];
@@ -7627,7 +7584,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _emberRunloop['default'])(function () {
@@ -7689,7 +7646,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                         templates: []
                     };
                 })()));
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 // after 75ms we should have had one progress event
                 _emberRunloop['default'].later(this, function () {
@@ -7779,7 +7736,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                 var uploadSuccess = _sinon['default'].spy();
                 var drop = _jquery['default'].Event('drop', {
                     dataTransfer: {
-                        files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)(['test'], { name: 'test.png' })]
+                        files: [(0, _ghostAdminTestsHelpersFileUpload.createFile)(['test'], { type: 'image/png' })]
                     }
                 });
 
@@ -7840,7 +7797,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                 });
             });
 
-            (0, _emberMocha.it)('validates extension by default', function (done) {
+            (0, _emberMocha.it)('validates "accept" mime type by default', function (done) {
                 var _this9 = this;
 
                 var uploadSuccess = _sinon['default'].spy();
@@ -7894,7 +7851,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                     };
                 })()));
 
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.json' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'application/plain' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(uploadSuccess.called).to.be['false'];
@@ -7957,7 +7914,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                     };
                 })()));
 
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.txt' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'application/plain' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(validate.calledOnce).to.be['true'];
@@ -8022,7 +7979,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                     };
                 })()));
 
-                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { name: 'test.png' });
+                (0, _ghostAdminTestsHelpersFileUpload.fileUpload)(this.$('input[type="file"]'), ['test'], { type: 'image/png' });
 
                 (0, _emberTestHelpersWait['default'])().then(function () {
                     (0, _chai.expect)(validate.calledOnce).to.be['true'];

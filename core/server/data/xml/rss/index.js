@@ -1,18 +1,17 @@
-var crypto      = require('crypto'),
+var _           = require('lodash'),
+    crypto      = require('crypto'),
     downsize    = require('downsize'),
     RSS         = require('rss'),
     config      = require('../../../config'),
     errors      = require('../../../errors'),
     filters     = require('../../../filters'),
     processUrls = require('../../../utils/make-absolute-urls'),
-    labs        = require('../../../utils/labs'),
 
     // Really ugly temporary hack for location of things
     fetchData   = require('../../../controllers/frontend/fetch-data'),
 
     generate,
     generateFeed,
-    generateTags,
     getFeedXml,
     feedCache = {};
 
@@ -78,19 +77,6 @@ getFeedXml = function getFeedXml(path, data) {
     return feedCache[path].xml;
 };
 
-generateTags = function generateTags(data) {
-    if (data.tags) {
-        return data.tags.reduce(function (tags, tag) {
-            if (tag.visibility !== 'internal' || !labs.isSet('internalTags')) {
-                tags.push(tag.name);
-            }
-            return tags;
-        }, []);
-    }
-
-    return [];
-};
-
 generateFeed = function generateFeed(data) {
     var feed = new RSS({
         title: data.title,
@@ -114,7 +100,7 @@ generateFeed = function generateFeed(data) {
                 guid: post.uuid,
                 url: itemUrl,
                 date: post.published_at,
-                categories: generateTags(post),
+                categories: _.map(post.tags, 'name'),
                 author: post.author ? post.author.name : null,
                 custom_elements: []
             },

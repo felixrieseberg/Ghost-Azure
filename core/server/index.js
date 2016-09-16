@@ -1,17 +1,6 @@
 // # Bootup
 // This file needs serious love & refactoring
 
-/**
- * make sure overrides get's called first!
- * - keeping the overrides require here works for installing Ghost as npm!
- *
- * the call order is the following:
- * - root index requires core module
- * - core index requires server
- * - overrides is the first package to load
- */
-require('./overrides');
-
 // Module dependencies
 var express = require('express'),
     _ = require('lodash'),
@@ -160,7 +149,7 @@ function init(options) {
 
         // scheduling can trigger api requests, that's why we initialize the module after the ghost server creation
         // scheduling module can create x schedulers with different adapters
-        return scheduling.init(_.extend(config.scheduling, {apiUrl: config.urlFor('api', null, true)}));
+        return scheduling.init(_.extend(config.scheduling, {apiUrl: config.url + config.urlFor('api')}));
     }).then(function () {
         return ghostServer;
     });

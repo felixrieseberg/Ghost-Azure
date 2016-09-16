@@ -33,7 +33,7 @@ function controller(req, res, next) {
 }
 
 function getPostData(req, res, next) {
-    postLookup(res.locals.relativeUrl)
+    postLookup(req.originalUrl)
         .then(function (result) {
             if (result && result.post) {
                 req.body.post = result.post;

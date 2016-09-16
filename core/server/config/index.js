@@ -282,7 +282,7 @@ ConfigManager.prototype.set = function (config) {
             },
             themes: {
                 extensions: ['.zip'],
-                contentTypes: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream']
+                contentTypes: ['application/zip', 'application/x-zip-compressed']
             }
         },
         deprecatedItems: ['updateCheck', 'mail.fromaddress'],

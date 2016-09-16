@@ -1,7 +1,7 @@
 {
     "core": {
         "databaseVersion": {
-            "defaultValue": "008"
+            "defaultValue": "007"
         },
         "dbHash": {
             "defaultValue": null

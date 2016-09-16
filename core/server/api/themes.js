@@ -25,12 +25,11 @@ themes = {
         // consistent filename uploads
         options.originalname = options.originalname.toLowerCase();
 
-        var storageAdapter = storage.getStorage('themes'),
-        zip = {
+        var zip = {
             path: options.path,
             name: options.originalname,
-            shortName: storageAdapter.getSanitizedFileName(options.originalname.split('.zip')[0])
-        }, theme;
+            shortName: options.originalname.split('.zip')[0]
+        }, theme, storageAdapter = storage.getStorage('themes');
 
         // check if zip name is casper.zip
         if (zip.name === 'casper.zip') {
@@ -84,11 +83,7 @@ themes = {
             })
             .then(function (settings) {
                 // gscan theme structure !== ghost theme structure
-                var themeObject = _.find(settings.availableThemes.value, {name: zip.shortName}) || {};
-                if (theme.results.warning.length > 0) {
-                    themeObject.warnings = _.cloneDeep(theme.results.warning);
-                }
-                return {themes: [themeObject]};
+                return {themes: [_.find(settings.availableThemes.value, {name: zip.shortName})]};
             })
             .finally(function () {
                 // remove zip upload from multer
