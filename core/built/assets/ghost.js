@@ -1400,21 +1400,15 @@ define('ghost-admin/components/gh-file-uploader', ['exports', 'ember-component',
         },
 
         _defaultValidator: function _defaultValidator(file) {
-            var accept = this._accept;
+            var _$$exec = /(?:\.([^.]+))?$/.exec(file.name);
 
-            if ((0, _emberUtils.isBlank)(file.type)) {
-                var _$$exec = /(?:\.([^.]+))?$/.exec(file.name);
+            var _$$exec2 = _slicedToArray(_$$exec, 2);
 
-                var _$$exec2 = _slicedToArray(_$$exec, 2);
+            var extension = _$$exec2[1];
 
-                var extension = _$$exec2[1];
+            var extensions = this._extensions;
 
-                var extensions = this._extensions;
-
-                if (!extension || extensions.indexOf(extension.toLowerCase()) === -1) {
-                    return new _ghostAdminServicesAjax.UnsupportedMediaTypeError();
-                }
-            } else if (!(0, _emberUtils.isBlank)(file.type) && !(0, _emberUtils.isBlank)(accept) && file && accept.indexOf(file.type) === -1) {
+            if (!extension || extensions.indexOf(extension.toLowerCase()) === -1) {
                 return new _ghostAdminServicesAjax.UnsupportedMediaTypeError();
             }
 
@@ -1582,7 +1576,9 @@ define('ghost-admin/components/gh-image-uploader-with-preview', ['exports', 'emb
         }
     });
 });
-define('ghost-admin/components/gh-image-uploader', ['exports', 'ember-component', 'ember-computed', 'ember-service/inject', 'ember-string', 'ember-utils', 'ember-runloop', 'ember-invoke-action', 'ghost-admin/utils/ghost-paths', 'ghost-admin/services/ajax'], function (exports, _emberComponent, _emberComputed, _emberServiceInject, _emberString, _emberUtils, _emberRunloop, _emberInvokeAction, _ghostAdminUtilsGhostPaths, _ghostAdminServicesAjax) {
+define('ghost-admin/components/gh-image-uploader', ['exports', 'ember-component', 'ember-computed', 'ember-service/inject', 'ember-string', 'ember-utils', 'ember-array/utils', 'ember-runloop', 'ember-invoke-action', 'ghost-admin/utils/ghost-paths', 'ghost-admin/services/ajax'], function (exports, _emberComponent, _emberComputed, _emberServiceInject, _emberString, _emberUtils, _emberArrayUtils, _emberRunloop, _emberInvokeAction, _ghostAdminUtilsGhostPaths, _ghostAdminServicesAjax) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
     exports['default'] = _emberComponent['default'].extend({
         tagName: 'section',
         classNames: ['gh-image-uploader'],
@@ -1593,6 +1589,7 @@ define('ghost-admin/components/gh-image-uploader', ['exports', 'ember-component'
         altText: '',
         saveButton: true,
         accept: 'image/gif,image/jpg,image/jpeg,image/png,image/svg+xml',
+        extensions: ['gif', 'jpg', 'jpeg', 'png', 'svg'],
         validate: null,
 
         dragClass: null,
@@ -1785,9 +1782,19 @@ define('ghost-admin/components/gh-image-uploader', ['exports', 'ember-component'
         },
 
         _defaultValidator: function _defaultValidator(file) {
-            var accept = this.get('accept');
+            var extensions = this.get('extensions');
 
-            if (!(0, _emberUtils.isBlank)(accept) && file && accept.indexOf(file.type) === -1) {
+            var _$$exec = /(?:\.([^.]+))?$/.exec(file.name);
+
+            var _$$exec2 = _slicedToArray(_$$exec, 2);
+
+            var extension = _$$exec2[1];
+
+            if (!(0, _emberArrayUtils.isEmberArray)(extensions)) {
+                extensions = extensions.split(',');
+            }
+
+            if (!extension || extensions.indexOf(extension.toLowerCase()) === -1) {
                 return new _ghostAdminServicesAjax.UnsupportedMediaTypeError();
             }
 
@@ -2763,7 +2770,9 @@ define('ghost-admin/components/gh-search-input/trigger', ['exports', 'ember-runl
 
             handleKeydown: function handleKeydown(e) {
                 var select = this.get('select');
-                if (!select.isOpen) {
+
+                // TODO: remove keycode check once EPS is updated to 1.0
+                if (!select.isOpen || e.keyCode === 32) {
                     e.stopPropagation();
                 }
             }
@@ -4640,10 +4649,13 @@ define('ghost-admin/components/modals/upload-image', ['exports', 'ember-computed
         }
     });
 });
-define('ghost-admin/components/modals/upload-theme', ['exports', 'ghost-admin/components/modals/base', 'ember-computed', 'ember-invoke-action', 'ghost-admin/utils/ghost-paths', 'ghost-admin/services/ajax', 'ember-utils', 'ember-runloop', 'ember-service/inject'], function (exports, _ghostAdminComponentsModalsBase, _emberComputed, _emberInvokeAction, _ghostAdminUtilsGhostPaths, _ghostAdminServicesAjax, _emberUtils, _emberRunloop, _emberServiceInject) {
+define('ghost-admin/components/modals/upload-theme', ['exports', 'ghost-admin/components/modals/base', 'ember-computed', 'ember-invoke-action', 'ghost-admin/utils/ghost-paths', 'ghost-admin/services/ajax', 'ember-runloop', 'ember-service/inject', 'ember-metal/get'], function (exports, _ghostAdminComponentsModalsBase, _emberComputed, _emberInvokeAction, _ghostAdminUtilsGhostPaths, _ghostAdminServicesAjax, _emberRunloop, _emberServiceInject, _emberMetalGet) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
+
     exports['default'] = _ghostAdminComponentsModalsBase['default'].extend({
 
         accept: ['application/zip', 'application/x-zip-compressed'],
+        extensions: ['zip'],
         availableThemes: null,
         closeDisabled: false,
         file: null,
@@ -4678,13 +4690,21 @@ define('ghost-admin/components/modals/upload-theme', ['exports', 'ghost-admin/co
 
         actions: {
             validateTheme: function validateTheme(file) {
-                var accept = this.get('accept');
-                var themeName = file.name.replace(/\.zip$/, '');
+                var themeName = file.name.replace(/\.zip$/, '').replace(/[^\w@.]/gi, '-');
+
                 var availableThemeNames = this.get('availableThemeNames');
 
                 this.set('file', file);
 
-                if (!(0, _emberUtils.isBlank)(accept) && file && accept.indexOf(file.type) === -1) {
+                var _$$exec = /(?:\.([^.]+))?$/.exec(file.name);
+
+                var _$$exec2 = _slicedToArray(_$$exec, 2);
+
+                var extension = _$$exec2[1];
+
+                var extensions = this.get('extensions');
+
+                if (!extension || extensions.indexOf(extension.toLowerCase()) === -1) {
                     return new _ghostAdminServicesAjax.UnsupportedMediaTypeError();
                 }
 
@@ -4720,7 +4740,16 @@ define('ghost-admin/components/modals/upload-theme', ['exports', 'ghost-admin/co
             },
 
             uploadSuccess: function uploadSuccess(response) {
-                this.set('theme', response.themes[0]);
+                var _response$themes = _slicedToArray(response.themes, 1);
+
+                var theme = _response$themes[0];
+
+                this.set('theme', theme);
+
+                if ((0, _emberMetalGet['default'])(theme, 'warnings.length') > 0) {
+                    this.set('validationWarnings', theme.warnings);
+                }
+
                 // invoke the passed in confirm action
                 (0, _emberInvokeAction.invokeAction)(this, 'model.uploadSuccess', this.get('theme'));
             },
@@ -14945,25 +14974,6 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/kevinansfield");
-        dom.setAttribute(el2, "title", "kevinansfield");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "kevinansfield");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/acburdine");
         dom.setAttribute(el2, "title", "acburdine");
         var el3 = dom.createTextNode("\n        ");
@@ -14983,12 +14993,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
-        dom.setAttribute(el2, "title", "AileenCGN");
+        dom.setAttribute(el2, "href", "https://github.com/kevinansfield");
+        dom.setAttribute(el2, "title", "kevinansfield");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "AileenCGN");
+        dom.setAttribute(el3, "alt", "kevinansfield");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15021,12 +15031,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/sakulstra");
-        dom.setAttribute(el2, "title", "sakulstra");
+        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
+        dom.setAttribute(el2, "title", "AileenCGN");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "sakulstra");
+        dom.setAttribute(el3, "alt", "AileenCGN");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15046,6 +15056,25 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3, "alt", "dbalders");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/sakulstra");
+        dom.setAttribute(el2, "title", "sakulstra");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "sakulstra");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15097,6 +15126,25 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/disordinary");
+        dom.setAttribute(el2, "title", "disordinary");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "disordinary");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/starcwl");
         dom.setAttribute(el2, "title", "starcwl");
         var el3 = dom.createTextNode("\n        ");
@@ -15116,12 +15164,31 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/felixrieseberg");
-        dom.setAttribute(el2, "title", "felixrieseberg");
+        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
+        dom.setAttribute(el2, "title", "cobbspur");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "felixrieseberg");
+        dom.setAttribute(el3, "alt", "cobbspur");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/sebgie");
+        dom.setAttribute(el2, "title", "sebgie");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "sebgie");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15224,44 +15291,6 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n");
         dom.appendChild(el1, el2);
         dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/gergelyke");
-        dom.setAttribute(el2, "title", "gergelyke");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "gergelyke");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
-        dom.setAttribute(el2, "title", "cobbspur");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cobbspur");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
@@ -15304,7 +15333,7 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         morphs[17] = dom.createAttrMorph(element17, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/sakulstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/vkandy"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/starcwl"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/felixrieseberg"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/jessedijkstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/mwakerman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/twalling"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/eexit"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/zhenkyle"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/gergelyke"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/cobbspur"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/sakulstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/vkandy"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/starcwl"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/jessedijkstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/mwakerman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/twalling"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/eexit"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/zhenkyle"]]]],
       locals: [],
       templates: []
     };
@@ -27366,6 +27395,78 @@ define("ghost-admin/templates/components/modals/upload-image", ["exports"], func
 define("ghost-admin/templates/components/modals/upload-theme", ["exports"], function (exports) {
   exports["default"] = Ember.HTMLBars.template((function () {
     var child0 = (function () {
+      var child0 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.6.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 4,
+                "column": 12
+              },
+              "end": {
+                "line": 6,
+                "column": 12
+              }
+            },
+            "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                Uploaded with warnings\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
+      var child1 = (function () {
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.6.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 6,
+                "column": 12
+              },
+              "end": {
+                "line": 8,
+                "column": 12
+              }
+            },
+            "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("                Upload successful!\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes() {
+            return [];
+          },
+          statements: [],
+          locals: [],
+          templates: []
+        };
+      })();
       return {
         meta: {
           "fragmentReason": false,
@@ -27377,7 +27478,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
               "column": 8
             },
             "end": {
-              "line": 5,
+              "line": 9,
               "column": 8
             }
           },
@@ -27389,16 +27490,20 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
         hasRendered: false,
         buildFragment: function buildFragment(dom) {
           var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("            Upload successful!\n");
+          var el1 = dom.createComment("");
           dom.appendChild(el0, el1);
           return el0;
         },
-        buildRenderNodes: function buildRenderNodes() {
-          return [];
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
+          return morphs;
         },
-        statements: [],
+        statements: [["block", "if", [["get", "validationWarnings", ["loc", [null, [4, 18], [4, 36]]]]], [], 0, 1, ["loc", [null, [4, 12], [8, 19]]]]],
         locals: [],
-        templates: []
+        templates: [child0, child1]
       };
     })();
     var child1 = (function () {
@@ -27410,11 +27515,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             "loc": {
               "source": null,
               "start": {
-                "line": 5,
+                "line": 9,
                 "column": 8
               },
               "end": {
-                "line": 7,
+                "line": 11,
                 "column": 8
               }
             },
@@ -27446,11 +27551,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             "loc": {
               "source": null,
               "start": {
-                "line": 7,
+                "line": 11,
                 "column": 8
               },
               "end": {
-                "line": 9,
+                "line": 13,
                 "column": 8
               }
             },
@@ -27481,11 +27586,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 5,
+              "line": 9,
               "column": 8
             },
             "end": {
-              "line": 9,
+              "line": 13,
               "column": 8
             }
           },
@@ -27508,13 +27613,248 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["block", "if", [["get", "validationErrors", ["loc", [null, [5, 18], [5, 34]]]]], [], 0, 1, ["loc", [null, [5, 8], [9, 8]]]]],
+        statements: [["block", "if", [["get", "validationErrors", ["loc", [null, [9, 18], [9, 34]]]]], [], 0, 1, ["loc", [null, [9, 8], [13, 8]]]]],
         locals: [],
         templates: [child0, child1]
       };
     })();
     var child2 = (function () {
       var child0 = (function () {
+        var child0 = (function () {
+          var child0 = (function () {
+            return {
+              meta: {
+                "fragmentReason": false,
+                "revision": "Ember@2.6.1",
+                "loc": {
+                  "source": null,
+                  "start": {
+                    "line": 29,
+                    "column": 24
+                  },
+                  "end": {
+                    "line": 31,
+                    "column": 24
+                  }
+                },
+                "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+              },
+              isEmpty: false,
+              arity: 0,
+              cachedFragment: null,
+              hasRendered: false,
+              buildFragment: function buildFragment(dom) {
+                var el0 = dom.createDocumentFragment();
+                var el1 = dom.createTextNode("                            ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createComment("");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n");
+                dom.appendChild(el0, el1);
+                return el0;
+              },
+              buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                var morphs = new Array(1);
+                morphs[0] = dom.createUnsafeMorphAt(fragment, 1, 1, contextualElement);
+                return morphs;
+              },
+              statements: [["content", "error.details", ["loc", [null, [30, 28], [30, 47]]]]],
+              locals: [],
+              templates: []
+            };
+          })();
+          var child1 = (function () {
+            return {
+              meta: {
+                "fragmentReason": false,
+                "revision": "Ember@2.6.1",
+                "loc": {
+                  "source": null,
+                  "start": {
+                    "line": 31,
+                    "column": 24
+                  },
+                  "end": {
+                    "line": 33,
+                    "column": 24
+                  }
+                },
+                "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+              },
+              isEmpty: false,
+              arity: 0,
+              cachedFragment: null,
+              hasRendered: false,
+              buildFragment: function buildFragment(dom) {
+                var el0 = dom.createDocumentFragment();
+                var el1 = dom.createTextNode("                            ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createComment("");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n");
+                dom.appendChild(el0, el1);
+                return el0;
+              },
+              buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                var morphs = new Array(1);
+                morphs[0] = dom.createUnsafeMorphAt(fragment, 1, 1, contextualElement);
+                return morphs;
+              },
+              statements: [["content", "error.rule", ["loc", [null, [32, 28], [32, 44]]]]],
+              locals: [],
+              templates: []
+            };
+          })();
+          var child2 = (function () {
+            var child0 = (function () {
+              return {
+                meta: {
+                  "fragmentReason": false,
+                  "revision": "Ember@2.6.1",
+                  "loc": {
+                    "source": null,
+                    "start": {
+                      "line": 37,
+                      "column": 64
+                    },
+                    "end": {
+                      "line": 37,
+                      "column": 108
+                    }
+                  },
+                  "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+                },
+                isEmpty: false,
+                arity: 0,
+                cachedFragment: null,
+                hasRendered: false,
+                buildFragment: function buildFragment(dom) {
+                  var el0 = dom.createDocumentFragment();
+                  var el1 = dom.createTextNode(": ");
+                  dom.appendChild(el0, el1);
+                  var el1 = dom.createComment("");
+                  dom.appendChild(el0, el1);
+                  return el0;
+                },
+                buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                  var morphs = new Array(1);
+                  morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
+                  dom.insertBoundary(fragment, null);
+                  return morphs;
+                },
+                statements: [["content", "failure.message", ["loc", [null, [37, 89], [37, 108]]]]],
+                locals: [],
+                templates: []
+              };
+            })();
+            return {
+              meta: {
+                "fragmentReason": false,
+                "revision": "Ember@2.6.1",
+                "loc": {
+                  "source": null,
+                  "start": {
+                    "line": 36,
+                    "column": 28
+                  },
+                  "end": {
+                    "line": 38,
+                    "column": 28
+                  }
+                },
+                "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+              },
+              isEmpty: false,
+              arity: 1,
+              cachedFragment: null,
+              hasRendered: false,
+              buildFragment: function buildFragment(dom) {
+                var el0 = dom.createDocumentFragment();
+                var el1 = dom.createTextNode("                                ");
+                dom.appendChild(el0, el1);
+                var el1 = dom.createElement("li");
+                var el2 = dom.createElement("code");
+                var el3 = dom.createComment("");
+                dom.appendChild(el2, el3);
+                dom.appendChild(el1, el2);
+                var el2 = dom.createComment("");
+                dom.appendChild(el1, el2);
+                dom.appendChild(el0, el1);
+                var el1 = dom.createTextNode("\n");
+                dom.appendChild(el0, el1);
+                return el0;
+              },
+              buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+                var element6 = dom.childAt(fragment, [1]);
+                var morphs = new Array(2);
+                morphs[0] = dom.createMorphAt(dom.childAt(element6, [0]), 0, 0);
+                morphs[1] = dom.createMorphAt(element6, 1, 1);
+                return morphs;
+              },
+              statements: [["content", "failure.ref", ["loc", [null, [37, 42], [37, 57]]]], ["block", "if", [["get", "failure.message", ["loc", [null, [37, 70], [37, 85]]]]], [], 0, null, ["loc", [null, [37, 64], [37, 115]]]]],
+              locals: ["failure"],
+              templates: [child0]
+            };
+          })();
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.6.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 27,
+                  "column": 16
+                },
+                "end": {
+                  "line": 41,
+                  "column": 16
+                }
+              },
+              "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+            },
+            isEmpty: false,
+            arity: 1,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("                    ");
+              dom.appendChild(el0, el1);
+              var el1 = dom.createElement("li");
+              var el2 = dom.createTextNode("\n");
+              dom.appendChild(el1, el2);
+              var el2 = dom.createComment("");
+              dom.appendChild(el1, el2);
+              var el2 = dom.createTextNode("\n                        ");
+              dom.appendChild(el1, el2);
+              var el2 = dom.createElement("ul");
+              var el3 = dom.createTextNode("\n");
+              dom.appendChild(el2, el3);
+              var el3 = dom.createComment("");
+              dom.appendChild(el2, el3);
+              var el3 = dom.createTextNode("                        ");
+              dom.appendChild(el2, el3);
+              dom.appendChild(el1, el2);
+              var el2 = dom.createTextNode("\n                    ");
+              dom.appendChild(el1, el2);
+              dom.appendChild(el0, el1);
+              var el1 = dom.createTextNode("\n");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+              var element7 = dom.childAt(fragment, [1]);
+              var morphs = new Array(2);
+              morphs[0] = dom.createMorphAt(element7, 1, 1);
+              morphs[1] = dom.createMorphAt(dom.childAt(element7, [3]), 1, 1);
+              return morphs;
+            },
+            statements: [["block", "if", [["get", "error.details", ["loc", [null, [29, 30], [29, 43]]]]], [], 0, 1, ["loc", [null, [29, 24], [33, 31]]]], ["block", "each", [["get", "error.failures", ["loc", [null, [36, 36], [36, 50]]]]], [], 2, null, ["loc", [null, [36, 28], [38, 37]]]]],
+            locals: ["error"],
+            templates: [child0, child1, child2]
+          };
+        })();
         return {
           meta: {
             "fragmentReason": false,
@@ -27522,12 +27862,12 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             "loc": {
               "source": null,
               "start": {
-                "line": 18,
-                "column": 12
+                "line": 20,
+                "column": 8
               },
               "end": {
-                "line": 18,
-                "column": 67
+                "line": 43,
+                "column": 8
               }
             },
             "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
@@ -27538,16 +27878,137 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           hasRendered: false,
           buildFragment: function buildFragment(dom) {
             var el0 = dom.createDocumentFragment();
-            var el1 = dom.createTextNode("Do you want to activate it now?");
+            var el1 = dom.createTextNode("            ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("ul");
+            dom.setAttribute(el1, "class", "theme-validation-errors");
+            var el2 = dom.createTextNode("\n                ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createElement("li");
+            var el3 = dom.createTextNode("\n                    ");
+            dom.appendChild(el2, el3);
+            var el3 = dom.createElement("p");
+            var el4 = dom.createTextNode("\n                        \"");
+            dom.appendChild(el3, el4);
+            var el4 = dom.createComment("");
+            dom.appendChild(el3, el4);
+            var el4 = dom.createTextNode("\" uploaded successfully but some warnings were generated...\n                    ");
+            dom.appendChild(el3, el4);
+            dom.appendChild(el2, el3);
+            var el3 = dom.createTextNode("\n                ");
+            dom.appendChild(el2, el3);
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("            ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
             dom.appendChild(el0, el1);
             return el0;
           },
-          buildRenderNodes: function buildRenderNodes() {
-            return [];
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element8 = dom.childAt(fragment, [1]);
+            var morphs = new Array(2);
+            morphs[0] = dom.createMorphAt(dom.childAt(element8, [1, 1]), 1, 1);
+            morphs[1] = dom.createMorphAt(element8, 3, 3);
+            return morphs;
           },
-          statements: [],
+          statements: [["content", "themeName", ["loc", [null, [24, 25], [24, 38]]]], ["block", "each", [["get", "validationWarnings", ["loc", [null, [27, 24], [27, 42]]]]], [], 0, null, ["loc", [null, [27, 16], [41, 25]]]]],
           locals: [],
-          templates: []
+          templates: [child0]
+        };
+      })();
+      var child1 = (function () {
+        var child0 = (function () {
+          return {
+            meta: {
+              "fragmentReason": false,
+              "revision": "Ember@2.6.1",
+              "loc": {
+                "source": null,
+                "start": {
+                  "line": 46,
+                  "column": 16
+                },
+                "end": {
+                  "line": 46,
+                  "column": 71
+                }
+              },
+              "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+            },
+            isEmpty: false,
+            arity: 0,
+            cachedFragment: null,
+            hasRendered: false,
+            buildFragment: function buildFragment(dom) {
+              var el0 = dom.createDocumentFragment();
+              var el1 = dom.createTextNode("Do you want to activate it now?");
+              dom.appendChild(el0, el1);
+              return el0;
+            },
+            buildRenderNodes: function buildRenderNodes() {
+              return [];
+            },
+            statements: [],
+            locals: [],
+            templates: []
+          };
+        })();
+        return {
+          meta: {
+            "fragmentReason": false,
+            "revision": "Ember@2.6.1",
+            "loc": {
+              "source": null,
+              "start": {
+                "line": 43,
+                "column": 8
+              },
+              "end": {
+                "line": 48,
+                "column": 8
+              }
+            },
+            "moduleName": "ghost-admin/templates/components/modals/upload-theme.hbs"
+          },
+          isEmpty: false,
+          arity: 0,
+          cachedFragment: null,
+          hasRendered: false,
+          buildFragment: function buildFragment(dom) {
+            var el0 = dom.createDocumentFragment();
+            var el1 = dom.createTextNode("            ");
+            dom.appendChild(el0, el1);
+            var el1 = dom.createElement("p");
+            var el2 = dom.createTextNode("\n                \"");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\" uploaded successfully.\n                ");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createComment("");
+            dom.appendChild(el1, el2);
+            var el2 = dom.createTextNode("\n            ");
+            dom.appendChild(el1, el2);
+            dom.appendChild(el0, el1);
+            var el1 = dom.createTextNode("\n");
+            dom.appendChild(el0, el1);
+            return el0;
+          },
+          buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+            var element5 = dom.childAt(fragment, [1]);
+            var morphs = new Array(2);
+            morphs[0] = dom.createMorphAt(element5, 1, 1);
+            morphs[1] = dom.createMorphAt(element5, 3, 3);
+            return morphs;
+          },
+          statements: [["content", "themeName", ["loc", [null, [45, 17], [45, 30]]]], ["block", "if", [["get", "canActivateTheme", ["loc", [null, [46, 22], [46, 38]]]]], [], 0, null, ["loc", [null, [46, 16], [46, 78]]]]],
+          locals: [],
+          templates: [child0]
         };
       })();
       return {
@@ -27557,11 +28018,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 15,
+              "line": 19,
               "column": 4
             },
             "end": {
-              "line": 20,
+              "line": 49,
               "column": 4
             }
           },
@@ -27573,34 +28034,20 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
         hasRendered: false,
         buildFragment: function buildFragment(dom) {
           var el0 = dom.createDocumentFragment();
-          var el1 = dom.createTextNode("        ");
-          dom.appendChild(el0, el1);
-          var el1 = dom.createElement("p");
-          var el2 = dom.createTextNode("\n            \"");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\" uploaded successfully.\n            ");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createComment("");
-          dom.appendChild(el1, el2);
-          var el2 = dom.createTextNode("\n        ");
-          dom.appendChild(el1, el2);
-          dom.appendChild(el0, el1);
-          var el1 = dom.createTextNode("\n");
+          var el1 = dom.createComment("");
           dom.appendChild(el0, el1);
           return el0;
         },
         buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-          var element5 = dom.childAt(fragment, [1]);
-          var morphs = new Array(2);
-          morphs[0] = dom.createMorphAt(element5, 1, 1);
-          morphs[1] = dom.createMorphAt(element5, 3, 3);
+          var morphs = new Array(1);
+          morphs[0] = dom.createMorphAt(fragment, 0, 0, contextualElement);
+          dom.insertBoundary(fragment, 0);
+          dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["content", "themeName", ["loc", [null, [17, 13], [17, 26]]]], ["block", "if", [["get", "canActivateTheme", ["loc", [null, [18, 18], [18, 34]]]]], [], 0, null, ["loc", [null, [18, 12], [18, 74]]]]],
+        statements: [["block", "if", [["get", "validationWarnings", ["loc", [null, [20, 14], [20, 32]]]]], [], 0, 1, ["loc", [null, [20, 8], [48, 15]]]]],
         locals: [],
-        templates: [child0]
+        templates: [child0, child1]
       };
     })();
     var child3 = (function () {
@@ -27612,11 +28059,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             "loc": {
               "source": null,
               "start": {
-                "line": 20,
+                "line": 49,
                 "column": 4
               },
               "end": {
-                "line": 24,
+                "line": 53,
                 "column": 4
               }
             },
@@ -27647,7 +28094,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
             return morphs;
           },
-          statements: [["content", "fileThemeName", ["loc", [null, [22, 13], [22, 30]]]]],
+          statements: [["content", "fileThemeName", ["loc", [null, [51, 13], [51, 30]]]]],
           locals: [],
           templates: []
         };
@@ -27663,11 +28110,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                   "loc": {
                     "source": null,
                     "start": {
-                      "line": 28,
+                      "line": 57,
                       "column": 20
                     },
                     "end": {
-                      "line": 30,
+                      "line": 59,
                       "column": 20
                     }
                   },
@@ -27692,7 +28139,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                   morphs[0] = dom.createUnsafeMorphAt(fragment, 1, 1, contextualElement);
                   return morphs;
                 },
-                statements: [["content", "error.details", ["loc", [null, [29, 24], [29, 43]]]]],
+                statements: [["content", "error.details", ["loc", [null, [58, 24], [58, 43]]]]],
                 locals: [],
                 templates: []
               };
@@ -27705,11 +28152,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                   "loc": {
                     "source": null,
                     "start": {
-                      "line": 30,
+                      "line": 59,
                       "column": 20
                     },
                     "end": {
-                      "line": 32,
+                      "line": 61,
                       "column": 20
                     }
                   },
@@ -27734,7 +28181,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                   morphs[0] = dom.createUnsafeMorphAt(fragment, 1, 1, contextualElement);
                   return morphs;
                 },
-                statements: [["content", "error.rule", ["loc", [null, [31, 24], [31, 40]]]]],
+                statements: [["content", "error.rule", ["loc", [null, [60, 24], [60, 40]]]]],
                 locals: [],
                 templates: []
               };
@@ -27748,11 +28195,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                     "loc": {
                       "source": null,
                       "start": {
-                        "line": 36,
+                        "line": 65,
                         "column": 60
                       },
                       "end": {
-                        "line": 36,
+                        "line": 65,
                         "column": 104
                       }
                     },
@@ -27776,7 +28223,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                     dom.insertBoundary(fragment, null);
                     return morphs;
                   },
-                  statements: [["content", "failure.message", ["loc", [null, [36, 85], [36, 104]]]]],
+                  statements: [["content", "failure.message", ["loc", [null, [65, 85], [65, 104]]]]],
                   locals: [],
                   templates: []
                 };
@@ -27788,11 +28235,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                   "loc": {
                     "source": null,
                     "start": {
-                      "line": 35,
+                      "line": 64,
                       "column": 24
                     },
                     "end": {
-                      "line": 37,
+                      "line": 66,
                       "column": 24
                     }
                   },
@@ -27825,7 +28272,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                   morphs[1] = dom.createMorphAt(element3, 1, 1);
                   return morphs;
                 },
-                statements: [["content", "failure.ref", ["loc", [null, [36, 38], [36, 53]]]], ["block", "if", [["get", "failure.message", ["loc", [null, [36, 66], [36, 81]]]]], [], 0, null, ["loc", [null, [36, 60], [36, 111]]]]],
+                statements: [["content", "failure.ref", ["loc", [null, [65, 38], [65, 53]]]], ["block", "if", [["get", "failure.message", ["loc", [null, [65, 66], [65, 81]]]]], [], 0, null, ["loc", [null, [65, 60], [65, 111]]]]],
                 locals: ["failure"],
                 templates: [child0]
               };
@@ -27837,11 +28284,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                 "loc": {
                   "source": null,
                   "start": {
-                    "line": 26,
+                    "line": 55,
                     "column": 12
                   },
                   "end": {
-                    "line": 40,
+                    "line": 69,
                     "column": 12
                   }
                 },
@@ -27884,7 +28331,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
                 morphs[1] = dom.createMorphAt(dom.childAt(element4, [3]), 1, 1);
                 return morphs;
               },
-              statements: [["block", "if", [["get", "error.details", ["loc", [null, [28, 26], [28, 39]]]]], [], 0, 1, ["loc", [null, [28, 20], [32, 27]]]], ["block", "each", [["get", "error.failures", ["loc", [null, [35, 32], [35, 46]]]]], [], 2, null, ["loc", [null, [35, 24], [37, 33]]]]],
+              statements: [["block", "if", [["get", "error.details", ["loc", [null, [57, 26], [57, 39]]]]], [], 0, 1, ["loc", [null, [57, 20], [61, 27]]]], ["block", "each", [["get", "error.failures", ["loc", [null, [64, 32], [64, 46]]]]], [], 2, null, ["loc", [null, [64, 24], [66, 33]]]]],
               locals: ["error"],
               templates: [child0, child1, child2]
             };
@@ -27896,11 +28343,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
               "loc": {
                 "source": null,
                 "start": {
-                  "line": 24,
+                  "line": 53,
                   "column": 4
                 },
                 "end": {
-                  "line": 42,
+                  "line": 71,
                   "column": 4
                 }
               },
@@ -27932,7 +28379,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
               morphs[0] = dom.createMorphAt(dom.childAt(fragment, [1]), 1, 1);
               return morphs;
             },
-            statements: [["block", "each", [["get", "validationErrors", ["loc", [null, [26, 20], [26, 36]]]]], [], 0, null, ["loc", [null, [26, 12], [40, 21]]]]],
+            statements: [["block", "each", [["get", "validationErrors", ["loc", [null, [55, 20], [55, 36]]]]], [], 0, null, ["loc", [null, [55, 12], [69, 21]]]]],
             locals: [],
             templates: [child0]
           };
@@ -27945,11 +28392,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
               "loc": {
                 "source": null,
                 "start": {
-                  "line": 42,
+                  "line": 71,
                   "column": 4
                 },
                 "end": {
-                  "line": 54,
+                  "line": 83,
                   "column": 4
                 }
               },
@@ -27974,7 +28421,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
               morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
               return morphs;
             },
-            statements: [["inline", "gh-file-uploader", [], ["url", ["subexpr", "@mut", [["get", "uploadUrl", ["loc", [null, [44, 16], [44, 25]]]]], [], []], "paramName", "theme", "accept", ["subexpr", "@mut", [["get", "accept", ["loc", [null, [46, 19], [46, 25]]]]], [], []], "labelText", "Click to select or drag-and-drop your theme zip file here.", "validate", ["subexpr", "action", ["validateTheme"], [], ["loc", [null, [48, 21], [48, 45]]]], "uploadStarted", ["subexpr", "action", ["uploadStarted"], [], ["loc", [null, [49, 26], [49, 50]]]], "uploadFinished", ["subexpr", "action", ["uploadFinished"], [], ["loc", [null, [50, 27], [50, 52]]]], "uploadSuccess", ["subexpr", "action", ["uploadSuccess"], [], ["loc", [null, [51, 26], [51, 50]]]], "uploadFailed", ["subexpr", "action", ["uploadFailed"], [], ["loc", [null, [52, 25], [52, 48]]]], "listenTo", "themeUploader"], ["loc", [null, [43, 8], [53, 38]]]]],
+            statements: [["inline", "gh-file-uploader", [], ["url", ["subexpr", "@mut", [["get", "uploadUrl", ["loc", [null, [73, 16], [73, 25]]]]], [], []], "paramName", "theme", "accept", ["subexpr", "@mut", [["get", "accept", ["loc", [null, [75, 19], [75, 25]]]]], [], []], "labelText", "Click to select or drag-and-drop your theme zip file here.", "validate", ["subexpr", "action", ["validateTheme"], [], ["loc", [null, [77, 21], [77, 45]]]], "uploadStarted", ["subexpr", "action", ["uploadStarted"], [], ["loc", [null, [78, 26], [78, 50]]]], "uploadFinished", ["subexpr", "action", ["uploadFinished"], [], ["loc", [null, [79, 27], [79, 52]]]], "uploadSuccess", ["subexpr", "action", ["uploadSuccess"], [], ["loc", [null, [80, 26], [80, 50]]]], "uploadFailed", ["subexpr", "action", ["uploadFailed"], [], ["loc", [null, [81, 25], [81, 48]]]], "listenTo", "themeUploader"], ["loc", [null, [72, 8], [82, 38]]]]],
             locals: [],
             templates: []
           };
@@ -27986,11 +28433,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             "loc": {
               "source": null,
               "start": {
-                "line": 24,
+                "line": 53,
                 "column": 4
               },
               "end": {
-                "line": 54,
+                "line": 83,
                 "column": 4
               }
             },
@@ -28013,7 +28460,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             dom.insertBoundary(fragment, null);
             return morphs;
           },
-          statements: [["block", "if", [["get", "validationErrors", ["loc", [null, [24, 14], [24, 30]]]]], [], 0, 1, ["loc", [null, [24, 4], [54, 4]]]]],
+          statements: [["block", "if", [["get", "validationErrors", ["loc", [null, [53, 14], [53, 30]]]]], [], 0, 1, ["loc", [null, [53, 4], [83, 4]]]]],
           locals: [],
           templates: [child0, child1]
         };
@@ -28025,11 +28472,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 20,
+              "line": 49,
               "column": 4
             },
             "end": {
-              "line": 54,
+              "line": 83,
               "column": 4
             }
           },
@@ -28052,7 +28499,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["block", "if", [["get", "displayOverwriteWarning", ["loc", [null, [20, 14], [20, 37]]]]], [], 0, 1, ["loc", [null, [20, 4], [54, 4]]]]],
+        statements: [["block", "if", [["get", "displayOverwriteWarning", ["loc", [null, [49, 14], [49, 37]]]]], [], 0, 1, ["loc", [null, [49, 4], [83, 4]]]]],
         locals: [],
         templates: [child0, child1]
       };
@@ -28065,11 +28512,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 59,
+              "line": 88,
               "column": 8
             },
             "end": {
-              "line": 59,
+              "line": 88,
               "column": 26
             }
           },
@@ -28101,11 +28548,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 59,
+              "line": 88,
               "column": 26
             },
             "end": {
-              "line": 59,
+              "line": 88,
               "column": 40
             }
           },
@@ -28137,11 +28584,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 61,
+              "line": 90,
               "column": 4
             },
             "end": {
-              "line": 65,
+              "line": 94,
               "column": 4
             }
           },
@@ -28170,7 +28617,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           morphs[0] = dom.createElementMorph(element2);
           return morphs;
         },
-        statements: [["element", "action", ["confirmOverwrite"], [], ["loc", [null, [62, 16], [62, 45]]]]],
+        statements: [["element", "action", ["confirmOverwrite"], [], ["loc", [null, [91, 16], [91, 45]]]]],
         locals: [],
         templates: []
       };
@@ -28183,11 +28630,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 66,
+              "line": 95,
               "column": 4
             },
             "end": {
-              "line": 70,
+              "line": 99,
               "column": 4
             }
           },
@@ -28216,7 +28663,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           morphs[0] = dom.createElementMorph(element1);
           return morphs;
         },
-        statements: [["element", "action", ["reset"], [], ["loc", [null, [67, 16], [67, 34]]]]],
+        statements: [["element", "action", ["reset"], [], ["loc", [null, [96, 16], [96, 34]]]]],
         locals: [],
         templates: []
       };
@@ -28229,11 +28676,11 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           "loc": {
             "source": null,
             "start": {
-              "line": 71,
+              "line": 100,
               "column": 4
             },
             "end": {
-              "line": 75,
+              "line": 104,
               "column": 4
             }
           },
@@ -28262,7 +28709,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
           morphs[0] = dom.createElementMorph(element0);
           return morphs;
         },
-        statements: [["element", "action", ["activate"], [], ["loc", [null, [72, 16], [72, 37]]]]],
+        statements: [["element", "action", ["activate"], [], ["loc", [null, [101, 16], [101, 37]]]]],
         locals: [],
         templates: []
       };
@@ -28281,7 +28728,7 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
             "column": 0
           },
           "end": {
-            "line": 77,
+            "line": 106,
             "column": 0
           }
         },
@@ -28358,22 +28805,22 @@ define("ghost-admin/templates/components/modals/upload-theme", ["exports"], func
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
-        var element6 = dom.childAt(fragment, [2]);
-        var element7 = dom.childAt(fragment, [6]);
-        var element8 = dom.childAt(element7, [1]);
+        var element9 = dom.childAt(fragment, [2]);
+        var element10 = dom.childAt(fragment, [6]);
+        var element11 = dom.childAt(element10, [1]);
         var morphs = new Array(9);
         morphs[0] = dom.createMorphAt(dom.childAt(fragment, [0, 1]), 1, 1);
-        morphs[1] = dom.createElementMorph(element6);
+        morphs[1] = dom.createElementMorph(element9);
         morphs[2] = dom.createMorphAt(dom.childAt(fragment, [4]), 1, 1);
-        morphs[3] = dom.createAttrMorph(element8, 'disabled');
-        morphs[4] = dom.createElementMorph(element8);
-        morphs[5] = dom.createMorphAt(element8, 1, 1);
-        morphs[6] = dom.createMorphAt(element7, 3, 3);
-        morphs[7] = dom.createMorphAt(element7, 4, 4);
-        morphs[8] = dom.createMorphAt(element7, 5, 5);
+        morphs[3] = dom.createAttrMorph(element11, 'disabled');
+        morphs[4] = dom.createElementMorph(element11);
+        morphs[5] = dom.createMorphAt(element11, 1, 1);
+        morphs[6] = dom.createMorphAt(element10, 3, 3);
+        morphs[7] = dom.createMorphAt(element10, 4, 4);
+        morphs[8] = dom.createMorphAt(element10, 5, 5);
         return morphs;
       },
-      statements: [["block", "if", [["get", "theme", ["loc", [null, [3, 14], [3, 19]]]]], [], 0, 1, ["loc", [null, [3, 8], [9, 15]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [12, 47], [12, 70]]]], ["block", "if", [["get", "theme", ["loc", [null, [15, 10], [15, 15]]]]], [], 2, 3, ["loc", [null, [15, 4], [54, 11]]]], ["attribute", "disabled", ["get", "closeDisabled", ["loc", [null, [58, 47], [58, 60]]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [58, 12], [58, 35]]]], ["block", "if", [["get", "theme", ["loc", [null, [59, 14], [59, 19]]]]], [], 4, 5, ["loc", [null, [59, 8], [59, 47]]]], ["block", "if", [["get", "displayOverwriteWarning", ["loc", [null, [61, 10], [61, 33]]]]], [], 6, null, ["loc", [null, [61, 4], [65, 11]]]], ["block", "if", [["get", "validationErrors", ["loc", [null, [66, 10], [66, 26]]]]], [], 7, null, ["loc", [null, [66, 4], [70, 11]]]], ["block", "if", [["get", "canActivateTheme", ["loc", [null, [71, 10], [71, 26]]]]], [], 8, null, ["loc", [null, [71, 4], [75, 11]]]]],
+      statements: [["block", "if", [["get", "theme", ["loc", [null, [3, 14], [3, 19]]]]], [], 0, 1, ["loc", [null, [3, 8], [13, 15]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [16, 47], [16, 70]]]], ["block", "if", [["get", "theme", ["loc", [null, [19, 10], [19, 15]]]]], [], 2, 3, ["loc", [null, [19, 4], [83, 11]]]], ["attribute", "disabled", ["get", "closeDisabled", ["loc", [null, [87, 47], [87, 60]]]]], ["element", "action", ["closeModal"], [], ["loc", [null, [87, 12], [87, 35]]]], ["block", "if", [["get", "theme", ["loc", [null, [88, 14], [88, 19]]]]], [], 4, 5, ["loc", [null, [88, 8], [88, 47]]]], ["block", "if", [["get", "displayOverwriteWarning", ["loc", [null, [90, 10], [90, 33]]]]], [], 6, null, ["loc", [null, [90, 4], [94, 11]]]], ["block", "if", [["get", "validationErrors", ["loc", [null, [95, 10], [95, 26]]]]], [], 7, null, ["loc", [null, [95, 4], [99, 11]]]], ["block", "if", [["get", "canActivateTheme", ["loc", [null, [100, 10], [100, 26]]]]], [], 8, null, ["loc", [null, [100, 4], [104, 11]]]]],
       locals: [],
       templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8]
     };
@@ -41268,7 +41715,7 @@ catch(err) {
 /* jshint ignore:start */
 
 if (!runningTests) {
-  require("ghost-admin/app")["default"].create({"version":"0.10","LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost-admin"});
+  require("ghost-admin/app")["default"].create({"version":"0.11","LOG_ACTIVE_GENERATION":true,"LOG_TRANSITIONS":true,"LOG_TRANSITIONS_INTERNAL":true,"LOG_VIEW_LOOKUPS":true,"name":"ghost-admin"});
 }
 
 /* jshint ignore:end */
