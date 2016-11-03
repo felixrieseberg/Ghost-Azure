@@ -6052,13 +6052,13 @@ define('ghost-admin/tests/integration/components/gh-file-uploader-test', ['expor
                 _this7.$('.gh-image-uploader').trigger(dragover);
             });
 
-            (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['true'];
+            (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('-drag-over'), 'has drag-over class').to.be['true'];
 
             (0, _emberRunloop['default'])(function () {
                 _this7.$('.gh-image-uploader').trigger('dragleave');
             });
 
-            (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['false'];
+            (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('-drag-over'), 'has drag-over class').to.be['false'];
         });
 
         (0, _emberMocha.it)('triggers file upload on file drop', function (done) {
@@ -7764,13 +7764,13 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-test', ['expo
                     _this7.$('.gh-image-uploader').trigger(dragover);
                 });
 
-                (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['true'];
+                (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('-drag-over'), 'has drag-over class').to.be['true'];
 
                 (0, _emberRunloop['default'])(function () {
                     _this7.$('.gh-image-uploader').trigger('dragleave');
                 });
 
-                (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('--drag-over'), 'has drag-over class').to.be['false'];
+                (0, _chai.expect)(this.$('.gh-image-uploader').hasClass('-drag-over'), 'has drag-over class').to.be['false'];
             });
 
             (0, _emberMocha.it)('triggers file upload on file drop', function (done) {
@@ -8353,7 +8353,7 @@ define('ghost-admin/tests/integration/components/gh-image-uploader-with-preview-
                 };
             })()));
 
-            (0, _chai.expect)(this.$('.gh-image-uploader.--with-image').length).to.equal(1);
+            (0, _chai.expect)(this.$('.gh-image-uploader.-with-image').length).to.equal(1);
             (0, _chai.expect)(this.$('img').attr('src')).to.equal('http://example.com/test.png');
         });
 

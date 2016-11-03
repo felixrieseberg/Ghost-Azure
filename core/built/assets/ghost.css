@@ -2602,11 +2602,11 @@ table td,
   text-align: center;
 }
 
-.gh-image-uploader.--drag-over {
+.gh-image-uploader.-drag-over {
   border: 2px solid;
 }
 
-.gh-image-uploader.--with-image {
+.gh-image-uploader.-with-image {
   background: rgba(0, 0, 0, 0.1);
   border-radius: 2px;
 }
@@ -3334,7 +3334,7 @@ a.badge:focus {
   padding: 35px 45px;
 }
 
-.settings-menu-content .gh-image-uploader.--with-image {
+.settings-menu-content .gh-image-uploader.-with-image {
   margin-top: 0;
   min-height: 50px;
   max-height: 250px;
