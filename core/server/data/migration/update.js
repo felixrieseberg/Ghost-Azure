@@ -37,6 +37,7 @@ logger = {
  */
 updateDatabaseSchema = function (tasks, logger, modelOptions) {
     if (!tasks.length) {
+        logger.info('No database migration tasks found for this version');
         return Promise.resolve();
     }
 
@@ -70,7 +71,7 @@ migrateToDatabaseVersion = function migrateToDatabaseVersion(version, logger, mo
                     resolve();
                 })
                 .catch(function (err) {
-                    logger.warn('rolling back because of: ' + err.stack);
+                    logger.warn('rolling back because of an Error:\n' + err.message + '\n' + err.stack);
 
                     transaction.rollback();
                 });

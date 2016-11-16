@@ -306,6 +306,14 @@ define('ghost-admin/authenticators/oauth2', ['exports', 'ember-computed', 'ember
 define('ghost-admin/authorizers/oauth2', ['exports', 'ember-simple-auth/authorizers/oauth2-bearer'], function (exports, _emberSimpleAuthAuthorizersOauth2Bearer) {
   exports['default'] = _emberSimpleAuthAuthorizersOauth2Bearer['default'];
 });
+define("ghost-admin/components/-lf-get-outlet-state", ["exports", "liquid-fire/components/-lf-get-outlet-state"], function (exports, _liquidFireComponentsLfGetOutletState) {
+  Object.defineProperty(exports, "default", {
+    enumerable: true,
+    get: function get() {
+      return _liquidFireComponentsLfGetOutletState["default"];
+    }
+  });
+});
 define('ghost-admin/components/basic-dropdown', ['exports', 'ember-basic-dropdown/components/basic-dropdown'], function (exports, _emberBasicDropdownComponentsBasicDropdown) {
   Object.defineProperty(exports, 'default', {
     enumerable: true,
@@ -1306,7 +1314,7 @@ define('ghost-admin/components/gh-file-uploader', ['exports', 'ember-component',
             event.stopPropagation();
             event.preventDefault();
 
-            this.set('dragClass', '--drag-over');
+            this.set('dragClass', '-drag-over');
         },
 
         dragLeave: function dragLeave(event) {
@@ -1665,7 +1673,7 @@ define('ghost-admin/components/gh-image-uploader', ['exports', 'ember-component'
             event.preventDefault();
 
             if (showUploadForm) {
-                this.set('dragClass', '--drag-over');
+                this.set('dragClass', '-drag-over');
             }
         },
 
@@ -2407,7 +2415,7 @@ define('ghost-admin/components/gh-profile-image', ['exports', 'ember-component',
      */
     exports['default'] = _emberComponent['default'].extend({
         email: '',
-        size: 90,
+        size: 180,
         debounce: 300,
 
         validEmail: '',
@@ -3778,22 +3786,6 @@ define("ghost-admin/components/illiquid-model", ["exports", "liquid-fire/compone
     }
   });
 });
-define("ghost-admin/components/lf-outlet", ["exports", "liquid-fire/ember-internals"], function (exports, _liquidFireEmberInternals) {
-  Object.defineProperty(exports, "default", {
-    enumerable: true,
-    get: function get() {
-      return _liquidFireEmberInternals.StaticOutlet;
-    }
-  });
-});
-define("ghost-admin/components/lf-overlay", ["exports", "liquid-fire/components/lf-overlay"], function (exports, _liquidFireComponentsLfOverlay) {
-  Object.defineProperty(exports, "default", {
-    enumerable: true,
-    get: function get() {
-      return _liquidFireComponentsLfOverlay["default"];
-    }
-  });
-});
 define('ghost-admin/components/light-table', ['exports', 'ember-light-table/components/light-table'], function (exports, _emberLightTableComponentsLightTable) {
   Object.defineProperty(exports, 'default', {
     enumerable: true,
@@ -3853,14 +3845,6 @@ define("ghost-admin/components/liquid-measured", ["exports", "liquid-fire/compon
     enumerable: true,
     get: function get() {
       return _liquidFireComponentsLiquidMeasured.measure;
-    }
-  });
-});
-define("ghost-admin/components/liquid-modal", ["exports", "liquid-fire/components/liquid-modal"], function (exports, _liquidFireComponentsLiquidModal) {
-  Object.defineProperty(exports, "default", {
-    enumerable: true,
-    get: function get() {
-      return _liquidFireComponentsLiquidModal["default"];
     }
   });
 });
@@ -3933,14 +3917,6 @@ define('ghost-admin/components/liquid-wormhole', ['exports', 'liquid-wormhole/co
     enumerable: true,
     get: function get() {
       return _liquidWormholeComponentsLiquidWormhole['default'];
-    }
-  });
-});
-define("ghost-admin/components/lm-container", ["exports", "liquid-fire/components/lm-container"], function (exports, _liquidFireComponentsLmContainer) {
-  Object.defineProperty(exports, "default", {
-    enumerable: true,
-    get: function get() {
-      return _liquidFireComponentsLmContainer["default"];
     }
   });
 });
@@ -8114,6 +8090,34 @@ define('ghost-admin/helpers/is-not', ['exports', 'ember-helper'], function (expo
         return isNot(params);
     });
 });
+define('ghost-admin/helpers/lf-lock-model', ['exports', 'liquid-fire/helpers/lf-lock-model'], function (exports, _liquidFireHelpersLfLockModel) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _liquidFireHelpersLfLockModel['default'];
+    }
+  });
+  Object.defineProperty(exports, 'lfLockModel', {
+    enumerable: true,
+    get: function get() {
+      return _liquidFireHelpersLfLockModel.lfLockModel;
+    }
+  });
+});
+define('ghost-admin/helpers/lf-or', ['exports', 'liquid-fire/helpers/lf-or'], function (exports, _liquidFireHelpersLfOr) {
+  Object.defineProperty(exports, 'default', {
+    enumerable: true,
+    get: function get() {
+      return _liquidFireHelpersLfOr['default'];
+    }
+  });
+  Object.defineProperty(exports, 'lfOr', {
+    enumerable: true,
+    get: function get() {
+      return _liquidFireHelpersLfOr.lfOr;
+    }
+  });
+});
 define('ghost-admin/helpers/lt', ['exports', 'ember', 'ember-truth-helpers/helpers/lt'], function (exports, _ember, _emberTruthHelpersHelpersLt) {
 
   var forExport = null;
@@ -8445,16 +8449,15 @@ define('ghost-admin/initializers/injectStore', ['exports', 'ember'], function (e
     initialize: _ember['default'].K
   };
 });
-define("ghost-admin/initializers/liquid-fire", ["exports", "liquid-fire/router-dsl-ext", "liquid-fire/ember-internals"], function (exports, _liquidFireRouterDslExt, _liquidFireEmberInternals) {
-  (0, _liquidFireEmberInternals.registerKeywords)();
+define("ghost-admin/initializers/liquid-fire", ["exports", "liquid-fire/ember-internals"], function (exports, _liquidFireEmberInternals) {
+
+  (0, _liquidFireEmberInternals.initialize)();
 
   exports["default"] = {
     name: 'liquid-fire',
     initialize: function initialize() {}
   };
 });
-// This initializer exists only to make sure that the following
-// imports happen before the app boots.
 define('ghost-admin/initializers/store', ['exports', 'ember'], function (exports, _ember) {
 
   /*
@@ -14553,9 +14556,6 @@ define('ghost-admin/services/lazy-loader', ['exports', 'jquery', 'ember', 'rsvp'
         }
     });
 });
-define("ghost-admin/services/liquid-fire-modals", ["exports", "liquid-fire/modals"], function (exports, _liquidFireModals) {
-  exports["default"] = _liquidFireModals["default"];
-});
 define("ghost-admin/services/liquid-fire-transitions", ["exports", "liquid-fire/transition-map"], function (exports, _liquidFireTransitionMap) {
   exports["default"] = _liquidFireTransitionMap["default"];
 });
@@ -14939,7 +14939,7 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 90,
+            "line": 80,
             "column": 10
           }
         },
@@ -14974,12 +14974,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/acburdine");
-        dom.setAttribute(el2, "title", "acburdine");
+        dom.setAttribute(el2, "href", "https://github.com/ErisDS");
+        dom.setAttribute(el2, "title", "ErisDS");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "acburdine");
+        dom.setAttribute(el3, "alt", "ErisDS");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15012,25 +15012,6 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/ErisDS");
-        dom.setAttribute(el2, "title", "ErisDS");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "ErisDS");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
         dom.setAttribute(el2, "title", "AileenCGN");
         var el3 = dom.createTextNode("\n        ");
@@ -15050,69 +15031,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/dbalders");
-        dom.setAttribute(el2, "title", "dbalders");
+        dom.setAttribute(el2, "href", "https://github.com/acburdine");
+        dom.setAttribute(el2, "title", "acburdine");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "dbalders");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/sakulstra");
-        dom.setAttribute(el2, "title", "sakulstra");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "sakulstra");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/JohnONolan");
-        dom.setAttribute(el2, "title", "JohnONolan");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "JohnONolan");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/vkandy");
-        dom.setAttribute(el2, "title", "vkandy");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "vkandy");
+        dom.setAttribute(el3, "alt", "acburdine");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15145,12 +15069,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/starcwl");
-        dom.setAttribute(el2, "title", "starcwl");
+        dom.setAttribute(el2, "href", "https://github.com/JohnONolan");
+        dom.setAttribute(el2, "title", "JohnONolan");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "starcwl");
+        dom.setAttribute(el3, "alt", "JohnONolan");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15164,12 +15088,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
-        dom.setAttribute(el2, "title", "cobbspur");
+        dom.setAttribute(el2, "href", "https://github.com/dbalders");
+        dom.setAttribute(el2, "title", "dbalders");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cobbspur");
+        dom.setAttribute(el3, "alt", "dbalders");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15189,6 +15113,82 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3, "alt", "sebgie");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/KennethAshley");
+        dom.setAttribute(el2, "title", "KennethAshley");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "KennethAshley");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/vitaliemaldur");
+        dom.setAttribute(el2, "title", "vitaliemaldur");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "vitaliemaldur");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/cezarykluczynski");
+        dom.setAttribute(el2, "title", "cezarykluczynski");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "cezarykluczynski");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
+        dom.setAttribute(el2, "title", "cobbspur");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "cobbspur");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15253,44 +15253,6 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n");
         dom.appendChild(el1, el2);
         dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/eexit");
-        dom.setAttribute(el2, "title", "eexit");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "eexit");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/zhenkyle");
-        dom.setAttribute(el2, "title", "zhenkyle");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "zhenkyle");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
         return el0;
       },
       buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
@@ -15310,9 +15272,7 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var element13 = dom.childAt(fragment, [26, 1, 1]);
         var element14 = dom.childAt(fragment, [28, 1, 1]);
         var element15 = dom.childAt(fragment, [30, 1, 1]);
-        var element16 = dom.childAt(fragment, [32, 1, 1]);
-        var element17 = dom.childAt(fragment, [34, 1, 1]);
-        var morphs = new Array(18);
+        var morphs = new Array(16);
         morphs[0] = dom.createAttrMorph(element0, 'src');
         morphs[1] = dom.createAttrMorph(element1, 'src');
         morphs[2] = dom.createAttrMorph(element2, 'src');
@@ -15329,11 +15289,9 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         morphs[13] = dom.createAttrMorph(element13, 'src');
         morphs[14] = dom.createAttrMorph(element14, 'src');
         morphs[15] = dom.createAttrMorph(element15, 'src');
-        morphs[16] = dom.createAttrMorph(element16, 'src');
-        morphs[17] = dom.createAttrMorph(element17, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/sakulstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/vkandy"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/starcwl"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/jessedijkstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/mwakerman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/twalling"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [83, 18], [83, 57]]]], "/eexit"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [88, 18], [88, 57]]]], "/zhenkyle"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/KennethAshley"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/vitaliemaldur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/cezarykluczynski"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/jessedijkstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/mwakerman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/twalling"]]]],
       locals: [],
       templates: []
     };
@@ -18582,7 +18540,7 @@ define("ghost-admin/templates/components/gh-image-uploader-with-preview", ["expo
           var el1 = dom.createTextNode("    ");
           dom.appendChild(el0, el1);
           var el1 = dom.createElement("div");
-          dom.setAttribute(el1, "class", "gh-image-uploader --with-image");
+          dom.setAttribute(el1, "class", "gh-image-uploader -with-image");
           var el2 = dom.createTextNode("\n        ");
           dom.appendChild(el1, el2);
           var el2 = dom.createElement("div");
@@ -27201,7 +27159,7 @@ define("ghost-admin/templates/components/modals/upload-image", ["exports"], func
           var el1 = dom.createTextNode("        ");
           dom.appendChild(el0, el1);
           var el1 = dom.createElement("div");
-          dom.setAttribute(el1, "class", "gh-image-uploader --with-image");
+          dom.setAttribute(el1, "class", "gh-image-uploader -with-image");
           var el2 = dom.createTextNode("\n            ");
           dom.appendChild(el1, el2);
           var el2 = dom.createElement("div");
