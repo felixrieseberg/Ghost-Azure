@@ -1139,7 +1139,7 @@ define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha'
                 });
             });
 
-            (0, _mocha.it)('handles private blog settings correctly', function () {
+            (0, _mocha.it)('handles blog settings correctly', function () {
                 visit('/settings/general');
 
                 // handles private blog settings correctly
@@ -1167,6 +1167,18 @@ define('ghost-admin/tests/acceptance/settings/general-test', ['exports', 'mocha'
 
                 andThen(function () {
                     (0, _chai.expect)(find('#settings-general .error .response').text().trim(), 'inline validation response').to.equal('');
+                });
+
+                // handles amp checkbox correctly
+
+                andThen(function () {
+                    (0, _chai.expect)(find('input#amp').prop('checked'), 'AMP is enabled').to.be['true'];
+                });
+
+                click('input#amp');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('input#amp').prop('checked'), 'AMP is disabled').to.be['false'];
                 });
 
                 // validates a facebook url correctly
@@ -3800,10 +3812,20 @@ define('ghost-admin/tests/helpers/adapter-error', ['exports', 'ember', 'ember-te
         Logger.error = originalLoggerError;
     }
 });
-define('ghost-admin/tests/helpers/destroy-app', ['exports', 'ember-runloop'], function (exports, _emberRunloop) {
+define('ghost-admin/tests/helpers/destroy-app', ['exports', 'ember-runloop', 'jquery'], function (exports, _emberRunloop, _jquery) {
     exports['default'] = destroyApp;
 
     function destroyApp(application) {
+        // this is required to fix "second Pretender instance" warnings
+        if (server) {
+            server.shutdown();
+        }
+
+        // this is required because it gets injected during acceptance tests but
+        // not removed meaning that the integration tests grab this element rather
+        // than their rendered content
+        (0, _jquery['default'])('.liquid-target-container').remove();
+
         (0, _emberRunloop['default'])(application, 'destroy');
     }
 });
@@ -15427,6 +15449,63 @@ define('ghost-admin/tests/unit/controllers/subscribers-test', ['exports', 'chai'
     });
 });
 /* jshint expr:true */
+define('ghost-admin/tests/unit/helpers/gh-count-characters-test', ['exports', 'chai', 'mocha', 'ghost-admin/helpers/gh-count-characters'], function (exports, _chai, _mocha, _ghostAdminHelpersGhCountCharacters) {
+
+    (0, _mocha.describe)('Unit: Helper: gh-count-characters', function () {
+        var defaultStyle = 'color: rgb(158, 157, 149);';
+        var errorStyle = 'color: rgb(226, 84, 64);';
+
+        (0, _mocha.it)('counts remaining chars', function () {
+            var result = (0, _ghostAdminHelpersGhCountCharacters.countCharacters)(['test']);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + defaultStyle + '">196</span>');
+        });
+
+        (0, _mocha.it)('warns when nearing limit', function () {
+            var result = (0, _ghostAdminHelpersGhCountCharacters.countCharacters)([Array(195 + 1).join('x')]);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + errorStyle + '">5</span>');
+        });
+
+        (0, _mocha.it)('indicates too many chars', function () {
+            var result = (0, _ghostAdminHelpersGhCountCharacters.countCharacters)([Array(205 + 1).join('x')]);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + errorStyle + '">-5</span>');
+        });
+
+        (0, _mocha.it)('counts multibyte correctly', function () {
+            var result = (0, _ghostAdminHelpersGhCountCharacters.countCharacters)(['💩']);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + defaultStyle + '">199</span>');
+
+            // emoji + modifier is still two chars
+            result = (0, _ghostAdminHelpersGhCountCharacters.countCharacters)(['💃🏻']);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + defaultStyle + '">198</span>');
+        });
+    });
+});
+define('ghost-admin/tests/unit/helpers/gh-count-down-characters-test', ['exports', 'chai', 'mocha', 'ghost-admin/helpers/gh-count-down-characters'], function (exports, _chai, _mocha, _ghostAdminHelpersGhCountDownCharacters) {
+
+    (0, _mocha.describe)('Unit: Helper: gh-count-down-characters', function () {
+        var validStyle = 'color: rgb(159, 187, 88);';
+        var errorStyle = 'color: rgb(226, 84, 64);';
+
+        (0, _mocha.it)('counts chars', function () {
+            var result = (0, _ghostAdminHelpersGhCountDownCharacters.countDownCharacters)(['test', 200]);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + validStyle + '">4</span>');
+        });
+
+        (0, _mocha.it)('warns with too many chars', function () {
+            var result = (0, _ghostAdminHelpersGhCountDownCharacters.countDownCharacters)([Array(205 + 1).join('x'), 200]);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + errorStyle + '">205</span>');
+        });
+
+        (0, _mocha.it)('counts multibyte correctly', function () {
+            var result = (0, _ghostAdminHelpersGhCountDownCharacters.countDownCharacters)(['💩', 200]);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + validStyle + '">1</span>');
+
+            // emoji + modifier is still two chars
+            result = (0, _ghostAdminHelpersGhCountDownCharacters.countDownCharacters)(['💃🏻', 200]);
+            (0, _chai.expect)(result.string).to.equal('<span class="word-count" style="' + validStyle + '">2</span>');
+        });
+    });
+});
 define('ghost-admin/tests/unit/helpers/gh-format-time-scheduled-test', ['exports', 'ember-object', 'chai', 'mocha', 'ghost-admin/helpers/gh-format-time-scheduled', 'sinon'], function (exports, _emberObject, _chai, _mocha, _ghostAdminHelpersGhFormatTimeScheduled, _sinon) {
 
     (0, _mocha.describe)('Unit: Helper: gh-format-time-scheduled', function () {

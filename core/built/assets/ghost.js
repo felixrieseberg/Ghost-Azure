@@ -5867,14 +5867,6 @@ define('ghost-admin/controllers/settings/general', ['exports', 'ember-controller
         },
 
         actions: {
-            checkPostsPerPage: function checkPostsPerPage() {
-                var postsPerPage = this.get('model.postsPerPage');
-
-                if (postsPerPage < 1 || postsPerPage > 1000 || isNaN(postsPerPage)) {
-                    this.set('model.postsPerPage', 5);
-                }
-            },
-
             setTheme: function setTheme(theme) {
                 this.set('model.activeTheme', theme.name);
                 this.send('save');
@@ -7759,14 +7751,22 @@ define('ghost-admin/helpers/eq', ['exports', 'ember', 'ember-truth-helpers/helpe
   exports['default'] = forExport;
 });
 define('ghost-admin/helpers/gh-count-characters', ['exports', 'ember-helper', 'ember-string'], function (exports, _emberHelper, _emberString) {
-    exports['default'] = (0, _emberHelper.helper)(function (params) {
+    exports.countCharacters = countCharacters;
+
+    function countCharacters(params) {
         if (!params || !params.length) {
             return;
         }
 
         var el = document.createElement('span');
         var content = params[0] || '';
-        var length = content.length;
+
+        // convert to array so that we get accurate symbol counts for multibyte chars
+        // this will still count emoji+modifer as two chars
+
+        var _Array$from = Array.from(content);
+
+        var length = _Array$from.length;
 
         el.className = 'word-count';
 
@@ -7779,12 +7779,18 @@ define('ghost-admin/helpers/gh-count-characters', ['exports', 'ember-helper', 'e
         el.innerHTML = 200 - length;
 
         return (0, _emberString.htmlSafe)(el.outerHTML);
+    }
+
+    exports['default'] = (0, _emberHelper.helper)(function (params) {
+        return countCharacters(params);
     });
 });
 define('ghost-admin/helpers/gh-count-down-characters', ['exports', 'ember-helper', 'ember-string'], function (exports, _emberHelper, _emberString) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
-    exports['default'] = (0, _emberHelper.helper)(function (params) {
+    exports.countDownCharacters = countDownCharacters;
+
+    function countDownCharacters(params) {
         if (!params || params.length < 2) {
             return;
         }
@@ -7796,10 +7802,12 @@ define('ghost-admin/helpers/gh-count-down-characters', ['exports', 'ember-helper
         var content = _params[0];
         var maxCharacters = _params[1];
 
-        var length = undefined;
+        // convert to array so that we get accurate symbol counts for multibyte chars
+        // this will still count emoji+modifer as two chars
 
-        content = content || '';
-        length = content.length;
+        var _Array$from = Array.from(content || '');
+
+        var length = _Array$from.length;
 
         el.className = 'word-count';
 
@@ -7812,6 +7820,10 @@ define('ghost-admin/helpers/gh-count-down-characters', ['exports', 'ember-helper
         el.innerHTML = length;
 
         return (0, _emberString.htmlSafe)(el.outerHTML);
+    }
+
+    exports['default'] = (0, _emberHelper.helper)(function (params) {
+        return countDownCharacters(params);
     });
 });
 define('ghost-admin/helpers/gh-count-words', ['exports', 'ember-helper', 'ghost-admin/utils/word-count'], function (exports, _emberHelper, _ghostAdminUtilsWordCount) {
@@ -9550,7 +9562,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     exports['default'] = [{
         created_at: '2015-09-11T09:44:30.805Z',
         created_by: 1,
-        id: 1,
+        id: 7,
         key: 'title',
         type: 'blog',
         updated_at: '2015-10-04T16:26:05.195Z',
@@ -9560,7 +9572,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.806Z',
         created_by: 1,
-        id: 2,
+        id: 8,
         key: 'description',
         type: 'blog',
         updated_at: '2015-10-04T16:26:05.198Z',
@@ -9568,7 +9580,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: 'e6c8b636-6925-4c4a-a5d9-1dc0870fb8ea',
         value: 'Thoughts, stories and ideas.'
     }, {
-        id: 3,
+        id: 9,
         uuid: '4339ce48-b485-418a-acc2-1d34cf17a5e3',
         key: 'logo',
         value: '/content/images/2013/Nov/logo.png',
@@ -9578,7 +9590,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.273Z',
         updated_by: 1
     }, {
-        id: 4,
+        id: 10,
         uuid: 'e41b6c2a-7f72-45ea-96d8-ee016f06d78b',
         key: 'cover',
         value: '/content/images/2014/Feb/cover.jpg',
@@ -9588,7 +9600,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.276Z',
         updated_by: 1
     }, {
-        id: 5,
+        id: 11,
         uuid: '4558457e-9f61-47a5-9d45-8b83829bf1cf',
         key: 'defaultLang',
         value: 'en_US',
@@ -9600,7 +9612,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        id: 6,
+        id: 12,
         key: 'postsPerPage',
         type: 'blog',
         updated_at: '2015-10-04T16:26:05.211Z',
@@ -9608,7 +9620,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: '775e6ca1-bcc3-4347-a53d-15d5d76c04a4',
         value: '5'
     }, {
-        id: 7,
+        id: 14,
         uuid: '3c93b240-d22b-473f-9063-537023e06c2d',
         key: 'forceI18n',
         value: 'true',
@@ -9618,7 +9630,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.280Z',
         updated_by: 1
     }, {
-        id: 8,
+        id: 28,
         uuid: '4e58389f-f173-4387-b28c-0435623882ad',
         key: 'activeTheme',
         value: 'casper',
@@ -9628,7 +9640,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         updated_at: '2015-10-27T17:39:58.284Z',
         updated_by: 1
     }, {
-        id: 9,
+        id: 15,
         uuid: '8052c2bf-9c19-4d6c-8944-7465321d00be',
         key: 'permalinks',
         value: '/:slug/',
@@ -9640,7 +9652,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        id: 10,
+        id: 17,
         key: 'ghost_head',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.858Z',
@@ -9650,7 +9662,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.809Z',
         created_by: 1,
-        id: 11,
+        id: 18,
         key: 'ghost_foot',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.858Z',
@@ -9658,7 +9670,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: '0649d45e-828b-4dd0-8381-3dff6d1d5ddb',
         value: ''
     }, {
-        id: 12,
+        id: 21,
         uuid: 'd806f358-7996-4c74-b153-8876959c4b70',
         key: 'labs',
         value: '{"subscribers":true,"internalTags":true}',
@@ -9670,7 +9682,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
-        id: 13,
+        id: 22,
         key: 'navigation',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.868Z',
@@ -9680,7 +9692,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
-        id: 14,
+        id: 26,
         key: 'isPrivate',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.868Z',
@@ -9690,7 +9702,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
-        id: 15,
+        id: 27,
         key: 'password',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.868Z',
@@ -9700,7 +9712,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2016-05-05T15:04:03.115Z',
         created_by: 1,
-        id: 17,
+        id: 23,
         key: 'slack',
         type: 'blog',
         updated_at: '2016-05-05T18:33:09.168Z',
@@ -9710,7 +9722,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2016-05-05T15:40:12.133Z',
         created_by: 1,
-        id: 23,
+        id: 19,
         key: 'facebook',
         type: 'blog',
         updated_at: '2016-05-08T15:20:25.953Z',
@@ -9720,7 +9732,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2016-05-05T15:40:12.134Z',
         created_by: 1,
-        id: 24,
+        id: 20,
         key: 'twitter',
         type: 'blog',
         updated_at: '2016-05-08T15:20:25.954Z',
@@ -9730,7 +9742,7 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
     }, {
         created_at: '2015-09-11T09:44:30.810Z',
         created_by: 1,
-        id: 16,
+        id: 13,
         key: 'activeTimezone',
         type: 'blog',
         updated_at: '2015-09-23T13:32:49.868Z',
@@ -9738,8 +9750,18 @@ define('ghost-admin/mirage/fixtures/settings', ['exports'], function (exports) {
         uuid: '310c9169-9613-48b0-8bc4-d1e1c9be85b8',
         value: 'Etc/UTC'
     }, {
+        created_at: '2017-01-09T08:40:59.000Z',
+        created_by: 1,
+        id: 16,
+        key: 'amp',
+        type: 'blog',
+        updated_at: '2017-01-09T08:49:42.991Z',
+        updated_by: 1,
+        uuid: '27eb0ac8-a511-4b47-899b-4c1e408dfead',
+        value: 'true'
+    }, {
         key: 'availableThemes',
-        id: 18,
+        id: 24,
         value: [{
             name: 'casper',
             'package': {
@@ -12101,7 +12123,8 @@ define('ghost-admin/models/setting', ['exports', 'ember-data/model', 'ember-data
         navigation: (0, _emberDataAttr['default'])('navigation-settings'),
         isPrivate: (0, _emberDataAttr['default'])('boolean'),
         password: (0, _emberDataAttr['default'])('string'),
-        slack: (0, _emberDataAttr['default'])('slack-settings')
+        slack: (0, _emberDataAttr['default'])('slack-settings'),
+        amp: (0, _emberDataAttr['default'])('boolean')
     });
 });
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
@@ -13423,7 +13446,7 @@ define('ghost-admin/routes/settings/tags/tag', ['exports', 'ghost-admin/routes/a
     });
 });
 /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
-define('ghost-admin/routes/setup', ['exports', 'ember-route', 'ember-service/inject', 'ember-simple-auth/configuration', 'ghost-admin/mixins/style-body'], function (exports, _emberRoute, _emberServiceInject, _emberSimpleAuthConfiguration, _ghostAdminMixinsStyleBody) {
+define('ghost-admin/routes/setup', ['exports', 'ember-route', 'ember-service/inject', 'ember-simple-auth/configuration', 'ghost-admin/mixins/style-body', 'ember-utils'], function (exports, _emberRoute, _emberServiceInject, _emberSimpleAuthConfiguration, _ghostAdminMixinsStyleBody, _emberUtils) {
     var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
     exports['default'] = _emberRoute['default'].extend(_ghostAdminMixinsStyleBody['default'], {
@@ -13431,9 +13454,10 @@ define('ghost-admin/routes/setup', ['exports', 'ember-route', 'ember-service/inj
 
         classNames: ['ghost-setup'],
 
+        ajax: (0, _emberServiceInject['default'])(),
+        config: (0, _emberServiceInject['default'])(),
         ghostPaths: (0, _emberServiceInject['default'])(),
         session: (0, _emberServiceInject['default'])(),
-        ajax: (0, _emberServiceInject['default'])(),
 
         // use the beforeModel hook to check to see whether or not setup has been
         // previously completed.  If it has, stop the transition into the setup page.
@@ -13445,6 +13469,45 @@ define('ghost-admin/routes/setup', ['exports', 'ember-route', 'ember-service/inj
             if (this.get('session.isAuthenticated')) {
                 this.transitionTo(_emberSimpleAuthConfiguration['default'].routeIfAlreadyAuthenticated);
                 return;
+            }
+
+            // After ghost.org signup we get redirected to setup/three with a
+            // one-time, short expiry token in order to finish the signup flow.
+            // Grab the token here, exchange it for a full token set and allow
+            // setup to continue
+
+            var _ref = window.location.search.match(/token=(.*)/) || [];
+
+            var _ref2 = _slicedToArray(_ref, 2);
+
+            var token = _ref2[1];
+
+            if (!(0, _emberUtils.isBlank)(token)) {
+                var tokenExchangeUrl = this.get('ghostPaths.url').api('authentication', 'setup', 'three');
+
+                // simulate a completed step 2 and skip other setup bits
+                this.controllerFor('setup.two').set('blogCreated', true);
+
+                /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+                return this.get('ajax').post(tokenExchangeUrl, { data: {
+                        token: token,
+                        client_id: this.get('config.clientId'),
+                        client_secret: this.get('config.clientSecret')
+                    } }).then(function (data) {
+                    var now = new Date().getTime();
+
+                    delete data.errors;
+                    data.authenticator = 'authenticator:oauth2';
+                    data.token_type = 'Bearer';
+                    // server returns seconds, ESA stores expiry in ms
+                    data.expires_at = new Date(now + data.expires_in * 1000).getTime();
+
+                    _this.get('session.session.store').persist({ authenticated: data });
+                    _this.get('session.session').restore();
+                })['catch'](function () {
+                    return _this.transitionTo('signin');
+                });
+                /* jscs:enable requireCamelCaseOrUpperCaseIdentifiers */
             }
 
             var authUrl = this.get('ghostPaths.url').api('authentication', 'setup');
@@ -14939,7 +15002,7 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 80,
+            "line": 75,
             "column": 10
           }
         },
@@ -14974,25 +15037,6 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/ErisDS");
-        dom.setAttribute(el2, "title", "ErisDS");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "ErisDS");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/kevinansfield");
         dom.setAttribute(el2, "title", "kevinansfield");
         var el3 = dom.createTextNode("\n        ");
@@ -15012,31 +15056,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
-        dom.setAttribute(el2, "title", "AileenCGN");
+        dom.setAttribute(el2, "href", "https://github.com/ErisDS");
+        dom.setAttribute(el2, "title", "ErisDS");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "AileenCGN");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/acburdine");
-        dom.setAttribute(el2, "title", "acburdine");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "acburdine");
+        dom.setAttribute(el3, "alt", "ErisDS");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15069,107 +15094,69 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/Turbo87");
+        dom.setAttribute(el2, "title", "Turbo87");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "Turbo87");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/acburdine");
+        dom.setAttribute(el2, "title", "acburdine");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "acburdine");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
+        dom.setAttribute(el2, "title", "AileenCGN");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "AileenCGN");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/JohnONolan");
         dom.setAttribute(el2, "title", "JohnONolan");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3, "alt", "JohnONolan");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/dbalders");
-        dom.setAttribute(el2, "title", "dbalders");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "dbalders");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/sebgie");
-        dom.setAttribute(el2, "title", "sebgie");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "sebgie");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/KennethAshley");
-        dom.setAttribute(el2, "title", "KennethAshley");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "KennethAshley");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/vitaliemaldur");
-        dom.setAttribute(el2, "title", "vitaliemaldur");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "vitaliemaldur");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/cezarykluczynski");
-        dom.setAttribute(el2, "title", "cezarykluczynski");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "cezarykluczynski");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15202,12 +15189,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/jessedijkstra");
-        dom.setAttribute(el2, "title", "jessedijkstra");
+        dom.setAttribute(el2, "href", "https://github.com/KennethAshley");
+        dom.setAttribute(el2, "title", "KennethAshley");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "jessedijkstra");
+        dom.setAttribute(el3, "alt", "KennethAshley");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15221,12 +15208,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/mwakerman");
-        dom.setAttribute(el2, "title", "mwakerman");
+        dom.setAttribute(el2, "href", "https://github.com/jomahoney");
+        dom.setAttribute(el2, "title", "jomahoney");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "mwakerman");
+        dom.setAttribute(el3, "alt", "jomahoney");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15240,12 +15227,69 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/twalling");
-        dom.setAttribute(el2, "title", "twalling");
+        dom.setAttribute(el2, "href", "https://github.com/ivantedja");
+        dom.setAttribute(el2, "title", "ivantedja");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "twalling");
+        dom.setAttribute(el3, "alt", "ivantedja");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/vivekannan");
+        dom.setAttribute(el2, "title", "vivekannan");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "vivekannan");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/marcbachmann");
+        dom.setAttribute(el2, "title", "marcbachmann");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "marcbachmann");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/cvibhagool");
+        dom.setAttribute(el2, "title", "cvibhagool");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "cvibhagool");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15271,8 +15315,7 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var element12 = dom.childAt(fragment, [24, 1, 1]);
         var element13 = dom.childAt(fragment, [26, 1, 1]);
         var element14 = dom.childAt(fragment, [28, 1, 1]);
-        var element15 = dom.childAt(fragment, [30, 1, 1]);
-        var morphs = new Array(16);
+        var morphs = new Array(15);
         morphs[0] = dom.createAttrMorph(element0, 'src');
         morphs[1] = dom.createAttrMorph(element1, 'src');
         morphs[2] = dom.createAttrMorph(element2, 'src');
@@ -15288,10 +15331,9 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         morphs[12] = dom.createAttrMorph(element12, 'src');
         morphs[13] = dom.createAttrMorph(element13, 'src');
         morphs[14] = dom.createAttrMorph(element14, 'src');
-        morphs[15] = dom.createAttrMorph(element15, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/dbalders"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/sebgie"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/KennethAshley"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/vitaliemaldur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/cezarykluczynski"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/jessedijkstra"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/mwakerman"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/twalling"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/Turbo87"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/KennethAshley"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/jomahoney"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/ivantedja"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/vivekannan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/marcbachmann"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/cvibhagool"]]]],
       locals: [],
       templates: []
     };
@@ -33335,11 +33377,73 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           "loc": {
             "source": null,
             "start": {
-              "line": 84,
+              "line": 68,
               "column": 20
             },
             "end": {
-              "line": 89,
+              "line": 74,
+              "column": 20
+            }
+          },
+          "moduleName": "ghost-admin/templates/settings/general.hbs"
+        },
+        isEmpty: false,
+        arity: 0,
+        cachedFragment: null,
+        hasRendered: false,
+        buildFragment: function buildFragment(dom) {
+          var el0 = dom.createDocumentFragment();
+          var el1 = dom.createTextNode("                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("label");
+          dom.setAttribute(el1, "for", "postsPerPage");
+          var el2 = dom.createTextNode("Posts per page");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createComment("");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n                        ");
+          dom.appendChild(el0, el1);
+          var el1 = dom.createElement("p");
+          var el2 = dom.createTextNode("How many posts should be displayed on each page");
+          dom.appendChild(el1, el2);
+          dom.appendChild(el0, el1);
+          var el1 = dom.createTextNode("\n");
+          dom.appendChild(el0, el1);
+          return el0;
+        },
+        buildRenderNodes: function buildRenderNodes(dom, fragment, contextualElement) {
+          var morphs = new Array(2);
+          morphs[0] = dom.createMorphAt(fragment, 4, 4, contextualElement);
+          morphs[1] = dom.createMorphAt(fragment, 6, 6, contextualElement);
+          return morphs;
+        },
+        statements: [["inline", "gh-input", [["get", "model.postsPerPage", ["loc", [null, [71, 35], [71, 53]]]]], ["id", "postsPerPage", "name", "general[postsPerPage]", "focusOut", ["subexpr", "action", ["validate", "postsPerPage"], ["target", ["get", "model", ["loc", [null, [71, 151], [71, 156]]]]], ["loc", [null, [71, 110], [71, 157]]]], "min", "1", "max", "1000", "type", "number", "pattern", "[0-9]*", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.postsPerPage", ["loc", [null, [71, 228], [71, 246]]]]], [], ["loc", [null, [71, 223], [71, 247]]]]], [], ["loc", [null, [71, 215], [71, 248]]]]], ["loc", [null, [71, 24], [71, 250]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [72, 50], [72, 62]]]]], [], []], "property", "postsPerPage"], ["loc", [null, [72, 24], [72, 88]]]]],
+        locals: [],
+        templates: []
+      };
+    })();
+    var child11 = (function () {
+      return {
+        meta: {
+          "fragmentReason": false,
+          "revision": "Ember@2.6.1",
+          "loc": {
+            "source": null,
+            "start": {
+              "line": 87,
+              "column": 20
+            },
+            "end": {
+              "line": 92,
               "column": 20
             }
           },
@@ -33391,12 +33495,12 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           morphs[3] = dom.createMorphAt(fragment, 5, 5, contextualElement);
           return morphs;
         },
-        statements: [["attribute", "value", ["get", "model.facebook", ["loc", [null, [86, 39], [86, 53]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchFacebook", ["loc", [null, [86, 78], [86, 94]]]]], [], ["loc", [null, [86, 73], [86, 95]]]]], ["value", "target.value"], ["loc", [null, [86, 64], [86, 118]]]]], ["element", "action", ["validateFacebookUrl"], ["on", "focusOut"], ["loc", [null, [86, 119], [86, 165]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [87, 50], [87, 62]]]]], [], []], "property", "facebook"], ["loc", [null, [87, 24], [87, 84]]]]],
+        statements: [["attribute", "value", ["get", "model.facebook", ["loc", [null, [89, 39], [89, 53]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchFacebook", ["loc", [null, [89, 78], [89, 94]]]]], [], ["loc", [null, [89, 73], [89, 95]]]]], ["value", "target.value"], ["loc", [null, [89, 64], [89, 118]]]]], ["element", "action", ["validateFacebookUrl"], ["on", "focusOut"], ["loc", [null, [89, 119], [89, 165]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [90, 50], [90, 62]]]]], [], []], "property", "facebook"], ["loc", [null, [90, 24], [90, 84]]]]],
         locals: [],
         templates: []
       };
     })();
-    var child11 = (function () {
+    var child12 = (function () {
       return {
         meta: {
           "fragmentReason": false,
@@ -33404,11 +33508,11 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           "loc": {
             "source": null,
             "start": {
-              "line": 92,
+              "line": 95,
               "column": 20
             },
             "end": {
-              "line": 97,
+              "line": 100,
               "column": 20
             }
           },
@@ -33460,12 +33564,12 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           morphs[3] = dom.createMorphAt(fragment, 5, 5, contextualElement);
           return morphs;
         },
-        statements: [["attribute", "value", ["get", "model.twitter", ["loc", [null, [94, 39], [94, 52]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchTwitter", ["loc", [null, [94, 77], [94, 92]]]]], [], ["loc", [null, [94, 72], [94, 93]]]]], ["value", "target.value"], ["loc", [null, [94, 63], [94, 116]]]]], ["element", "action", ["validateTwitterUrl"], ["on", "focusOut"], ["loc", [null, [94, 117], [94, 162]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [95, 50], [95, 62]]]]], [], []], "property", "twitter"], ["loc", [null, [95, 24], [95, 83]]]]],
+        statements: [["attribute", "value", ["get", "model.twitter", ["loc", [null, [97, 39], [97, 52]]]]], ["attribute", "oninput", ["subexpr", "action", [["subexpr", "mut", [["get", "_scratchTwitter", ["loc", [null, [97, 77], [97, 92]]]]], [], ["loc", [null, [97, 72], [97, 93]]]]], ["value", "target.value"], ["loc", [null, [97, 63], [97, 116]]]]], ["element", "action", ["validateTwitterUrl"], ["on", "focusOut"], ["loc", [null, [97, 117], [97, 162]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [98, 50], [98, 62]]]]], [], []], "property", "twitter"], ["loc", [null, [98, 24], [98, 83]]]]],
         locals: [],
         templates: []
       };
     })();
-    var child12 = (function () {
+    var child13 = (function () {
       var child0 = (function () {
         return {
           meta: {
@@ -33474,11 +33578,11 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
             "loc": {
               "source": null,
               "start": {
-                "line": 115,
+                "line": 127,
                 "column": 20
               },
               "end": {
-                "line": 119,
+                "line": 131,
                 "column": 20
               }
             },
@@ -33514,7 +33618,7 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
             morphs[1] = dom.createMorphAt(fragment, 3, 3, contextualElement);
             return morphs;
           },
-          statements: [["inline", "gh-input", [["get", "model.password", ["loc", [null, [116, 35], [116, 49]]]]], ["name", "general[password]", "type", "text", "focusOut", ["subexpr", "action", ["validate", "password"], ["target", ["get", "model", ["loc", [null, [116, 133], [116, 138]]]]], ["loc", [null, [116, 96], [116, 139]]]], "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.password", ["loc", [null, [116, 160], [116, 174]]]]], [], ["loc", [null, [116, 155], [116, 175]]]]], [], ["loc", [null, [116, 147], [116, 176]]]]], ["loc", [null, [116, 24], [116, 178]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [117, 50], [117, 62]]]]], [], []], "property", "password"], ["loc", [null, [117, 24], [117, 84]]]]],
+          statements: [["inline", "gh-input", [["get", "model.password", ["loc", [null, [128, 35], [128, 49]]]]], ["name", "general[password]", "type", "text", "focusOut", ["subexpr", "action", ["validate", "password"], ["target", ["get", "model", ["loc", [null, [128, 133], [128, 138]]]]], ["loc", [null, [128, 96], [128, 139]]]], "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.password", ["loc", [null, [128, 160], [128, 174]]]]], [], ["loc", [null, [128, 155], [128, 175]]]]], [], ["loc", [null, [128, 147], [128, 176]]]]], ["loc", [null, [128, 24], [128, 178]]]], ["inline", "gh-error-message", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [129, 50], [129, 62]]]]], [], []], "property", "password"], ["loc", [null, [129, 24], [129, 84]]]]],
           locals: [],
           templates: []
         };
@@ -33526,11 +33630,11 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           "loc": {
             "source": null,
             "start": {
-              "line": 114,
+              "line": 126,
               "column": 16
             },
             "end": {
-              "line": 120,
+              "line": 132,
               "column": 16
             }
           },
@@ -33553,12 +33657,12 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           dom.insertBoundary(fragment, null);
           return morphs;
         },
-        statements: [["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [115, 44], [115, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [115, 70], [115, 88]]]]], [], []], "property", "password"], 0, null, ["loc", [null, [115, 20], [119, 38]]]]],
+        statements: [["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [127, 44], [127, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [127, 70], [127, 88]]]]], [], []], "property", "password"], 0, null, ["loc", [null, [127, 20], [131, 38]]]]],
         locals: [],
         templates: [child0]
       };
     })();
-    var child13 = (function () {
+    var child14 = (function () {
       return {
         meta: {
           "fragmentReason": false,
@@ -33566,11 +33670,11 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           "loc": {
             "source": null,
             "start": {
-              "line": 133,
+              "line": 145,
               "column": 20
             },
             "end": {
-              "line": 135,
+              "line": 147,
               "column": 20
             }
           },
@@ -33594,7 +33698,7 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
         templates: []
       };
     })();
-    var child14 = (function () {
+    var child15 = (function () {
       return {
         meta: {
           "fragmentReason": false,
@@ -33602,11 +33706,11 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           "loc": {
             "source": null,
             "start": {
-              "line": 138,
+              "line": 150,
               "column": 16
             },
             "end": {
-              "line": 147,
+              "line": 159,
               "column": 16
             }
           },
@@ -33631,7 +33735,7 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
           morphs[0] = dom.createMorphAt(fragment, 1, 1, contextualElement);
           return morphs;
         },
-        statements: [["inline", "gh-fullscreen-modal", ["delete-theme"], ["model", ["subexpr", "hash", [], ["theme", ["get", "themeToDelete", ["loc", [null, [141, 38], [141, 51]]]], "download", ["subexpr", "action", ["downloadTheme", ["get", "themeToDelete", ["loc", [null, [142, 65], [142, 78]]]]], [], ["loc", [null, [142, 41], [142, 79]]]]], ["loc", [null, [140, 34], [143, 29]]]], "close", ["subexpr", "action", ["hideDeleteThemeModal"], [], ["loc", [null, [144, 34], [144, 65]]]], "confirm", ["subexpr", "action", ["deleteTheme"], [], ["loc", [null, [145, 36], [145, 58]]]], "modifier", "action wide"], ["loc", [null, [139, 20], [146, 52]]]]],
+        statements: [["inline", "gh-fullscreen-modal", ["delete-theme"], ["model", ["subexpr", "hash", [], ["theme", ["get", "themeToDelete", ["loc", [null, [153, 38], [153, 51]]]], "download", ["subexpr", "action", ["downloadTheme", ["get", "themeToDelete", ["loc", [null, [154, 65], [154, 78]]]]], [], ["loc", [null, [154, 41], [154, 79]]]]], ["loc", [null, [152, 34], [155, 29]]]], "close", ["subexpr", "action", ["hideDeleteThemeModal"], [], ["loc", [null, [156, 34], [156, 65]]]], "confirm", ["subexpr", "action", ["deleteTheme"], [], ["loc", [null, [157, 36], [157, 58]]]], "modifier", "action wide"], ["loc", [null, [151, 20], [158, 52]]]]],
         locals: [],
         templates: []
       };
@@ -33650,7 +33754,7 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
             "column": 0
           },
           "end": {
-            "line": 154,
+            "line": 166,
             "column": 0
           }
         },
@@ -33770,26 +33874,11 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
         dom.appendChild(el4, el5);
         var el5 = dom.createElement("div");
         dom.setAttribute(el5, "class", "form-group");
-        var el6 = dom.createTextNode("\n                    ");
-        dom.appendChild(el5, el6);
-        var el6 = dom.createElement("label");
-        dom.setAttribute(el6, "for", "postsPerPage");
-        var el7 = dom.createTextNode("Posts per page");
-        dom.appendChild(el6, el7);
-        dom.appendChild(el5, el6);
         var el6 = dom.createTextNode("\n");
-        dom.appendChild(el5, el6);
-        var el6 = dom.createTextNode("                    ");
         dom.appendChild(el5, el6);
         var el6 = dom.createComment("");
         dom.appendChild(el5, el6);
-        var el6 = dom.createTextNode("\n                    ");
-        dom.appendChild(el5, el6);
-        var el6 = dom.createElement("p");
-        var el7 = dom.createTextNode("How many posts should be displayed on each page");
-        dom.appendChild(el6, el7);
-        dom.appendChild(el5, el6);
-        var el6 = dom.createTextNode("\n                ");
+        var el6 = dom.createTextNode("                ");
         dom.appendChild(el5, el6);
         dom.appendChild(el4, el5);
         var el5 = dom.createTextNode("\n\n                ");
@@ -33854,6 +33943,43 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
         var el5 = dom.createTextNode("\n\n                ");
         dom.appendChild(el4, el5);
         var el5 = dom.createComment("");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createTextNode("\n\n                ");
+        dom.appendChild(el4, el5);
+        var el5 = dom.createElement("div");
+        dom.setAttribute(el5, "class", "form-group for-checkbox");
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("label");
+        dom.setAttribute(el6, "for", "amp");
+        var el7 = dom.createTextNode("AMP support");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                    ");
+        dom.appendChild(el5, el6);
+        var el6 = dom.createElement("label");
+        dom.setAttribute(el6, "class", "checkbox");
+        dom.setAttribute(el6, "for", "amp");
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createComment("");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("span");
+        dom.setAttribute(el7, "class", "input-toggle-component");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                        ");
+        dom.appendChild(el6, el7);
+        var el7 = dom.createElement("p");
+        var el8 = dom.createTextNode("Enable AMP support for your blog posts");
+        dom.appendChild(el7, el8);
+        dom.appendChild(el6, el7);
+        var el7 = dom.createTextNode("\n                    ");
+        dom.appendChild(el6, el7);
+        dom.appendChild(el5, el6);
+        var el6 = dom.createTextNode("\n                ");
+        dom.appendChild(el5, el6);
         dom.appendChild(el4, el5);
         var el5 = dom.createTextNode("\n\n                ");
         dom.appendChild(el4, el5);
@@ -33958,7 +34084,7 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
         var element11 = dom.childAt(element8, [5]);
         var element12 = dom.childAt(element8, [7]);
         var element13 = dom.childAt(element8, [9]);
-        var morphs = new Array(19);
+        var morphs = new Array(20);
         morphs[0] = dom.createMorphAt(element7, 1, 1);
         morphs[1] = dom.createMorphAt(dom.childAt(element7, [3]), 1, 1);
         morphs[2] = dom.createMorphAt(element9, 1, 1);
@@ -33967,22 +34093,23 @@ define("ghost-admin/templates/settings/general", ["exports"], function (exports)
         morphs[5] = dom.createMorphAt(element10, 7, 7);
         morphs[6] = dom.createMorphAt(element11, 3, 3);
         morphs[7] = dom.createMorphAt(element11, 7, 7);
-        morphs[8] = dom.createMorphAt(dom.childAt(element12, [1]), 4, 4);
+        morphs[8] = dom.createMorphAt(dom.childAt(element12, [1]), 1, 1);
         morphs[9] = dom.createMorphAt(dom.childAt(element12, [3, 3]), 1, 1);
         morphs[10] = dom.createMorphAt(dom.childAt(element12, [5]), 1, 1);
         morphs[11] = dom.createMorphAt(dom.childAt(element12, [7]), 1, 1);
         morphs[12] = dom.createMorphAt(element12, 9, 9);
         morphs[13] = dom.createMorphAt(dom.childAt(element12, [11, 3]), 1, 1);
-        morphs[14] = dom.createMorphAt(element12, 13, 13);
-        morphs[15] = dom.createMorphAt(element13, 3, 3);
-        morphs[16] = dom.createMorphAt(dom.childAt(element13, [5]), 1, 1);
-        morphs[17] = dom.createMorphAt(element13, 7, 7);
-        morphs[18] = dom.createMorphAt(fragment, 2, 2, contextualElement);
+        morphs[14] = dom.createMorphAt(dom.childAt(element12, [13, 3]), 1, 1);
+        morphs[15] = dom.createMorphAt(element12, 15, 15);
+        morphs[16] = dom.createMorphAt(element13, 3, 3);
+        morphs[17] = dom.createMorphAt(dom.childAt(element13, [5]), 1, 1);
+        morphs[18] = dom.createMorphAt(element13, 7, 7);
+        morphs[19] = dom.createMorphAt(fragment, 2, 2, contextualElement);
         return morphs;
       },
-      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 96]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [5, 76], [5, 86]]]]], [], []]], 1, null, ["loc", [null, [5, 12], [5, 111]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [13, 40], [13, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [13, 66], [13, 84]]]]], [], []], "property", "title"], 2, null, ["loc", [null, [13, 16], [18, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [20, 40], [20, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [20, 66], [20, 84]]]]], [], []], "property", "description", "class", "description-container"], 3, null, ["loc", [null, [20, 16], [28, 34]]]], ["block", "if", [["get", "model.logo", ["loc", [null, [33, 22], [33, 32]]]]], [], 4, 5, ["loc", [null, [33, 16], [37, 23]]]], ["block", "if", [["get", "showUploadLogoModal", ["loc", [null, [40, 22], [40, 41]]]]], [], 6, null, ["loc", [null, [40, 16], [45, 23]]]], ["block", "if", [["get", "model.cover", ["loc", [null, [50, 22], [50, 33]]]]], [], 7, 8, ["loc", [null, [50, 16], [54, 23]]]], ["block", "if", [["get", "showUploadCoverModal", ["loc", [null, [57, 22], [57, 42]]]]], [], 9, null, ["loc", [null, [57, 16], [62, 23]]]], ["inline", "gh-input", [["get", "model.postsPerPage", ["loc", [null, [70, 31], [70, 49]]]]], ["id", "postsPerPage", "name", "general[postsPerPage]", "focus-out", "checkPostsPerPage", "min", "1", "max", "1000", "type", "number", "pattern", "[0-9]*", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.postsPerPage", ["loc", [null, [70, 197], [70, 215]]]]], [], ["loc", [null, [70, 192], [70, 216]]]]], [], ["loc", [null, [70, 184], [70, 217]]]]], ["loc", [null, [70, 20], [70, 219]]]], ["inline", "one-way-checkbox", [["get", "isDatedPermalinks", ["loc", [null, [77, 43], [77, 60]]]]], ["id", "permalinks", "class", "gh-input", "name", "general[permalinks]", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "isDatedPermalinks", ["loc", [null, [77, 141], [77, 158]]]]], [], ["loc", [null, [77, 136], [77, 159]]]]], [], ["loc", [null, [77, 128], [77, 160]]]]], ["loc", [null, [77, 24], [77, 162]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [84, 44], [84, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [84, 70], [84, 88]]]]], [], []], "property", "facebook"], 10, null, ["loc", [null, [84, 20], [89, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [92, 44], [92, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [92, 70], [92, 88]]]]], [], []], "property", "twitter"], 11, null, ["loc", [null, [92, 20], [97, 38]]]], ["inline", "gh-timezone-select", [], ["activeTimezone", ["subexpr", "@mut", [["get", "model.activeTimezone", ["loc", [null, [101, 39], [101, 59]]]]], [], []], "availableTimezones", ["subexpr", "@mut", [["get", "availableTimezones", ["loc", [null, [102, 43], [102, 61]]]]], [], []], "update", ["subexpr", "action", ["setTimezone"], [], ["loc", [null, [103, 31], [103, 53]]]]], ["loc", [null, [100, 16], [103, 55]]]], ["inline", "one-way-checkbox", [["get", "model.isPrivate", ["loc", [null, [108, 43], [108, 58]]]]], ["id", "isPrivate", "name", "general[isPrivate]", "type", "checkbox", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.isPrivate", ["loc", [null, [108, 136], [108, 151]]]]], [], ["loc", [null, [108, 131], [108, 152]]]]], [], ["loc", [null, [108, 123], [108, 153]]]]], ["loc", [null, [108, 24], [108, 155]]]], ["block", "if", [["get", "model.isPrivate", ["loc", [null, [114, 22], [114, 37]]]]], [], 12, null, ["loc", [null, [114, 16], [120, 23]]]], ["inline", "gh-theme-table", [], ["availableThemes", ["subexpr", "@mut", [["get", "model.availableThemes", ["loc", [null, [127, 40], [127, 61]]]]], [], []], "activateTheme", ["subexpr", "action", ["setTheme"], [], ["loc", [null, [128, 38], [128, 57]]]], "downloadTheme", ["subexpr", "action", ["downloadTheme"], [], ["loc", [null, [129, 38], [129, 62]]]], "deleteTheme", ["subexpr", "action", ["deleteTheme"], [], ["loc", [null, [130, 36], [130, 58]]]]], ["loc", [null, [126, 16], [130, 60]]]], ["block", "link-to", ["settings.general.uploadtheme"], ["class", "btn btn-green"], 13, null, ["loc", [null, [133, 20], [135, 32]]]], ["block", "if", [["get", "showDeleteThemeModal", ["loc", [null, [138, 22], [138, 42]]]]], [], 14, null, ["loc", [null, [138, 16], [147, 23]]]], ["content", "outlet", ["loc", [null, [153, 0], [153, 10]]]]],
+      statements: [["block", "gh-view-title", [], ["openMobileMenu", "openMobileMenu"], 0, null, ["loc", [null, [3, 8], [3, 96]]]], ["block", "gh-spin-button", [], ["class", "btn btn-blue", "action", "save", "submitting", ["subexpr", "@mut", [["get", "submitting", ["loc", [null, [5, 76], [5, 86]]]]], [], []]], 1, null, ["loc", [null, [5, 12], [5, 111]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [13, 40], [13, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [13, 66], [13, 84]]]]], [], []], "property", "title"], 2, null, ["loc", [null, [13, 16], [18, 34]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [20, 40], [20, 52]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [20, 66], [20, 84]]]]], [], []], "property", "description", "class", "description-container"], 3, null, ["loc", [null, [20, 16], [28, 34]]]], ["block", "if", [["get", "model.logo", ["loc", [null, [33, 22], [33, 32]]]]], [], 4, 5, ["loc", [null, [33, 16], [37, 23]]]], ["block", "if", [["get", "showUploadLogoModal", ["loc", [null, [40, 22], [40, 41]]]]], [], 6, null, ["loc", [null, [40, 16], [45, 23]]]], ["block", "if", [["get", "model.cover", ["loc", [null, [50, 22], [50, 33]]]]], [], 7, 8, ["loc", [null, [50, 16], [54, 23]]]], ["block", "if", [["get", "showUploadCoverModal", ["loc", [null, [57, 22], [57, 42]]]]], [], 9, null, ["loc", [null, [57, 16], [62, 23]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [68, 44], [68, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [68, 70], [68, 88]]]]], [], []], "property", "postsPerPage"], 10, null, ["loc", [null, [68, 20], [74, 38]]]], ["inline", "one-way-checkbox", [["get", "isDatedPermalinks", ["loc", [null, [80, 43], [80, 60]]]]], ["id", "permalinks", "class", "gh-input", "name", "general[permalinks]", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "isDatedPermalinks", ["loc", [null, [80, 141], [80, 158]]]]], [], ["loc", [null, [80, 136], [80, 159]]]]], [], ["loc", [null, [80, 128], [80, 160]]]]], ["loc", [null, [80, 24], [80, 162]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [87, 44], [87, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [87, 70], [87, 88]]]]], [], []], "property", "facebook"], 11, null, ["loc", [null, [87, 20], [92, 38]]]], ["block", "gh-form-group", [], ["errors", ["subexpr", "@mut", [["get", "model.errors", ["loc", [null, [95, 44], [95, 56]]]]], [], []], "hasValidated", ["subexpr", "@mut", [["get", "model.hasValidated", ["loc", [null, [95, 70], [95, 88]]]]], [], []], "property", "twitter"], 12, null, ["loc", [null, [95, 20], [100, 38]]]], ["inline", "gh-timezone-select", [], ["activeTimezone", ["subexpr", "@mut", [["get", "model.activeTimezone", ["loc", [null, [104, 39], [104, 59]]]]], [], []], "availableTimezones", ["subexpr", "@mut", [["get", "availableTimezones", ["loc", [null, [105, 43], [105, 61]]]]], [], []], "update", ["subexpr", "action", ["setTimezone"], [], ["loc", [null, [106, 31], [106, 53]]]]], ["loc", [null, [103, 16], [106, 55]]]], ["inline", "one-way-checkbox", [["get", "model.amp", ["loc", [null, [111, 43], [111, 52]]]]], ["id", "amp", "name", "general[amp]", "type", "checkbox", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.amp", ["loc", [null, [111, 118], [111, 127]]]]], [], ["loc", [null, [111, 113], [111, 128]]]]], [], ["loc", [null, [111, 105], [111, 129]]]]], ["loc", [null, [111, 24], [111, 131]]]], ["inline", "one-way-checkbox", [["get", "model.isPrivate", ["loc", [null, [120, 43], [120, 58]]]]], ["id", "isPrivate", "name", "general[isPrivate]", "type", "checkbox", "update", ["subexpr", "action", [["subexpr", "mut", [["get", "model.isPrivate", ["loc", [null, [120, 136], [120, 151]]]]], [], ["loc", [null, [120, 131], [120, 152]]]]], [], ["loc", [null, [120, 123], [120, 153]]]]], ["loc", [null, [120, 24], [120, 155]]]], ["block", "if", [["get", "model.isPrivate", ["loc", [null, [126, 22], [126, 37]]]]], [], 13, null, ["loc", [null, [126, 16], [132, 23]]]], ["inline", "gh-theme-table", [], ["availableThemes", ["subexpr", "@mut", [["get", "model.availableThemes", ["loc", [null, [139, 40], [139, 61]]]]], [], []], "activateTheme", ["subexpr", "action", ["setTheme"], [], ["loc", [null, [140, 38], [140, 57]]]], "downloadTheme", ["subexpr", "action", ["downloadTheme"], [], ["loc", [null, [141, 38], [141, 62]]]], "deleteTheme", ["subexpr", "action", ["deleteTheme"], [], ["loc", [null, [142, 36], [142, 58]]]]], ["loc", [null, [138, 16], [142, 60]]]], ["block", "link-to", ["settings.general.uploadtheme"], ["class", "btn btn-green"], 14, null, ["loc", [null, [145, 20], [147, 32]]]], ["block", "if", [["get", "showDeleteThemeModal", ["loc", [null, [150, 22], [150, 42]]]]], [], 15, null, ["loc", [null, [150, 16], [159, 23]]]], ["content", "outlet", ["loc", [null, [165, 0], [165, 10]]]]],
       locals: [],
-      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10, child11, child12, child13, child14]
+      templates: [child0, child1, child2, child3, child4, child5, child6, child7, child8, child9, child10, child11, child12, child13, child14, child15]
     };
   })());
 });
