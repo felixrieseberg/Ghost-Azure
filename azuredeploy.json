@@ -103,7 +103,7 @@
                     "value": "[parameters('siteName')]"
                 }, {
                     "name": "WEBSITE_NODE_DEFAULT_VERSION",
-                    "value": "4.4.1"
+                    "value": "6.10.0"
                 }]
             }
         },
