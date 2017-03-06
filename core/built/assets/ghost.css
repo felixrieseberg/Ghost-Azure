@@ -6014,7 +6014,6 @@ body > .ember-view:not(.liquid-target-container) {
 .theme-list-item-body .name {
   display: inline-block;
   color: #242628;
-  white-space: nowrap;
   font-weight: 400;
   -webkit-user-select: all;
   -moz-user-select: all;
@@ -6028,11 +6027,20 @@ body > .ember-view:not(.liquid-target-container) {
 }
 
 .theme-list-item-body {
-  -ms-flex: 1 1 auto;
-  flex: 1 1 auto;
+  -ms-flex: 1;
+  flex: 1;
   -ms-flex-align: stretch;
   align-items: stretch;
   line-height: 1;
+}
+
+.theme-list-item-aside {
+  -ms-flex: 1;
+  flex: 1;
+  display: -ms-flexbox;
+  display: flex;
+  -ms-flex-pack: end;
+  justify-content: flex-end;
 }
 
 .theme-list-action:last-child {
@@ -6964,6 +6972,10 @@ a.user-list-item {
   height: 75px;
   border-top: rgba(0,0,0,0.1) 1px solid;
   transition: background 0.3s ease;
+}
+
+.apps-card-app:not(last-child) {
+  border-bottom: rgba(0,0,0,0.1) 1px solid;
 }
 
 .apps-card-app:first-of-type {

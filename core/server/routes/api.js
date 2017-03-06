@@ -3,6 +3,11 @@ var express     = require('express'),
     api         = require('../api'),
     apiRoutes;
 
+/**
+ * IMPORTANT
+ * - cors middleware MUST happen before pretty urls, because otherwise cors header can get lost
+ * - cors middleware MUST happen after authenticateClient, because authenticateClient reads the trusted domains
+ */
 apiRoutes = function apiRoutes(middleware) {
     var router = express.Router(),
         // Authentication for public endpoints
@@ -10,14 +15,16 @@ apiRoutes = function apiRoutes(middleware) {
             middleware.api.authenticateClient,
             middleware.api.authenticateUser,
             middleware.api.requiresAuthorizedUserPublicAPI,
-            middleware.api.cors
+            middleware.api.cors,
+            middleware.api.prettyUrls
         ],
         // Require user for private endpoints
         authenticatePrivate = [
             middleware.api.authenticateClient,
             middleware.api.authenticateUser,
             middleware.api.requiresAuthorizedUser,
-            middleware.api.cors
+            middleware.api.cors,
+            middleware.api.prettyUrls
         ];
 
     // alias delete with del
@@ -144,6 +151,10 @@ apiRoutes = function apiRoutes(middleware) {
         middleware.spamPrevention.forgotten,
         api.http(api.authentication.generateResetToken)
     );
+
+    // ## Endpoint to exchange a one time access-token with a pair of AT/RT
+    router.post('/authentication/setup/three', middleware.api.authenticateClient, api.http(api.authentication.onSetupStep3));
+
     router.put('/authentication/passwordreset', api.http(api.authentication.resetPassword));
     router.post('/authentication/invitation', api.http(api.authentication.acceptInvitation));
     router.get('/authentication/invitation', api.http(api.authentication.isInvitation));

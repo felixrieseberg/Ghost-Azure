@@ -15,7 +15,7 @@ require('./overrides');
 // Module dependencies
 var express = require('express'),
     _ = require('lodash'),
-    uuid = require('node-uuid'),
+    uuid = require('uuid'),
     Promise = require('bluebird'),
     i18n = require('./i18n'),
     api = require('./api'),
@@ -31,7 +31,6 @@ var express = require('express'),
     slack = require('./data/slack'),
     GhostServer = require('./ghost-server'),
     scheduling = require('./scheduling'),
-    validateThemes = require('./utils/validate-themes'),
     dbHash;
 
 function initDbHashAndFirstRun() {
@@ -75,8 +74,9 @@ function init(options) {
     return config.load(options.config).then(function () {
         return config.checkDeprecated();
     }).then(function () {
+        // Load models, no need to wait
         models.init();
-    }).then(function () {
+
         /**
          * fresh install:
          * - getDatabaseVersion will throw an error and we will create all tables (including populating settings)
@@ -163,12 +163,14 @@ function init(options) {
             return Promise.reject(response.error);
         }
     }).then(function () {
-        // Initialize the settings cache
-        return api.init();
-    }).then(function () {
         // Initialize the permissions actions and objects
         // NOTE: Must be done before initDbHashAndFirstRun calls
         return permissions.init();
+    }).then(function () {
+        // Initialize the settings cache now,
+        // This is an optimisation, so that further reads from settings are fast.
+        // We do also do this after boot
+        return api.init();
     }).then(function () {
         return Promise.join(
             // Check for or initialise a dbHash.
@@ -186,19 +188,6 @@ function init(options) {
 
         // ## Middleware and Routing
         middleware(parentApp);
-
-        // Log all theme errors and warnings
-        validateThemes(config.paths.themePath)
-            .catch(function (result) {
-                // TODO: change `result` to something better
-                result.errors.forEach(function (err) {
-                    errors.logError(err.message, err.context, err.help);
-                });
-
-                result.warnings.forEach(function (warn) {
-                    errors.logWarn(warn.message, warn.context, warn.help);
-                });
-            });
 
         return new GhostServer(parentApp);
     }).then(function (_ghostServer) {
