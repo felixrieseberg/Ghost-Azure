@@ -1,0 +1,11 @@
+			<div class="pagination">
+				<nav>
+					{{#if prev}}
+					<a class="btn newer" href="{{page_url prev}}" title="Newer Posts">&laquo; Newer</a>
+					{{/if}}
+					<p class="counter">Page {{page}} of {{pages}}</p>
+					{{#if next}}
+					<a class="btn older" href="{{page_url next}}" title="Older Posts">Older &raquo;</a>
+					{{/if}}
+				</nav>
+             </div>
