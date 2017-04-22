@@ -502,12 +502,11 @@ define('ghost-admin/tests/acceptance/editor-test', ['exports', 'mocha', 'chai', 
                 var saveCount = 0;
 
                 server.put('/posts/:id/', function (db, request) {
-                    // we have three saves occurring here :-(
-                    // 1. Auto-save of draft
-                    // 2. Change of publish time
-                    // 3. Pressing the Schedule button
+                    // we have two saves occurring here :-(
+                    // 1. Change of publish time
+                    // 2. Pressing the Schedule button
                     saveCount++;
-                    if (saveCount === 3) {
+                    if (saveCount === 2) {
                         return new _emberCliMirage['default'].Response(422, {}, {
                             errors: [{
                                 errorType: 'ValidationError',
