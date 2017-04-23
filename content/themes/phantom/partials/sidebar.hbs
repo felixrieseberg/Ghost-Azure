@@ -1,0 +1,25 @@
+<div class="sidebar" role="aside" {{#if @blog.cover}}style="background-image: url({{@blog.cover}})"{{/if}}>
+	<header class="header">
+		<h1 class="title">
+			<a href="/">
+			<div class="text">
+				{{@blog.title}}
+			</div>
+			{{#if @blog.logo}}
+				<img id="blog" class="logo" alt="Spencer Schneidenbach" src="{{@blog.logo}}">
+			{{/if}}
+			</a>
+		</h1>
+		<div style="clear: both"></div>
+		{{ navigation }}
+
+		<div class="social-icons">
+			<a href="https://github.com/schneidenbach" class="icon icon-github"></a>
+			<a href="https://plus.google.com/+SpencerSchneidenbach?rel=author" class="icon icon-gplus"></a>
+			<a href="https://twitter.com/schneidenbach" class="icon icon-twitter"></a>
+			<a href="mailto:sas.projects@me.com" class="icon icon-mail"></a>
+		</div>
+
+		<p class="description">{{{@blog.description}}}</p>
+	</header>
+</div>

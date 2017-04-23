@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+	{{! Document Settings }}
+	<meta http-equiv="Content-Type" content="text/html" charset="UTF-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+
+	{{! Page Meta }}
+	{{#if post}}
+	<title>{{meta_title}} - Spencer Schneidenbach</title>
+	{{else}}
+	<title>Spencer Schneidenbach - web developer, speaker, instructor, mentor, writer, husband, dad. JavaScript, AngularJS, ASP.NET, Node, C#</title>
+	{{/if}}
+	{{#if post}}
+	<meta name="keywords" content="{{#each post.tags}}{{name}},{{/each}}">
+	{{else}}
+	<meta name="keywords" content="csharp, dotnet, angularjs, javascript, asp.net, node, .net, c#, angular2, typescript, speaking, teaching, consulting, web">
+	{{/if}}
+
+	<meta name="description" content="{{meta_description}}" />
+
+
+	<meta name="HandheldFriendly" content="True" />
+	<meta name="MobileOptimized" content="320" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<link rel="stylesheet" type="text/css" href="{{asset "/css/main.css"}}" />
+	<link rel="stylesheet" type="text/css" href="{{asset "/css/prism.css"}}" />
+
+	{{! Ghost outputs important style and meta data with this tag }}
+	{{ghost_head}}
+</head>
+<body class="{{body_class}}">
+	
+	{{> sidebar }}
+
+	<div class="content">
+		{{{body}}}
+	</div>
+
+	{{! ghost_foot prints a unminified version of jquery here :/ }}
+	{{!ghost_foot}}
+
+	{{! The main JavaScript file for Casper }}
+	{{> analytics}}
+	
+	<script type="text/javascript" src="{{asset "/js/prism.js"}}"></script>
+
+</body>
+</html>
