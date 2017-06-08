@@ -1,0 +1,44 @@
+{{!< default}}
+
+        <div class="container clearfix">
+          <main role="main" class="content">
+              
+              {{#post}}
+              <article class="{{post_class}} post">
+                <a class="btn" href="{{@blog.url}}" title="Back to homepage">&laquo; Back to home</a>
+                <h1><a href="{{url}}" title="{{title}}">{{title}}</a></h1>
+                <footer class="post-info">Posted on <span class="post-meta"><time datetime="{{date published_at format="YYYY-MM-DD"}}">{{date published_at format="Do MMMM YYYY"}}</time> {{tags separator=", " prefix="Tagged in "}}</span></footer>
+                
+                {{content}}
+                
+                <ul class="share-buttons">
+                    <li>Share this article:</li>
+                    <li><a class="icon-facebook-squared" href="https://www.facebook.com/sharer/sharer.php?u={{url absolute="true"}}"
+                        onclick="window.open(this.href, 'facebook-share','width=580,height=296');return false;" title="Share on Facebook"></a></li>
+                    <li><a class="icon-twitter"  href="https://twitter.com/share?text={{encode title}}&amp;url={{url absolute="true"}}"
+                        onclick="window.open(this.href, 'twitter-share', 'width=550,height=235');return false;" title="Tweet this page"></a></li>
+                    <li><a class="icon-gplus"  href="https://plus.google.com/share?url={{url absolute="true"}}"
+                       onclick="window.open(this.href, 'google-plus-share', 'width=490,height=530');return false;" title="Share on Google+"></a></li>
+                    <li><a class="icon-linkedin"  href="https://www.linkedin.com/shareArticle?mini=true&url={{url absolute="true"}}&title={{encode title}}" onclick="window.open(this.href, 'linkedin-share', 'width=600,height=494');return false;" title="Share on LinkenIn"></a></li>
+                </ul>
+                
+              </article>
+              {{/post}}
+             
+          </main>
+<!--          <aside class="author">
+            
+            <img class="profile-image" src="{{asset "img/profile-image.jpg"}}" alt="" />
+            <p class="name">by <strong>Leônidas V.</strong></p>
+            <p class="about">Heavy Linux-user, developer, geek, GNU-GPL v3 compliant.</p>
+            <p class="address">São Paulo, Brazil.</p>
+            <p class="link"><a href="http://leonidasv.com" title="Leoônidas Villeneuve">leonidasv.com</a></p>
+
+            <ul class="social">
+              <li><a class="icon-facebook-squared" href="http://facebook.com/leonidasvilleneuve" target="_blank" title="Facebook"></a></li>
+              <li><a class="icon-github" href="https://github.com/leonidasv" target="_blank" title="Fork me on Github"></a></li>
+              <li><a class="icon-instagram" href="https://instagram.com/essefoiousermenospiorqeuachei" target="_blank" title="Instagram"></a></li>
+            </ul> -->
+
+          </aside>
+        </div>

@@ -1,0 +1,510 @@
+/* -----------------------------------------------------------------------------
+   -----------------------------------------------------------------------------
+
+   Theme: Minimalist Theme
+   Version: 1.0
+   Author: Raphael Riegger (http://rriegger.com)
+   License: Apache License Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+
+   -----------------------------------------------------------------------------
+   -----------------------------------------------------------------------------*/
+
+
+// -----------------------------------------------------------------------------
+// Variables
+// -----------------------------------------------------------------------------
+
+	// Colours
+	$h-colour: #2a373d; // Heading Colour
+	$b-colour: #222222; // Body Colour
+	$s-colour: #979797; // Secondary Colour
+
+	// Fonts
+	$h-font: 'Roboto', sans-serif; // Heading Font
+	$b-font: 'Noto Serif', serif; // Body Font
+	$icon-font: 'fontello';// Icon Font
+
+	// Font Weights
+	$light: 300;
+	$normal: 400;
+	$bold: 700;
+
+
+
+// -----------------------------------------------------------------------------
+// Mixin
+// -----------------------------------------------------------------------------
+
+
+@mixin image-2x($image, $width, $height) {
+  @media (min--moz-device-pixel-ratio: 1.3),
+         (-o-min-device-pixel-ratio: 2.6/2),
+         (-webkit-min-device-pixel-ratio: 1.3),
+         (min-device-pixel-ratio: 1.3),
+         (min-resolution: 1.3dppx) {
+    background-image: url($image);
+    background-size: $width $height;
+  }
+}
+
+
+
+// -----------------------------------------------------------------------------
+// Global Styles
+// -----------------------------------------------------------------------------
+
+
+body{
+	color: $b-colour;
+	font-family: $b-font;
+	font-weight: $normal;
+	transition:all 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6{
+	font-family: $h-font;
+	font-weight: $light;
+}
+
+a{
+	text-decoration: none;
+	color: lighten($b-colour, 50%);
+	transition:all 0.3s ease;
+	&:hover{
+		color: $b-colour;
+
+	}
+}
+
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a{
+	color: $b-colour;
+	&:hover{
+		color: lighten($b-colour, 50%);
+	}
+}
+
+hr{
+	border: 0;
+	border-top: 1px #E4E4E4 solid;
+	margin: 40px 0;
+}
+
+
+.post ul li{
+	line-height: 28px;
+	font-size: 15px;
+}
+
+
+.container {
+	margin:0 auto;
+	width: 1200px;
+	padding: 50px 0 0 0;
+}
+
+.author {
+	text-align: center;
+	width: 20%;
+	float: left;
+	margin: 20px 5% 0px 5%;
+}
+
+.content{
+	width: 60%;
+	margin-right: 5%;
+	float: right;
+}
+
+
+
+// -----------------------------------------------------------------------------
+// Header
+// -----------------------------------------------------------------------------
+
+
+.site-header{
+	background: $h-colour url(../img/header-bg.jpg) no-repeat center center; 
+    -webkit-background-size: cover;
+    -moz-background-size: cover;
+    -o-background-size: cover;
+    background-size: cover;
+    color: #fff;
+    text-align: center;
+    position: relative;
+    height: 400px;
+    transition:all 0.3s ease;
+}
+
+.site-header h2{
+	margin: 0;
+}
+
+.site-header h2 .logo{
+	margin: 0;
+	background: url(../img/rriegger-logo.png) no-repeat 0 0;
+	width: 179px;
+	height: 148px;
+	display: block;
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin: -74px 0 0 -89px;
+
+	@include image-2x("../img/rriegger-logo@2x.png", 179px, 148px);
+}
+
+
+.profile-image{
+  -webkit-border-radius: 100%; 
+  -moz-border-radius: 100%; 
+  border-radius: 100%; 
+}
+
+
+// -----------------------------------------------------------------------------
+// Articles
+// -----------------------------------------------------------------------------
+
+
+.post h2{
+	margin-top: 0;
+}
+
+.post p{
+	line-height: 28px;
+}
+
+.post h2 a,
+.post-template h1{
+	font-size: 44px;
+	margin-bottom: 10px;
+}
+
+.post-template h2,
+.post-template h3,
+.post-template h4,
+.post-template h5,
+.post-template h6{
+	font-family: $h-font;
+	font-weight: $bold;
+}
+
+.post{
+	margin-bottom: 60px;
+	padding-bottom: 60px;
+	border-bottom: 1px solid #ececec;
+}
+
+
+.post img{
+	max-width: 100%;
+	height: auto;
+}
+
+.post-info{
+	color: lighten($b-colour, 50%);
+	font-family: $h-font;
+	font-weight: $light;
+	font-size: 18px;
+	margin-bottom: 40px;
+	line-height: 30px;
+}
+
+
+.share-buttons{
+	list-style: none;
+	padding: 0;
+}
+
+.share-buttons li{
+	display: inline;
+	font-family: $h-font;
+	font-weight: $light;
+	font-size: 13px;
+	color: $s-colour;
+	margin-right: 4px; 
+}
+
+.share-buttons li a{
+	font-size: 15px;
+}
+
+
+
+.comments{
+	margin-bottom: 60px;
+}
+
+
+.tags{
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: inline-block;
+}
+
+
+.tag-title{
+	font-family: $h-font;
+	font-weight: $light;
+	border-bottom: 1px solid #ececec;
+	margin-bottom: 40px;
+}
+
+.tag-title h1{
+	font-size: 28px;
+	margin-top: 0;
+	margin-bottom: 40px;
+}
+
+.tag-title p {
+	color: $s-colour;
+	font-size: 14px;
+	margin-bottom: 0;
+	
+}
+
+
+// -----------------------------------------------------------------------------
+// Pagination
+// -----------------------------------------------------------------------------
+
+.pagination{
+	position: relative;
+	height: 35px;
+	width: 100%;
+	margin-bottom: 60px;
+}
+
+.btn{
+  border: solid 1px rgb( 236, 236, 236 );
+  background-color: #FFF;
+  width: 100px;
+  height: 35px;
+  display: block;
+  -webkit-border-radius: 3px; 
+  -moz-border-radius: 3px; 
+  border-radius: 3px; 
+  text-align: center;
+  font-family: $h-font;
+  font-weight: $light;
+  line-height: 35px;
+  font-size: 13px;
+  color: #000;
+
+  &:hover{
+  	background-color: $h-colour;
+  	border-color: $h-colour;
+  	color: #FFF;
+  } 
+}
+
+
+.post .btn{
+	width: 140px;
+	
+}
+
+
+.btn.btn-download{
+	background-color: $h-colour;
+  	border-color: $h-colour;
+  	color: #FFF;
+  	width: 200px;
+
+	&:hover{
+		background-color: lighten($h-colour, 15%);
+  		border-color: $h-colour;
+  		color: #FFF;
+	}
+}
+
+
+.newer{
+	position: absolute;
+	left: 0;
+	top: 0;
+}
+
+.older{
+	position: absolute;
+	right: 0;
+	top: 0;
+}
+
+.counter{
+	text-align: center;
+	line-height: 35px;
+	font-size: 13px;
+	font-family: $h-font;
+	font-weight: $light;
+	color: $s-colour;
+}
+
+
+// -----------------------------------------------------------------------------
+// Sidebar
+// -----------------------------------------------------------------------------
+
+.author{
+	font-family: $h-font;
+	font-weight: $light;
+
+}
+
+.author p{
+	margin: 0;
+	padding: 0;
+	font-size: 12px;
+} 
+
+.author p.name{
+	font-size: 14px;
+	margin: 10px 0;
+}
+
+.author p.address{
+	color: $s-colour;
+}
+
+.author p.link{
+	margin-bottom: 10px;
+}
+
+.author ul.social{
+	list-style: none;
+	display: inline;
+	padding: 0;
+}
+
+.author ul.social li{
+	display: inline;
+}
+
+.author ul.social li a{
+	padding: 5px;
+	font-size: 20px;
+
+	
+}
+
+
+// -----------------------------------------------------------------------------
+// Footer
+// -----------------------------------------------------------------------------
+
+.main-footer{
+	background-color: #f3f3f3;
+	text-align: center;
+	font-family: $h-font;
+	font-weight: $light;
+	color: lighten($b-colour, 50%);
+}
+.main-footer .container{
+	padding: 30px 0;
+}
+
+.main-footer a{
+	color: lighten($b-colour, 50%);
+	&:hover{
+		color: $b-colour;
+	}
+}
+.main-footer p{
+	font-size: 11px;
+}
+
+// -----------------------------------------------------------------------------
+// Post page
+// -----------------------------------------------------------------------------
+
+
+body.post-template > .site-header{
+    height: 250px;
+    transition:all 0.3s ease;
+}
+
+
+body.post-template .site-header h2 .logo{
+	background: url(../img/rriegger-logo.png) no-repeat 0 0;
+	width: 90px;
+	height: 74px;
+	margin: -45px 0 0 -37px;
+	background-size: 90px 74px;
+}
+
+
+
+// -----------------------------------------------------------------------------
+// Responsive Styles
+// -----------------------------------------------------------------------------
+
+
+@media only screen and (min-width: 720px) and (max-width: 1199px) {
+	.container {
+		width: 100%;
+	}
+}
+
+
+@media only screen and (max-width: 719px) {
+	.container{
+		width: 90%;
+		padding-top: 25px;
+	}
+
+	.author, .content{
+		width: 100%;
+		margin: 0;
+	}
+
+	.author{
+		margin-bottom: 60px; 
+	}
+
+	.site-header,
+	body.post-template > .site-header{
+	    height: 180px;
+	    transition:all 0.3s ease;
+	}
+
+	.site-header h2 .logo{
+		background: url(../img/rriegger-logo.png) no-repeat 0 0;
+		width: 90px;
+		height: 74px;
+		margin: -45px 0 0 -37px;
+		background-size: 90px 74px;
+	}
+
+
+}
+
+
+// -----------------------------------------------------------------------------
+// Helper classes
+// -----------------------------------------------------------------------------
+
+.ir {
+    background-color: transparent;
+    border: 0;
+    overflow: hidden;
+    *text-indent: -9999px;
+}
+
+.ir:before {
+    content: "";
+    display: block;
+    width: 0;
+    height: 150%;
+}
+
+
+.clearfix:before,
+.clearfix:after {
+    content: " "; /* 1 */
+    display: table; /* 2 */
+}
+
+.clearfix:after {
+    clear: both;
+}

@@ -85,7 +85,7 @@
                 "webSocketsEnabled": true,
                 "appSettings": [{
                     "name": "websiteUrl",
-                    "value": ""
+                    "value": "http://www.hendriks.software"
                 }, {
                     "name": "emailService",
                     "value": "[parameters('Email Service')]"

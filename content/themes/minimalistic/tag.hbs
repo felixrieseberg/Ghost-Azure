@@ -1,0 +1,39 @@
+{{!< default}}
+
+        <div class="container clearfix">
+          <main role="main" class="content">
+              <div class="tag-title">
+                <p>All articles tagged as:</p>
+                <h1>{{tag.name}}</h1>
+              </div>
+
+              {{#foreach posts}}  
+              <article class="{{post_class}} post">
+                <h2><a href="{{url}}" title="{{title}}">{{title}}</a></h2>
+                <footer class="post-info">Posted on <span class="post-meta"><time datetime="{{date published_at format="YYYY-MM-DD"}}">{{date published_at format="Do MMMM YYYY"}}</time> {{tags separator=", " prefix="Tagged in "}}</span></footer>
+                
+                <p>{{excerpt characters="600"}}&hellip;</p>
+                
+                <a href="{{url}}" title="{{title}}">Read more &raquo;</a>
+              </article>
+              {{/foreach}}
+
+              {{pagination}}
+             
+          </main>
+          <aside class="author">
+            <a class="btn" href="{{@blog.url}}" title="Back to homepage">&laquo; Back to home</a>
+            <img class="profile-image" src="{{asset "img/profile-image.jpg"}}" alt="" />
+<!--            <p class="name">by <strong>Leônidas V.</strong></p>
+            <p class="about">Heavy Linux-user, developer, geek, GNU-GPL v3 compliant.</p>
+            <p class="address">São Paulo, Brazil.</p>
+            <p class="link"><a href="http://leonidasv.com" title="Leoônidas Villeneuve">leonidasv.com</a></p>
+
+            <ul class="social">
+              <li><a class="icon-facebook-squared" href="http://facebook.com/leonidasvilleneuve" target="_blank" title="Facebook"></a></li>
+              <li><a class="icon-github" href="https://github.com/leonidasv" target="_blank" title="Fork me on Github"></a></li>
+              <li><a class="icon-instagram" href="https://instagram.com/essefoiousermenospiorqeuachei" target="_blank" title="Instagram"></a></li>
+            </ul>-->
+
+          </aside>
+        </div>
