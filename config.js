@@ -5,7 +5,13 @@
 var path = require('path'),
     websiteUrl = process.env.websiteUrl,
     websiteUrlSSL = process.env.websiteUrlSSL,
-    config;
+    mysqlHost = process.env.MYSQL_HOST,
+    mysqlPort = process.env.MYSQL_PORT,
+    mysqlUsername = process.env.MYSQL_USERNAME,
+    mysqlPassword = process.env.MYSQL_PASSWORD,
+    mysqlDatabase = process.env.MYSQL_DATABASE,
+    config,
+    database;
 
 // Azure Feature
 // ------------------------------------------------------------------------
@@ -23,6 +29,20 @@ if (!websiteUrlSSL || websiteUrlSSL === '' ||  websiteUrlSSL.length === 0) {
     // using the WEBSITE_HOSTNAME we don't have to append anything and would work in ASE too.
     websiteUrlSSL = 'https://' + process.env.WEBSITE_HOSTNAME;
     console.log(websiteUrlSSL);
+}
+
+if (mysqlHost) {
+  database = {
+    client: 'mysql',
+    connection: {
+       host     : mysqlHost,
+       user     : mysqlUsername,
+       password : mysqlPassword,
+       database : mysqlDatabase,
+       charset  : 'utf8'
+    }
+  }
+  console.log(database);
 }
 
 config = {
@@ -44,7 +64,7 @@ config = {
              from: process.env.emailFromAddress // 'from' address when sending emails
          },
 
-        database: {
+        database: database ? database : {
             client: 'sqlite3',
             connection: {
                 filename: path.join(__dirname, '/content/data/ghost-dev.db')
@@ -82,7 +102,7 @@ config = {
          },
          from: process.env.emailFromAddress // 'from' address when sending emails
         },
-        database: {
+        database: database ? database : {
             client: 'sqlite3',
             connection: {
                 filename: path.join(__dirname, '/content/data/ghost.db')
