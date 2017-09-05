@@ -2380,6 +2380,59 @@ define('ghost-admin/tests/acceptance/settings/tags-test', ['exports', 'mocha', '
                 });
             });
 
+            (0, _mocha.it)('rolls back attrs and clears errors when navigating', function () {
+                server.createList('tag', 2);
+
+                // navigate to first tag
+                // navigate to meta settings
+                // fill in title with too many chars
+                // check for error
+                // navigate back to main tag settings
+                // navigate to meta settings
+                // check error isn't there
+                // navigate to main tag settings
+                // fill in too many chars in the description
+                // check for error
+                // navigate to second tag
+                // navigate back to first tag
+                // check error isn't there
+
+                visit('/settings/tags/tag-0');
+                click('.meta-data-button');
+                fillIn('[name="metaTitle"]', new Array(152).join('x'));
+                triggerEvent('[name="metaTitle"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.tag-meta-settings-pane .form-group:first-of-type .response').text().trim(), 'tag meta title error').to.match(/150 characters/i);
+                });
+
+                click('.tag-meta-settings-pane .back');
+                click('.meta-data-button');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.tag-meta-settings-pane .form-group:first-of-type .response').text().trim(), 'tag meta title error after navigation').to.equal('');
+
+                    (0, _chai.expect)(find('[name="metaTitle"]').val(), 'tag meta settings title value after navigation').to.equal('Meta Title for tag 0');
+                });
+
+                click('.tag-meta-settings-pane .back');
+                fillIn('[name="description"]', new Array(202).join('x'));
+                triggerEvent('[name="description"]', 'blur');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.tag-settings-pane .form-group:last-of-type .response').text().trim(), 'tag description error').to.match(/200 characters/i);
+                });
+
+                click('.tag-edit-button:last');
+                click('.tag-edit-button:first');
+
+                andThen(function () {
+                    (0, _chai.expect)(find('.tag-settings-pane .form-group:last-of-type .response').text().trim(), 'tag description error after navigation').to.equal('');
+
+                    (0, _chai.expect)(find('[name="description"]').val(), 'tag description value after navigation').to.equal('Description for tag 0.');
+                });
+            });
+
             (0, _mocha.it)('has infinite scroll pagination of tags list', function () {
                 server.createList('tag', 32);
 
@@ -14675,7 +14728,7 @@ define('ghost-admin/tests/unit/components/gh-upgrade-notification-test', ['expor
         needs: ['helper:gh-format-html']
     }, function () {
         beforeEach(function () {
-            var upgradeMessage = { 'content': 'Ghost 10.02.91 is available! Hot Damn. <a href="http://support.ghost.org/how-to-upgrade/" target="_blank">Click here</a> to upgrade.' };
+            var upgradeMessage = { 'content': 'Ghost 10.02.91 is available! Hot Damn. <a href="https://docs.ghost.org/v0.11.9/docs/how-to-upgrade-ghost" target="_blank">Click here</a> to upgrade.' };
             this.subject().set('upgradeNotification', upgradeMessage);
         });
 
@@ -14691,7 +14744,7 @@ define('ghost-admin/tests/unit/components/gh-upgrade-notification-test', ['expor
             (0, _chai.expect)(this.$().prop('tagName')).to.equal('SECTION');
             (0, _chai.expect)(this.$().hasClass('gh-upgrade-notification')).to.be['true'];
             // caja tools sanitize target='_blank' attribute
-            (0, _chai.expect)(this.$().html()).to.contain('Hot Damn. <a href="http://support.ghost.org/how-to-upgrade/">Click here</a>');
+            (0, _chai.expect)(this.$().html()).to.contain('Hot Damn. <a href="https://docs.ghost.org/v0.11.9/docs/how-to-upgrade-ghost">Click here</a>');
         });
     });
 });

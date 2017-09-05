@@ -1,6 +1,6 @@
 {
   "name": "ghost",
-  "version": "0.11.9",
+  "version": "0.11.11",
   "description": "Just a blogging platform.",
   "author": "Ghost Foundation",
   "homepage": "http://ghost.org",
@@ -23,7 +23,7 @@
     "test": "grunt validate --verbose"
   },
   "engines": {
-    "node": "^4.2.0 || ^6.9.0"
+    "node": "^4.5.0 || ^6.9.0"
   },
   "dependencies": {
     "amperize": "0.3.4",
@@ -65,6 +65,7 @@
     "passport-http-bearer": "1.0.1",
     "passport-oauth2-client-password": "0.1.2",
     "path-match": "1.2.4",
+    "rimraf": "2.5.1",
     "rss": "1.2.2",
     "sanitize-html": "1.14.1",
     "semver": "5.3.0",
