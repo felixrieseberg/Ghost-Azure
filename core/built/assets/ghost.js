@@ -3326,6 +3326,13 @@ define('ghost-admin/components/gh-tag-settings-form', ['exports', 'ember-compone
             },
 
             closeMeta: function closeMeta() {
+                var tag = this.get('tag');
+
+                if (tag.get('errors.length') > 0) {
+                    tag.rollbackAttributes();
+                    tag.get('errors').clear();
+                }
+
                 this.set('isViewingSubview', false);
             },
 
@@ -5119,7 +5126,7 @@ define('ghost-admin/controllers/error', ['exports', 'ember-controller', 'ember-c
         })
     });
 });
-define('ghost-admin/controllers/post-settings-menu', ['exports', 'jquery', 'ember', 'ember-controller', 'ember-computed', 'ember-metal/utils', 'ember-service/inject', 'ember-controller/inject', 'ember-string', 'ember-metal/observer', 'ghost-admin/utils/date-formatting', 'ghost-admin/mixins/settings-menu-controller', 'ghost-admin/utils/bound-one-way', 'ghost-admin/utils/isNumber'], function (exports, _jquery, _ember, _emberController, _emberComputed, _emberMetalUtils, _emberServiceInject, _emberControllerInject, _emberString, _emberMetalObserver, _ghostAdminUtilsDateFormatting, _ghostAdminMixinsSettingsMenuController, _ghostAdminUtilsBoundOneWay, _ghostAdminUtilsIsNumber) {
+define('ghost-admin/controllers/post-settings-menu', ['exports', 'jquery', 'ember', 'ember-controller', 'ember-computed', 'ember-metal/utils', 'ember-service/inject', 'ember-controller/inject', 'ember-string', 'ember-metal/observer', 'ghost-admin/utils/date-formatting', 'ghost-admin/mixins/settings-menu-controller', 'ghost-admin/utils/bound-one-way'], function (exports, _jquery, _ember, _emberController, _emberComputed, _emberMetalUtils, _emberServiceInject, _emberControllerInject, _emberString, _emberMetalObserver, _ghostAdminUtilsDateFormatting, _ghostAdminMixinsSettingsMenuController, _ghostAdminUtilsBoundOneWay) {
     var ArrayProxy = _ember['default'].ArrayProxy;
     var Handlebars = _ember['default'].Handlebars;
     var PromiseProxyMixin = _ember['default'].PromiseProxyMixin;
@@ -5133,6 +5140,11 @@ define('ghost-admin/controllers/post-settings-menu', ['exports', 'jquery', 'embe
         session: (0, _emberServiceInject['default'])(),
         slugGenerator: (0, _emberServiceInject['default'])(),
         timeZone: (0, _emberServiceInject['default'])(),
+
+        // HACK: the edit controller will be different for new/edit so we can't use
+        // injectController. Instead we set this value in the routes so that we can
+        // call the editorControllers tasks. Fixed in 1.0 as the PSM is a component
+        editorController: null,
 
         initializeSelectedAuthor: (0, _emberMetalObserver['default'])('model', function () {
             var _this = this;
@@ -5287,60 +5299,7 @@ define('ghost-admin/controllers/post-settings-menu', ['exports', 'jquery', 'embe
             updateSlug: function updateSlug(newSlug) {
                 var _this4 = this;
 
-                var slug = this.get('model.slug');
-
-                newSlug = newSlug || slug;
-                newSlug = newSlug && newSlug.trim();
-
-                // Ignore unchanged slugs or candidate slugs that are empty
-                if (!newSlug || slug === newSlug) {
-                    // reset the input to its previous state
-                    this.set('slugValue', slug);
-
-                    return;
-                }
-
-                this.get('slugGenerator').generateSlug('post', newSlug).then(function (serverSlug) {
-                    // If after getting the sanitized and unique slug back from the API
-                    // we end up with a slug that matches the existing slug, abort the change
-                    if (serverSlug === slug) {
-                        return;
-                    }
-
-                    // Because the server transforms the candidate slug by stripping
-                    // certain characters and appending a number onto the end of slugs
-                    // to enforce uniqueness, there are cases where we can get back a
-                    // candidate slug that is a duplicate of the original except for
-                    // the trailing incrementor (e.g., this-is-a-slug and this-is-a-slug-2)
-
-                    // get the last token out of the slug candidate and see if it's a number
-                    var slugTokens = serverSlug.split('-');
-                    var check = Number(slugTokens.pop());
-
-                    // if the candidate slug is the same as the existing slug except
-                    // for the incrementor then the existing slug should be used
-                    if ((0, _ghostAdminUtilsIsNumber['default'])(check) && check > 0) {
-                        if (slug === slugTokens.join('-') && serverSlug !== newSlug) {
-                            _this4.set('slugValue', slug);
-
-                            return;
-                        }
-                    }
-
-                    _this4.set('model.slug', serverSlug);
-
-                    if (_this4.hasObserverFor('model.titleScratch')) {
-                        _this4.removeObserver('model.titleScratch', _this4, 'titleObserver');
-                    }
-
-                    // If this is a new post.  Don't save the model.  Defer the save
-                    // to the user pressing the save button
-                    if (_this4.get('model.isNew')) {
-                        return;
-                    }
-
-                    return _this4.get('model').save();
-                })['catch'](function (error) {
+                return this.get('editorController.updateSlug').perform(newSlug)['catch'](function (error) {
                     _this4.showError(error);
                     _this4.get('model').rollbackAttributes();
                 });
@@ -6401,7 +6360,7 @@ define('ghost-admin/controllers/settings/tags/tag', ['exports', 'ember-controlle
             var tag = this.get('tag');
             var currentValue = tag.get(propKey);
 
-            newValue = newValue.trim();
+            newValue = (newValue || '').trim();
 
             // Quit if there was no change
             if (newValue === currentValue) {
@@ -6669,7 +6628,7 @@ define('ghost-admin/controllers/setup/three', ['exports', 'ember-controller', 'r
                                 invitationsString = erroredEmails.length > 1 ? ' invitations: ' : ' invitation: ';
                                 message = 'Failed to send ' + erroredEmails.length + ' ' + invitationsString;
                                 message += erroredEmails.join(', ');
-                                message += ". Please check your email configuration, see <a href=\'http://support.ghost.org/mail\' target=\'_blank\'>http://support.ghost.org/mail</a> for instructions";
+                                message += ". Please check your email configuration, see <a href=\'https://docs.ghost.org/v0.11.9/docs/mail-config\' target=\'_blank\'>https://docs.ghost.org/v0.11.9/docs/mail-config</a> for instructions";
 
                                 message = (0, _emberString.htmlSafe)(message);
                                 notifications.showAlert(message, { type: 'error', delayed: successCount > 0, key: 'signup.send-invitations.failed' });
@@ -10632,8 +10591,8 @@ define('ghost-admin/mixins/ed-editor-shortcuts', ['exports', 'ember-metal/mixin'
     });
 });
 /* global moment, Showdown */
-define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-metal/mixin', 'rsvp', 'ember-computed', 'ember-service/inject', 'ember-controller/inject', 'ember-string', 'ember-metal/observer', 'ember-runloop', 'ember-array/utils', 'ember-utils', 'ember-concurrency', 'ghost-admin/models/post', 'ghost-admin/utils/bound-one-way', 'ghost-admin/services/ajax'], function (exports, _ember, _emberMetalMixin, _rsvp, _emberComputed, _emberServiceInject, _emberControllerInject, _emberString, _emberMetalObserver, _emberRunloop, _emberArrayUtils, _emberUtils, _emberConcurrency, _ghostAdminModelsPost, _ghostAdminUtilsBoundOneWay, _ghostAdminServicesAjax) {
-    var resolve = _rsvp['default'].resolve;
+define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-metal/mixin', 'ember-computed', 'ember-service/inject', 'ember-controller/inject', 'ember-string', 'ember-metal/observer', 'ember-runloop', 'ember-array/utils', 'ember-utils', 'ember-concurrency', 'ghost-admin/models/post', 'ghost-admin/utils/bound-one-way', 'ghost-admin/services/ajax', 'ghost-admin/utils/isNumber'], function (exports, _ember, _emberMetalMixin, _emberComputed, _emberServiceInject, _emberControllerInject, _emberString, _emberMetalObserver, _emberRunloop, _emberArrayUtils, _emberUtils, _emberConcurrency, _ghostAdminModelsPost, _ghostAdminUtilsBoundOneWay, _ghostAdminServicesAjax, _ghostAdminUtilsIsNumber) {
+    var _slicedToArray = (function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i['return']) _i['return'](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError('Invalid attempt to destructure non-iterable instance'); } }; })();
 
     // this array will hold properties we need to watch
     // to know if the model has been changed (`controller.hasDirtyAttributes`)
@@ -10651,6 +10610,7 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
         showLeaveEditorModal: false,
         showReAuthenticateModal: false,
 
+        ajax: (0, _emberServiceInject['default'])(),
         postSettingsMenuController: (0, _emberControllerInject['default'])('post-settings-menu'),
         notifications: (0, _emberServiceInject['default'])(),
         clock: (0, _emberServiceInject['default'])(),
@@ -10966,7 +10926,7 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
 
                     case 5:
                         context$1$0.next = 7;
-                        return this.get('generateSlug').perform();
+                        return this.get('generateSlugFromTitle').perform();
 
                     case 7:
                     case 'end':
@@ -10975,7 +10935,7 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
             }, callee$0$0, this);
         })).restartable(),
 
-        generateSlug: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$0$0() {
+        generateSlugFromTitle: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$0$0() {
             var title, slug;
             return regeneratorRuntime.wrap(function callee$0$0$(context$1$0) {
                 while (1) switch (context$1$0.prev = context$1$0.next) {
@@ -11021,6 +10981,260 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
             }, callee$0$0, this, [[3, 10]]);
         })).enqueue(),
 
+        // updateSlug and save should always be enqueued so that we don't run into
+        // problems with concurrency, for example when Cmd-S is pressed whilst the
+        // cursor is in the slug field - that would previously trigger a simultaneous
+        // slug update and save resulting in ember data errors and inconsistent save
+        // results
+        saveTasks: (0, _emberConcurrency.taskGroup)().enqueue(),
+
+        updateSlug: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$0$0(_newSlug) {
+            var slug, newSlug, serverSlug, slugTokens, check;
+            return regeneratorRuntime.wrap(function callee$0$0$(context$1$0) {
+                while (1) switch (context$1$0.prev = context$1$0.next) {
+                    case 0:
+                        slug = this.get('model.slug');
+                        newSlug = undefined, serverSlug = undefined;
+
+                        newSlug = _newSlug || slug;
+                        newSlug = newSlug && newSlug.trim();
+
+                        // Ignore unchanged slugs or candidate slugs that are empty
+
+                        if (!(!newSlug || slug === newSlug)) {
+                            context$1$0.next = 7;
+                            break;
+                        }
+
+                        // reset the input to its previous state
+                        this.set('slugValue', slug);
+
+                        return context$1$0.abrupt('return');
+
+                    case 7:
+                        context$1$0.next = 9;
+                        return this.get('slugGenerator').generateSlug('post', newSlug);
+
+                    case 9:
+                        serverSlug = context$1$0.sent;
+
+                        if (!(serverSlug === slug)) {
+                            context$1$0.next = 12;
+                            break;
+                        }
+
+                        return context$1$0.abrupt('return');
+
+                    case 12:
+                        slugTokens = serverSlug.split('-');
+                        check = Number(slugTokens.pop());
+
+                        if (!((0, _ghostAdminUtilsIsNumber['default'])(check) && check > 0)) {
+                            context$1$0.next = 18;
+                            break;
+                        }
+
+                        if (!(slug === slugTokens.join('-') && serverSlug !== newSlug)) {
+                            context$1$0.next = 18;
+                            break;
+                        }
+
+                        this.set('slugValue', slug);
+                        return context$1$0.abrupt('return');
+
+                    case 18:
+
+                        this.set('model.slug', serverSlug);
+
+                        // If this is a new post.  Don't save the model.  Defer the save
+                        // to the user pressing the save button
+
+                        if (!this.get('model.isNew')) {
+                            context$1$0.next = 21;
+                            break;
+                        }
+
+                        return context$1$0.abrupt('return');
+
+                    case 21:
+                        context$1$0.next = 23;
+                        return this.get('model').save();
+
+                    case 23:
+                        return context$1$0.abrupt('return', context$1$0.sent);
+
+                    case 24:
+                    case 'end':
+                        return context$1$0.stop();
+                }
+            }, callee$0$0, this);
+        })).group('saveTasks'),
+
+        save: (0, _emberConcurrency.task)(regeneratorRuntime.mark(function callee$0$0(options) {
+            var prevStatus, isNew, psmController, status, publishedAtUTC, id, postUrl, _ref, _ref$posts, serverModel, model, error;
+
+            return regeneratorRuntime.wrap(function callee$0$0$(context$1$0) {
+                while (1) switch (context$1$0.prev = context$1$0.next) {
+                    case 0:
+                        prevStatus = this.get('model.status');
+                        isNew = this.get('model.isNew');
+                        psmController = this.get('postSettingsMenuController');
+                        status = undefined;
+
+                        options = options || {};
+
+                        // don't auto-save save if nothing has changed, this prevents
+                        // unnecessary collision errors when reading a post that another
+                        // user is editing
+
+                        if (!(options.backgroundSave && !this.get('hasDirtyAttributes'))) {
+                            context$1$0.next = 8;
+                            break;
+                        }
+
+                        this.send('cancelTimers');
+                        return context$1$0.abrupt('return');
+
+                    case 8:
+
+                        this.toggleProperty('submitting');
+                        if (options.backgroundSave) {
+                            // do not allow a post's status to be set to published by a background save
+                            status = 'draft';
+                        } else {
+                            if (this.get('scheduledWillPublish')) {
+                                status = !this.get('willSchedule') && !this.get('willPublish') ? 'draft' : 'published';
+                            } else {
+                                if (this.get('willPublish') && !this.get('model.isScheduled') && !this.get('statusFreeze')) {
+                                    status = 'published';
+                                } else if (this.get('willSchedule') && !this.get('model.isPublished') && !this.get('statusFreeze')) {
+                                    status = 'scheduled';
+                                } else {
+                                    status = 'draft';
+                                }
+                            }
+                        }
+
+                        // HACK: when a user has a scheduled post open in the editor and it's
+                        // published automatically by the server we don't get any new values
+                        // on the client which results in a collision error when saving (server
+                        // has a different updatedAt value than the client sends).
+                        //
+                        // To work around this we perform a post query outside of Ember Data so
+                        // that we can grab the updated_at value from the server in order to
+                        // save without a collision error
+                        //
+                        // NOTE: This has the effect of disabling collision protection in this
+                        // particular scenario so it's possible for changes other users have
+                        // made since the user opened the post to be overwritten
+                        //
+                        // TODO: remove/replace when we have more sophisticated collaboration
+                        // or collision detection
+                        publishedAtUTC = this.get('model.publishedAtUTC');
+
+                        if (!(moment.utc().isAfter(publishedAtUTC) && prevStatus === 'scheduled')) {
+                            context$1$0.next = 20;
+                            break;
+                        }
+
+                        id = this.get('model.id');
+                        postUrl = this.get('store').adapterFor('post').urlForFindRecord(id, 'post') + '/';
+                        context$1$0.next = 16;
+                        return this.get('ajax').request(postUrl);
+
+                    case 16:
+                        _ref = context$1$0.sent;
+                        _ref$posts = _slicedToArray(_ref.posts, 1);
+                        serverModel = _ref$posts[0];
+
+                        /* jscs:disable requireCamelCaseOrUpperCaseIdentifiers */
+                        this.set('model.updatedAtUTC', moment.utc(serverModel.updated_at));
+                        /* jscs:enable requireCamelCaseOrUpperCaseIdentifiers */
+
+                    case 20:
+
+                        this.send('cancelTimers');
+
+                        // Set the properties that are indirected
+                        // set markdown equal to what's in the editor, minus the image markers.
+                        this.set('model.markdown', this.get('model.scratch'));
+                        this.set('model.status', status);
+
+                        // Set a default title
+                        if (!this.get('model.titleScratch').trim()) {
+                            this.set('model.titleScratch', '(Untitled)');
+                        }
+
+                        this.set('model.title', this.get('model.titleScratch'));
+                        this.set('model.metaTitle', psmController.get('metaTitleScratch'));
+                        this.set('model.metaDescription', psmController.get('metaDescriptionScratch'));
+
+                        context$1$0.prev = 27;
+
+                        if (this.get('model.slug')) {
+                            context$1$0.next = 32;
+                            break;
+                        }
+
+                        this.get('updateTitle').cancelAll();
+
+                        context$1$0.next = 32;
+                        return this.get('generateSlugFromTitle').perform();
+
+                    case 32:
+                        context$1$0.next = 34;
+                        return this.get('model').save(options);
+
+                    case 34:
+                        model = context$1$0.sent;
+
+                        if (!options.silent) {
+                            this.showSaveNotification(prevStatus, model.get('status'), isNew ? true : false);
+                        }
+
+                        this.toggleProperty('submitting');
+
+                        // reset the helper CP back to false after saving and refetching the new model
+                        // which is published by the scheduler process on the server now
+                        if (this.get('scheduledWillPublish')) {
+                            this.set('scheduledWillPublish', false);
+                        }
+
+                        return context$1$0.abrupt('return', model);
+
+                    case 41:
+                        context$1$0.prev = 41;
+                        context$1$0.t0 = context$1$0['catch'](27);
+                        error = context$1$0.t0;
+
+                        if (!(error && error.errors && error.errors[0].errorType !== 'ValidationError')) {
+                            context$1$0.next = 48;
+                            break;
+                        }
+
+                        this.toggleProperty('submitting');
+                        this.send('error', error);
+                        return context$1$0.abrupt('return');
+
+                    case 48:
+
+                        if (!options.silent) {
+                            error = error || this.get('model.errors.messages');
+                            this.showErrorAlert(prevStatus, this.get('model.status'), error);
+                        }
+
+                        this.set('model.status', prevStatus);
+
+                        this.toggleProperty('submitting');
+                        return context$1$0.abrupt('return', this.get('model'));
+
+                    case 52:
+                    case 'end':
+                        return context$1$0.stop();
+                }
+            }, callee$0$0, this, [[27, 41]]);
+        })).group('saveTasks'),
+
         actions: {
             cancelTimers: function cancelTimers() {
                 var autoSaveId = this._autoSaveId;
@@ -11038,99 +11252,7 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
             },
 
             save: function save(options) {
-                var _this2 = this;
-
-                var prevStatus = this.get('model.status');
-                var isNew = this.get('model.isNew');
-                var psmController = this.get('postSettingsMenuController');
-                var promise = undefined,
-                    status = undefined;
-
-                options = options || {};
-
-                // don't auto-save save if nothing has changed, this prevents
-                // unnecessary collision errors when reading a post that another
-                // user is editing
-                if (options.backgroundSave && !this.get('hasDirtyAttributes')) {
-                    this.send('cancelTimers');
-                    return;
-                }
-
-                this.toggleProperty('submitting');
-                if (options.backgroundSave) {
-                    // do not allow a post's status to be set to published by a background save
-                    status = 'draft';
-                } else {
-                    if (this.get('scheduledWillPublish')) {
-                        status = !this.get('willSchedule') && !this.get('willPublish') ? 'draft' : 'published';
-                    } else {
-                        if (this.get('willPublish') && !this.get('model.isScheduled') && !this.get('statusFreeze')) {
-                            status = 'published';
-                        } else if (this.get('willSchedule') && !this.get('model.isPublished') && !this.get('statusFreeze')) {
-                            status = 'scheduled';
-                        } else {
-                            status = 'draft';
-                        }
-                    }
-                }
-
-                this.send('cancelTimers');
-
-                // Set the properties that are indirected
-                // set markdown equal to what's in the editor, minus the image markers.
-                this.set('model.markdown', this.get('model.scratch'));
-                this.set('model.status', status);
-
-                // Set a default title
-                if (!this.get('model.titleScratch').trim()) {
-                    this.set('model.titleScratch', '(Untitled)');
-                }
-
-                this.set('model.title', this.get('model.titleScratch'));
-                this.set('model.metaTitle', psmController.get('metaTitleScratch'));
-                this.set('model.metaDescription', psmController.get('metaDescriptionScratch'));
-
-                if (!this.get('model.slug')) {
-                    this.get('updateTitle').cancelAll();
-
-                    promise = this.get('generateSlug').perform();
-                }
-
-                return resolve(promise).then(function () {
-                    return _this2.get('model').save(options).then(function (model) {
-                        if (!options.silent) {
-                            _this2.showSaveNotification(prevStatus, model.get('status'), isNew ? true : false);
-                        }
-
-                        _this2.toggleProperty('submitting');
-
-                        // reset the helper CP back to false after saving and refetching the new model
-                        // which is published by the scheduler process on the server now
-                        if (_this2.get('scheduledWillPublish')) {
-                            _this2.set('scheduledWillPublish', false);
-                        }
-                        return model;
-                    });
-                })['catch'](function (error) {
-                    // re-throw if we have a general server error
-                    // TODO: use isValidationError(error) once we have
-                    // ember-ajax/ember-data integration
-                    if (error && error.errors && error.errors[0].errorType !== 'ValidationError') {
-                        _this2.toggleProperty('submitting');
-                        _this2.send('error', error);
-                        return;
-                    }
-
-                    if (!options.silent) {
-                        error = error || _this2.get('model.errors.messages');
-                        _this2.showErrorAlert(prevStatus, _this2.get('model.status'), error);
-                    }
-
-                    _this2.set('model.status', prevStatus);
-
-                    _this2.toggleProperty('submitting');
-                    return _this2.get('model');
-                });
+                return this.get('save').perform(options);
             },
 
             setSaveType: function setSaveType(newType) {
@@ -11148,6 +11270,9 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
 
             autoSaveNew: function autoSaveNew() {
                 if (this.get('model.isNew')) {
+                    // force "dirty" state so save task doesn't abort on blank title
+                    this.set('hasDirtyAttributes', true);
+
                     this.send('save', { silent: true, backgroundSave: true });
                 }
             },
@@ -11215,6 +11340,24 @@ define('ghost-admin/mixins/editor-base-controller', ['exports', 'ember', 'ember-
 // debounce for 700 milliseconds
 
 // Only set an "untitled" slug once per post
+
+// If after getting the sanitized and unique slug back from the API
+// we end up with a slug that matches the existing slug, abort the change
+
+// Because the server transforms the candidate slug by stripping
+// certain characters and appending a number onto the end of slugs
+// to enforce uniqueness, there are cases where we can get back a
+// candidate slug that is a duplicate of the original except for
+// the trailing incrementor (e.g., this-is-a-slug and this-is-a-slug-2)
+
+// get the last token out of the slug candidate and see if it's a number
+
+// if the candidate slug is the same as the existing slug except
+// for the incrementor then the existing slug should be used
+
+// re-throw if we have a general server error
+// TODO: use isValidationError(error) once we have
+// ember-ajax/ember-data integration
 define('ghost-admin/mixins/editor-base-route', ['exports', 'jquery', 'ember-metal/mixin', 'rsvp', 'ember-runloop', 'ghost-admin/mixins/shortcuts-route', 'ghost-admin/mixins/style-body', 'ghost-admin/utils/ctrl-or-cmd'], function (exports, _jquery, _emberMetalMixin, _rsvp, _emberRunloop, _ghostAdminMixinsShortcutsRoute, _ghostAdminMixinsStyleBody, _ghostAdminUtilsCtrlOrCmd) {
 
     var generalShortcuts = {};
@@ -12805,6 +12948,9 @@ define('ghost-admin/routes/editor/edit', ['exports', 'ghost-admin/routes/authent
             this._super.apply(this, arguments);
 
             controller.set('shouldFocusEditor', this.get('_transitionedFromNew'));
+
+            var psm = this.controllerFor('post-settings-menu');
+            psm.set('editorController', controller);
         },
 
         actions: {
@@ -12850,12 +12996,9 @@ define('ghost-admin/routes/editor/new', ['exports', 'ghost-admin/routes/authenti
             });
         },
 
-        setupController: function setupController() {
+        setupController: function setupController(controller) {
             var psm = this.controllerFor('post-settings-menu');
-
-            // make sure there are no titleObserver functions hanging around
-            // from previous posts
-            psm.removeObserver('titleScratch', psm, 'titleObserver');
+            psm.set('editorController', controller);
 
             // Ensure that the PSM Publish Date selector resets
             psm.send('resetPubDate');
@@ -13522,6 +13665,14 @@ define('ghost-admin/routes/settings/tags/tag', ['exports', 'ghost-admin/routes/a
         deactivate: function deactivate() {
             this._super.apply(this, arguments);
             this.set('controller.model', null);
+        },
+
+        actions: {
+            willTransition: function willTransition() {
+                console.log('rolling back and clearing errors');
+                this.controller.get('model').rollbackAttributes();
+                this.controller.get('model.errors').clear();
+            }
         }
     });
 });
@@ -15083,7 +15234,7 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
             "column": 0
           },
           "end": {
-            "line": 70,
+            "line": 80,
             "column": 10
           }
         },
@@ -15137,6 +15288,44 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
+        dom.setAttribute(el2, "title", "AileenCGN");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "AileenCGN");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/JohnONolan");
+        dom.setAttribute(el2, "title", "JohnONolan");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "JohnONolan");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/disordinary");
         dom.setAttribute(el2, "title", "disordinary");
         var el3 = dom.createTextNode("\n        ");
@@ -15175,12 +15364,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/JohnONolan");
-        dom.setAttribute(el2, "title", "JohnONolan");
+        dom.setAttribute(el2, "href", "https://github.com/cobbspur");
+        dom.setAttribute(el2, "title", "cobbspur");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "JohnONolan");
+        dom.setAttribute(el3, "alt", "cobbspur");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15194,12 +15383,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/AileenCGN");
-        dom.setAttribute(el2, "title", "AileenCGN");
+        dom.setAttribute(el2, "href", "https://github.com/patrickkim");
+        dom.setAttribute(el2, "title", "patrickkim");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "AileenCGN");
+        dom.setAttribute(el3, "alt", "patrickkim");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15213,12 +15402,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/acburdine");
-        dom.setAttribute(el2, "title", "acburdine");
+        dom.setAttribute(el2, "href", "https://github.com/letsjustfixit");
+        dom.setAttribute(el2, "title", "letsjustfixit");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "acburdine");
+        dom.setAttribute(el3, "alt", "letsjustfixit");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15251,12 +15440,12 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/JimmehCai");
-        dom.setAttribute(el2, "title", "JimmehCai");
+        dom.setAttribute(el2, "href", "https://github.com/CaiJimmy");
+        dom.setAttribute(el2, "title", "CaiJimmy");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "JimmehCai");
+        dom.setAttribute(el3, "alt", "CaiJimmy");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15308,50 +15497,50 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var el2 = dom.createTextNode("\n    ");
         dom.appendChild(el1, el2);
         var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/acburdine");
+        dom.setAttribute(el2, "title", "acburdine");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "acburdine");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
+        dom.setAttribute(el2, "href", "https://github.com/myles");
+        dom.setAttribute(el2, "title", "myles");
+        var el3 = dom.createTextNode("\n        ");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createElement("img");
+        dom.setAttribute(el3, "alt", "myles");
+        dom.appendChild(el2, el3);
+        var el3 = dom.createTextNode("\n    ");
+        dom.appendChild(el2, el3);
+        dom.appendChild(el1, el2);
+        var el2 = dom.createTextNode("\n");
+        dom.appendChild(el1, el2);
+        dom.appendChild(el0, el1);
+        var el1 = dom.createTextNode("\n");
+        dom.appendChild(el0, el1);
+        var el1 = dom.createElement("article");
+        var el2 = dom.createTextNode("\n    ");
+        dom.appendChild(el1, el2);
+        var el2 = dom.createElement("a");
         dom.setAttribute(el2, "href", "https://github.com/sovietspaceship");
         dom.setAttribute(el2, "title", "sovietspaceship");
         var el3 = dom.createTextNode("\n        ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("img");
         dom.setAttribute(el3, "alt", "sovietspaceship");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/sahand12");
-        dom.setAttribute(el2, "title", "sahand12");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "sahand12");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createTextNode("\n    ");
-        dom.appendChild(el2, el3);
-        dom.appendChild(el1, el2);
-        var el2 = dom.createTextNode("\n");
-        dom.appendChild(el1, el2);
-        dom.appendChild(el0, el1);
-        var el1 = dom.createTextNode("\n");
-        dom.appendChild(el0, el1);
-        var el1 = dom.createElement("article");
-        var el2 = dom.createTextNode("\n    ");
-        dom.appendChild(el1, el2);
-        var el2 = dom.createElement("a");
-        dom.setAttribute(el2, "href", "https://github.com/dbalders");
-        dom.setAttribute(el2, "title", "dbalders");
-        var el3 = dom.createTextNode("\n        ");
-        dom.appendChild(el2, el3);
-        var el3 = dom.createElement("img");
-        dom.setAttribute(el3, "alt", "dbalders");
         dom.appendChild(el2, el3);
         var el3 = dom.createTextNode("\n    ");
         dom.appendChild(el2, el3);
@@ -15376,7 +15565,9 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         var element11 = dom.childAt(fragment, [22, 1, 1]);
         var element12 = dom.childAt(fragment, [24, 1, 1]);
         var element13 = dom.childAt(fragment, [26, 1, 1]);
-        var morphs = new Array(14);
+        var element14 = dom.childAt(fragment, [28, 1, 1]);
+        var element15 = dom.childAt(fragment, [30, 1, 1]);
+        var morphs = new Array(16);
         morphs[0] = dom.createAttrMorph(element0, 'src');
         morphs[1] = dom.createAttrMorph(element1, 'src');
         morphs[2] = dom.createAttrMorph(element2, 'src');
@@ -15391,9 +15582,11 @@ define("ghost-admin/templates/-contributors", ["exports"], function (exports) {
         morphs[11] = dom.createAttrMorph(element11, 'src');
         morphs[12] = dom.createAttrMorph(element12, 'src');
         morphs[13] = dom.createAttrMorph(element13, 'src');
+        morphs[14] = dom.createAttrMorph(element14, 'src');
+        morphs[15] = dom.createAttrMorph(element15, 'src');
         return morphs;
       },
-      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/folz"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/JimmehCai"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/novaugust"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/rabbihossain"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/sovietspaceship"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/sahand12"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/dbalders"]]]],
+      statements: [["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [3, 18], [3, 57]]]], "/kevinansfield"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [8, 18], [8, 57]]]], "/kirrg001"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [13, 18], [13, 57]]]], "/AileenCGN"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [18, 18], [18, 57]]]], "/JohnONolan"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [23, 18], [23, 57]]]], "/disordinary"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [28, 18], [28, 57]]]], "/ErisDS"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [33, 18], [33, 57]]]], "/cobbspur"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [38, 18], [38, 57]]]], "/patrickkim"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [43, 18], [43, 57]]]], "/letsjustfixit"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [48, 18], [48, 57]]]], "/folz"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [53, 18], [53, 57]]]], "/CaiJimmy"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [58, 18], [58, 57]]]], "/novaugust"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [63, 18], [63, 57]]]], "/rabbihossain"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [68, 18], [68, 57]]]], "/acburdine"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [73, 18], [73, 57]]]], "/myles"]]], ["attribute", "src", ["concat", [["subexpr", "gh-path", ["admin", "/img/contributors"], [], ["loc", [null, [78, 18], [78, 57]]]], "/sovietspaceship"]]]],
       locals: [],
       templates: []
     };
@@ -20610,7 +20803,7 @@ define("ghost-admin/templates/components/gh-nav-menu", ["exports"], function (ex
           dom.setAttribute(el3, "class", "dropdown-item help-menu-support");
           dom.setAttribute(el3, "role", "menuitem");
           dom.setAttribute(el3, "tabindex", "-1");
-          dom.setAttribute(el3, "href", "http://support.ghost.org/");
+          dom.setAttribute(el3, "href", "http://help.ghost.org/");
           dom.setAttribute(el3, "target", "_blank");
           var el4 = dom.createElement("i");
           dom.setAttribute(el4, "class", "icon-ambulance");
@@ -20650,7 +20843,7 @@ define("ghost-admin/templates/components/gh-nav-menu", ["exports"], function (ex
           dom.setAttribute(el3, "class", "dropdown-item help-menu-how-to");
           dom.setAttribute(el3, "role", "menuitem");
           dom.setAttribute(el3, "tabindex", "-1");
-          dom.setAttribute(el3, "href", "http://support.ghost.org/how-to-use-ghost/");
+          dom.setAttribute(el3, "href", "https://help.ghost.org/hc/en-us/categories/203268947-Ghost-Pro-");
           dom.setAttribute(el3, "target", "_blank");
           var el4 = dom.createElement("i");
           dom.setAttribute(el4, "class", "icon-book");
@@ -26637,7 +26830,7 @@ define("ghost-admin/templates/components/modals/markdown-help", ["exports"], fun
         var el3 = dom.createTextNode("\n        For further Markdown syntax reference: ");
         dom.appendChild(el2, el3);
         var el3 = dom.createElement("a");
-        dom.setAttribute(el3, "href", "http://support.ghost.org/markdown-guide/");
+        dom.setAttribute(el3, "href", "https://help.ghost.org/hc/en-us/articles/224410728-Markdown-Guide");
         dom.setAttribute(el3, "target", "_blank");
         var el4 = dom.createTextNode("Markdown Documentation");
         dom.appendChild(el3, el4);
@@ -34787,7 +34980,7 @@ define("ghost-admin/templates/settings/labs", ["exports"], function (exports) {
           var el1 = dom.createTextNode("                        Public API - For full instructions, read the ");
           dom.appendChild(el0, el1);
           var el1 = dom.createElement("a");
-          dom.setAttribute(el1, "href", "http://support.ghost.org/public-api-beta/");
+          dom.setAttribute(el1, "href", "https://help.ghost.org/hc/en-us/articles/115000301672-Public-API-Beta");
           var el2 = dom.createTextNode("developer guide");
           dom.appendChild(el1, el2);
           dom.appendChild(el0, el1);
@@ -34830,7 +35023,7 @@ define("ghost-admin/templates/settings/labs", ["exports"], function (exports) {
           var el1 = dom.createTextNode("                        Subscribers - Collect email addresses from your readers, more info in ");
           dom.appendChild(el0, el1);
           var el1 = dom.createElement("a");
-          dom.setAttribute(el1, "href", "http://support.ghost.org/subscribers-beta/");
+          dom.setAttribute(el1, "href", "https://help.ghost.org/hc/en-us/articles/224089787-Subscribers-Beta");
           var el2 = dom.createTextNode("the docs");
           dom.appendChild(el1, el2);
           dom.appendChild(el0, el1);
@@ -34873,7 +35066,7 @@ define("ghost-admin/templates/settings/labs", ["exports"], function (exports) {
           var el1 = dom.createTextNode("                        Internal Tags - tags which don't show up in your theme, more info in ");
           dom.appendChild(el0, el1);
           var el1 = dom.createElement("a");
-          dom.setAttribute(el1, "href", "http://support.ghost.org/internal-tags-beta/");
+          dom.setAttribute(el1, "href", "https://help.ghost.org/hc/en-us/articles/224169868-Internal-Tags-Beta");
           var el2 = dom.createTextNode("the docs");
           dom.appendChild(el1, el2);
           dom.appendChild(el0, el1);
@@ -41540,8 +41733,8 @@ define('ghost-admin/utils/ed-image-manager', ['exports'], function (exports) {
                 replacement.start = content.indexOf(']', images[index].index) + 1;
                 replacement.end = replacement.start;
             } else {
-                replacement.start = content.indexOf('(', images[index].index) + 1;
-                replacement.end = replacement.start + images[index][2].length;
+                replacement.end = images[index].index + images[index][0].length - 1;
+                replacement.start = content.lastIndexOf('(', replacement.end) + 1;
             }
             return replacement;
         }
